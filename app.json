@@ -3,6 +3,12 @@
     "name": "Uno QR",
     "slug": "unoqr-app",
     "version": "1.0.0",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/25813600-5e1d-4ae1-9c51-fd87d5ed6c8d"
+    },
     "orientation": "portrait",
     "icon": "./src/assets/images/icon.png",
     "scheme": "unoqr",
@@ -11,9 +17,11 @@
     },
     "userInterfaceStyle": "light",
     "ios": {
+      "bundleIdentifier": "com.statsgrow.unoqr",
       "supportsTablet": true
     },
     "android": {
+      "package": "com.statsgrow.unoqr",
       "adaptiveIcon": {
         "backgroundColor": "#FF5528",
         "foregroundImage": "./src/assets/images/android-icon-foreground.png",

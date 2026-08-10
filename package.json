@@ -24,6 +24,7 @@
     "expo-secure-store": "^57.0.1",
     "expo-sqlite": "~57.0.1",
     "expo-status-bar": "~57.0.1",
+    "expo-updates": "~57.0.12",
     "jwt-decode": "^4.0.0",
     "lodash": "^4.17.21",
     "react": "19.2.3",
