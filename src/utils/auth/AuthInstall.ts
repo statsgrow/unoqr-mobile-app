@@ -6,6 +6,7 @@ import { Platform } from 'react-native';
 import { apiSettings, installSettings } from "@/settings";
 import axios from "axios";
 import { getData, setData } from '../general/Storage';
+import { getExpoPushToken } from '../general/PushNotifications';
 
 
 
@@ -45,12 +46,15 @@ export async function insertAppInstall(): Promise<any> {
       //check if install info already exists in local storage
       const existingInstallInfo = await getData({ key: installSettings.storageKeys.installInfo.name });
       //if exists, return it
-      if(existingInstallInfo) return existingInstallInfo;
-
-      console.log("Existing install info:", existingInstallInfo);
+      //if(existingInstallInfo) return existingInstallInfo;
 
       //get device details
-      const deviceDetails = await getDeviceDetails();
+      const deviceDetails:any = await getDeviceDetails();
+
+      //add expo push token if exists
+      const expoPushTokenInfo = await getExpoPushToken();
+      deviceDetails.expo_token = expoPushTokenInfo?.token;
+      deviceDetails.expo_token_updated_at = expoPushTokenInfo?.updated_at;
       
       //url
       const apiUrl = apiSettings.getApiUrl({ path: '/app/install' }).href;
@@ -65,6 +69,9 @@ export async function insertAppInstall(): Promise<any> {
             value: appInstallData,  
          })   
       };
+
+      //show the log 
+      console.log("App Installed Successfully:", appInstallData.id);
 
       //return the app install data
       return appInstallData;

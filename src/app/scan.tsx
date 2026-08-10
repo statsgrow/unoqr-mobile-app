@@ -11,6 +11,7 @@ import {
 import { router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { CameraView, useCameraPermissions, type BarcodeScanningResult } from "expo-camera";
+import * as WebBrowser from "expo-web-browser";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Text } from "react-native-paper";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -18,10 +19,11 @@ import Svg, { Defs, Mask, Rect } from "react-native-svg";
 
 import { UnoQrLogo } from "@/components/brand/UnoQrLogo";
 import { PxButton } from "@/components/elements/PxButton";
+import { getScanById } from "@/helpers/scans/db/getQueries";
 import { insertScan } from "@/helpers/scans/db/insertQueries";
+import type { InsertScanInput } from "@/helpers/scans/db/init";
 import { colors, fontFamilies, fontSizes, radii, spacing } from "@/theme/tokens";
 import { getUUIDv4 } from "@/utils/general/Uid";
-import { getScanById } from "@/helpers/scans/db/getQueries";
 
 /* ------------------ BREAK ------------------ */
 
@@ -62,47 +64,10 @@ export default function ScanScreen() {
   const [torchEnabled, setTorchEnabled] = useState(false);
   const [scanResult, setScanResult] = useState<string | null>(null);
   const [testDestination, setTestDestination] = useState("");
+  const scanLockRef = useRef(false);
   const targetSize = Math.min(340, Math.max(260, width - spacing.lg * 2));
   const showTestDestination = process.env.EXPO_PUBLIC_API_ENV === "development"
     && (Platform.OS === "android" || Platform.OS === "ios");
-
-  
-  // Persists completed scan results to the local SQLite database on native platforms.
-  useEffect(() => {
-    //sqlite is not available on web, so we skip the insert
-    if (!scanResult || Platform.OS === "web") return;
-    //Olny insert scan if platform is android or ios
-    if (Platform.OS !== "android" && Platform.OS !== "ios") return;
-   
-
-    const now = new Date().toISOString();
-    const scanType = /^https?:\/\//i.test(scanResult) ? "url" : "text";
-
-    const scanData = {
-      id: getUUIDv4(),
-      value: scanResult,
-      type: scanType,
-      status: "pending",
-      lantitude: null,
-      longitude: null,
-      location: null,
-      created_at: now,
-      updated_at: now
-    };  
-
-    void insertScan(scanData);
-
-    //also get this row 
-    getScanById(scanData.id)
-    .then((d) => {
-      // Successfully fetched scan data
-      console.log('Successfully fetched scan data after insert', d);
-    })
-    .catch((error) => {
-      console.error('Error fetching scan by ID after insert:', error);
-    });//try catch ends
-
-  }, [scanResult]);
 
   // Closes the scanner and returns to the previous app screen.
   const handleClose = () => {
@@ -116,19 +81,26 @@ export default function ScanScreen() {
 
   // Locks the scanner after receiving the first valid destination value.
   const handleScannedValue = (value: string) => {
-    const normalizedValue = value.trim();
+    const normalizedValue = normalizeScannedValue(value);
     console.log("Scanned value:", normalizedValue);
     //If scan is set or normalized value is empty, return
-    if (scanResult || !normalizedValue) return;
+    if (scanLockRef.current || !normalizedValue) return;
   
-    //Set the scan result to the normalized value
+    //Lock repeated camera callbacks and process the destination once.
+    scanLockRef.current = true;
     setScanResult(normalizedValue);
-
+    void processScannedDestination(normalizedValue);
   };//func ends
 
   // Passes a detected camera barcode into the shared destination flow.
   const handleBarcodeScanned = ({ data }: BarcodeScanningResult) => {
     handleScannedValue(data);
+  };//func ends
+
+  // Resets the scanner so another QR value can be processed.
+  const handleScanAgain = () => {
+    scanLockRef.current = false;
+    setScanResult(null);
   };//func ends
 
   if (!permission) {
@@ -186,12 +158,71 @@ export default function ScanScreen() {
         <ScanResultCard
           value={scanResult}
           onClose={handleClose}
-          onScanAgain={() => setScanResult(null)}
+          onScanAgain={handleScanAgain}
         />
       ) : null}
     </View>
   );//return ends
 };//export ends
+
+/* ------------------ BREAK ------------------ */
+
+// Saves a scanned value and opens web destinations in the in-app browser concurrently.
+async function processScannedDestination(value: string) {
+  const operations: Promise<unknown>[] = [];
+
+  if (Platform.OS === "android" || Platform.OS === "ios") {
+    operations.push(persistScannedDestination(value));
+  };//if ends
+
+  if (isWebDestination(value)) {
+    operations.push(WebBrowser.openBrowserAsync(value));
+  };//if ends
+
+  await Promise.allSettled(operations);
+};//func ends
+
+// Persists a native scan locally, sends it to the API, and verifies the stored row.
+async function persistScannedDestination(value: string) {
+  const now = new Date().toISOString();
+  const scanData: InsertScanInput = {
+    id: getUUIDv4(),
+    value,
+    type: isWebDestination(value) ? "url" : "text",
+    status: "pending",
+    lantitude: null,
+    longitude: null,
+    location: null,
+    created_at: now,
+    updated_at: now
+  };
+
+  await insertScan(scanData);
+  const storedScan = await getScanById(scanData.id);
+  console.log("Stored scan after insert:", storedScan);
+};//func ends
+
+// Returns whether a scanned value is a safe HTTP or HTTPS browser destination.
+function isWebDestination(value: string) {
+  return /^https?:\/\//i.test(value);
+};//func ends
+
+// Adds HTTPS to recognizable bare web domains while preserving non-URL QR text.
+function normalizeScannedValue(value: string) {
+  const trimmedValue = value.trim();
+
+  if (isWebDestination(trimmedValue)) {
+    return trimmedValue;
+  };//if ends
+
+  const bareDomainPattern = /^(?:www\.)?(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}(?::\d+)?(?:[/?#][^\s]*)?$/i;
+
+  if (bareDomainPattern.test(trimmedValue)) {
+    return `https://${trimmedValue}`;
+  };//if ends
+
+  return trimmedValue;
+};//func ends
 
 /* ------------------ BREAK ------------------ */
 
