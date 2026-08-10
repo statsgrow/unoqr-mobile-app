@@ -12,7 +12,7 @@ import { PxButton } from "@/components/elements/PxButton";
 import { apiSettings } from "@/settings";
 import { colors, fontFamilies, fonts, sizes } from "@/theme/themeSettings";
 import { Axios } from "@/utils/general/Axios";
-import { GetResponseValidationErrors } from "@/utils/general/Error";
+import { GetResponseValidationErrorsArray } from "@/utils/general/Error";
 
 /* ------------------ TYPES ------------------ */
 
@@ -115,7 +115,7 @@ export default function PxFileUploadInput({
 			if(file_url_name) RHF.setValue(file_url_name, serverFile.url, { shouldDirty: true, shouldTouch: true, shouldValidate: true
 			});
 		} catch (error) {
-			const validationErrorMessages = GetResponseValidationErrors({ error, RHF }) || null;
+			const validationErrorMessages = GetResponseValidationErrorsArray({ error });
 			//set request error message
 			setRequestError(validationErrorMessages.length > 0 ? validationErrorMessages.join(", ") : "Unknown error occurred while uploading the file.");
 		} finally {

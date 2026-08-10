@@ -1,106 +1,171 @@
 import { useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
-import { useRouter } from "expo-router";
+import { router, usePathname, type Href } from "expo-router";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Text } from "react-native-paper";
-import { Ionicons } from "@expo/vector-icons";
 
 import { MoreMenu } from "@/components/layout/MoreMenu";
-import { colors, fontFamilies, fonts, sizes } from "@/theme/themeSettings";
-
-
-/* ------------------ DATA ------------------ */
-
-const navItems: Array<{
-	label: string;
-	icon: keyof typeof Ionicons.glyphMap;
-	href?: string;
-}> = [
-	{ label: "Donation", icon: "heart-outline" },
-	{ label: "Campaigns", icon: "megaphone-outline", href: "/campaign/list" },
-	{ label: "Emergency", icon: "medical-outline" },
-	{ label: "More", icon: "apps-outline" }
-];
+import { colors, fontFamilies, fontSizes, radii, spacing } from "@/theme/tokens";
 
 /* ------------------ BREAK ------------------ */
 
+type StandardNavItem = {
+  label: string;
+  icon: keyof typeof MaterialCommunityIcons.glyphMap;
+  activeIcon: keyof typeof MaterialCommunityIcons.glyphMap;
+  href: Href;
+  matchingPath: string;
+};
+
+/* ------------------ BREAK ------------------ */
+
+const scansItem: StandardNavItem = {
+  label: "My Scans",
+  icon: "history",
+  activeIcon: "history",
+  href: "/scans/list" as Href,
+  matchingPath: "/scans"
+};
+
+/* ------------------ BREAK ------------------ */
+
+// Renders the primary app navigation with a prominent central scan action.
 export function BottomNav() {
-	const router = useRouter();
-	const [isMoreMenuVisible, setIsMoreMenuVisible] = useState(false);
-	const activeItemLabel = "Donation";
+  const pathname = usePathname();
+  const [isMoreMenuVisible, setIsMoreMenuVisible] = useState(false);
 
-	return (
-		<>
-			<View style={styles.root}>
-				<View style={styles.container}>
-					{navItems.map((item) => {
-						const isActive = item.label === activeItemLabel;
+  //Default Return
+  return (
+    <>
+      <View style={styles.root}>
+        <View style={styles.container}>
+          <NavItem
+            item={scansItem}
+            isActive={
+              pathname === scansItem.matchingPath
+              || pathname.startsWith(`${scansItem.matchingPath}/`)
+            }
+          />
 
-						return (
-						<Pressable
-							key={item.label}
-							style={styles.itemButton}
-							onPress={item.label === "More" ? () => setIsMoreMenuVisible(true) : item.href ? () => router.push(item.href as any) : undefined}
-						>
-							<View style={[styles.indicator, isActive && styles.activeIndicator]} />
-							<Ionicons name={item.icon} size={32} color={isActive ? colors.primary : colors.grey[500]} />
-							<Text style={[styles.label, isActive ? styles.activeLabel : styles.inactiveLabel]}>{item.label}</Text>
-						</Pressable>
-						);
-					})}
-				</View>
-			</View>
+          <View style={styles.scanSlot}>
+            <Pressable
+              accessibilityLabel="Scan QR code"
+              accessibilityRole="button"
+              onPress={() => router.push("/scan")}
+              style={({ pressed }) => [styles.scanButton, pressed && styles.pressedButton]}
+            >
+              <MaterialCommunityIcons name="qrcode-scan" size={32} color={colors.white.main} />
+            </Pressable>
+            <Text style={[styles.label, styles.scanLabel, pathname === "/scan" && styles.activeLabel]}>
+              Scan
+            </Text>
+          </View>
 
-			<MoreMenu
-				visible={isMoreMenuVisible}
-				onClose={() => setIsMoreMenuVisible(false)}
-			/>
-		</>
-	);
-}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ expanded: isMoreMenuVisible }}
+            onPress={() => setIsMoreMenuVisible(true)}
+            style={({ pressed }) => [styles.itemButton, pressed && styles.pressedButton]}
+          >
+            <MaterialCommunityIcons name="apps" size={25} color={colors.mute.main} />
+            <Text style={[styles.label, styles.inactiveLabel]}>More</Text>
+          </Pressable>
+        </View>
+      </View>
+
+      <MoreMenu visible={isMoreMenuVisible} onClose={() => setIsMoreMenuVisible(false)} />
+    </>
+  );//return ends
+};//export ends
+
+/* ------------------ BREAK ------------------ */
+
+// Renders a standard supporting destination in the bottom navigation.
+function NavItem({ item, isActive }: { item: StandardNavItem; isActive: boolean }) {
+  //Default Return
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ selected: isActive }}
+      onPress={() => router.push(item.href)}
+      style={({ pressed }) => [styles.itemButton, pressed && styles.pressedButton]}
+    >
+      <MaterialCommunityIcons
+        name={isActive ? item.activeIcon : item.icon}
+        size={25}
+        color={isActive ? colors.secondary.main : colors.mute.main}
+      />
+      <Text style={[styles.label, isActive ? styles.activeLabel : styles.inactiveLabel]}>
+        {item.label}
+      </Text>
+    </Pressable>
+  );//return ends
+};//func ends
 
 /* ------------------ BREAK ------------------ */
 
 const styles = StyleSheet.create({
-	root: {
-		borderTopWidth: 1,
-		borderTopColor: colors.grey[100],
-		paddingBottom: sizes.spacing.sm,
-		backgroundColor: colors.white
-	},
-	container: {
-		flexDirection: "row",
-		alignItems: "flex-start",
-		justifyContent: "space-between",
-		paddingHorizontal: sizes.spacing.sm,
-		paddingTop: 0
-	},
-	itemButton: {
-		flex: 1,
-		alignItems: "center",
-		gap: sizes.spacing.xs,
-		paddingTop: 0
-	},
-	indicator: {
-		width: "100%",
-		height: 3,
-		borderRadius: sizes.borderRadius.full,
-		backgroundColor: "transparent",
-		marginBottom: 0
-	},
-	activeIndicator: {
-		backgroundColor: colors.primary
-	},
-	label: {
-		fontSize: fonts.sizes.sm,
-		fontFamily: fontFamilies.normal,
-		lineHeight: fonts.sizes.sm * 1.2,
-		textAlign: "center"
-	},
-	activeLabel: {
-		color: colors.primary,
-		fontFamily: fontFamilies.bold
-	},
-	inactiveLabel: {
-		color: colors.grey[500]
-	}
+  root: {
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xs,
+    borderTopWidth: 1,
+    borderTopColor: colors.border.main,
+    backgroundColor: colors.white.main
+  },
+  container: {
+    minHeight: 62,
+    flexDirection: "row",
+    alignItems: "flex-end",
+    justifyContent: "space-around",
+    paddingHorizontal: spacing.lg
+  },
+  itemButton: {
+    width: 96,
+    minHeight: 54,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.xxs,
+    borderRadius: radii.lg
+  },
+  scanSlot: {
+    width: 96,
+    alignItems: "center",
+    gap: spacing.xxs
+  },
+  scanButton: {
+    width: 68,
+    height: 68,
+    marginTop: -spacing.xxl,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 5,
+    borderColor: colors.cream.main,
+    borderRadius: radii.pill,
+    backgroundColor: colors.secondary.main,
+    shadowColor: colors.secondary.dark,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.28,
+    shadowRadius: 10,
+    elevation: 10
+  },
+  pressedButton: {
+    opacity: 0.72
+  },
+  label: {
+    fontFamily: fontFamilies.primaryMedium,
+    fontSize: fontSizes.caption,
+    lineHeight: 16,
+    textAlign: "center"
+  },
+  scanLabel: {
+    color: colors.primary.main,
+    fontFamily: fontFamilies.primarySemiBold
+  },
+  activeLabel: {
+    color: colors.secondary.main,
+    fontFamily: fontFamilies.primarySemiBold
+  },
+  inactiveLabel: {
+    color: colors.mute.main
+  }
 });

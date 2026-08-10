@@ -8,23 +8,27 @@ import {
   BricolageGrotesque_600SemiBold,
   BricolageGrotesque_700Bold
 } from "@expo-google-fonts/bricolage-grotesque";
-import { InstrumentSerif_400Regular } from "@expo-google-fonts/instrument-serif";
 import { useFonts } from "expo-font";
 import { PaperProvider } from "react-native-paper";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
-import { colors } from "../src/theme/tokens";
-import { paperTheme } from "../src/theme/paperTheme";
+import { colors } from "@/theme/tokens";
+import { paperTheme } from "@/theme/paperTheme";
+import { initScansTable } from "@/helpers/scans/db/init";
 
+/* ------------------ BREAK ------------------ */
+
+// Renders the app shell and shared providers.
 export default function RootLayout() {
+  // Loads custom fonts for consistent typography across the app.
   const [fontsLoaded] = useFonts({
     BricolageGrotesque_400Regular,
     BricolageGrotesque_500Medium,
     BricolageGrotesque_600SemiBold,
-    BricolageGrotesque_700Bold,
-    InstrumentSerif_400Regular
+    BricolageGrotesque_700Bold
   });
 
+  // Sets up the web viewport and mobile frame for consistent styling across platforms.
   useEffect(() => {
     if (Platform.OS !== "web") {
       return;
@@ -35,7 +39,7 @@ export default function RootLayout() {
 
     if (doc?.body) {
       doc.body.style.margin = "0";
-      doc.body.style.backgroundColor = colors.cream.main;
+      doc.body.style.backgroundColor = colors.white.dark;
     }
 
     if (root) {
@@ -43,10 +47,18 @@ export default function RootLayout() {
     }
   }, []);
 
+  //Create new tables if not exists
+  useEffect(() => {
+    //create scans table if not exists
+    void initScansTable();
+  }, []);
+
+  // Prevents rendering until fonts are loaded to avoid layout shifts.
   if (!fontsLoaded) {
     return null;
   }
 
+  //App content to be rendered inside the shared providers.
   const appContent = (
     <>
       <Stack screenOptions={{ headerShown: false }} />
@@ -54,6 +66,7 @@ export default function RootLayout() {
     </>
   );
 
+  //Default Return
   return (
     <SafeAreaProvider>
       <PaperProvider theme={paperTheme}>
@@ -67,14 +80,16 @@ export default function RootLayout() {
       </PaperProvider>
     </SafeAreaProvider>
   );
-}
+};//export ends
+
+/* ------------------ BREAK ------------------ */
 
 const styles = StyleSheet.create<{ webViewport: ViewStyle; webMobileFrame: ViewStyle }>({
   webViewport: {
     flex: 1,
     width: "100%",
     minHeight: "100%",
-    backgroundColor: colors.cream.main,
+    backgroundColor: colors.white.dark,
     alignItems: "center"
   },
   webMobileFrame: {

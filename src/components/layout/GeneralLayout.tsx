@@ -14,10 +14,13 @@ import { SafeAreaView, type Edge } from "react-native-safe-area-context";
 import { ActivityIndicator, Text } from "react-native-paper";
 
 import { colors, sizes } from "@/theme/themeSettings";
-import { getUser, removeUserTokens } from "@/utils/auth/AuthUser";
+import { removeUserTokens } from "@/utils/auth/AuthTokens";
+import { getUser } from "@/utils/auth/AuthUser";
 import type { UserType } from "@/utils/auth/UserTypes";
+
 import { BottomNav } from "./BottomNav";
 import { TopNav } from "./TopNav";
+import { getAppInstallInfo, insertAppInstall } from "@/utils/auth/AuthInstall";
 
 /* ------------------ BREAK ------------------ */
 
@@ -60,7 +63,7 @@ export function GeneralLayout({
 	edges = ["top", "left", "right", "bottom"],
 	hideBottomViewOnKeyboard = true,
 	hideBottomMenu = false,
-	protectRoute = true,
+	protectRoute = false,
 	onRefresh,
 	pullToRefreshEnabled = true
 }: GeneralLayoutProps) {
@@ -73,6 +76,19 @@ export function GeneralLayout({
 	//Auth state
 	const [isAuthResolved, setIsAuthResolved] = useState(!protectRoute);
 	const [authUser, setAuthUser] = useState<UserType | null>(null);
+
+	/* ++++++++++ BREAK ++++++++++ */
+
+	//insert app install info on mount
+	useEffect(() => {
+		(async () => {
+			try {
+				await insertAppInstall();
+			} catch (error) {
+				console.error("Error inserting app install info:", error);
+			};//catch ends
+		})();
+	}, []);//useEffect ends
 
 	// Runs the page refresh callback or refreshes the layout data while maintaining the native refresh indicator.
 	const handleRefresh = async () => {
@@ -110,7 +126,9 @@ export function GeneralLayout({
 				const user = await getUser({ errorOnFail: false });
 
 				//If user is not found, clear tokens and redirect to login
-				if (!user) throw new Error("User not found");
+				if (!user) {
+					return;
+				};//if ends
 
 				//If user is found, set auth state
 				if (isMounted) {
@@ -118,11 +136,9 @@ export function GeneralLayout({
 					setIsAuthResolved(true);
 				};//if ends
 			} catch (error) {
-				//console.error("GeneralLayout auth check failed:", error);
+				console.error("GeneralLayout auth check failed:", error);
 				//If error occurs, clear tokens and redirect to login
-				await removeUserTokens();
-				//go to login
-				router.replace("/auth/login_v2");
+				//await removeUserTokens();
 			};//catch ends
 		})();//async ends
 
@@ -159,8 +175,8 @@ export function GeneralLayout({
 	//Resolve top and bottom views
 	const resolvedTopView = topView ?? (
 		<TopNav
-			title={authUser && authUser.member && `${authUser.member.first_name} ${authUser.member.last_name}` || null}
-			subtitle={authUser && authUser.member && authUser.member?.old_id && `App ID: ${authUser.member?.old_id}` || null}
+			title={null}
+			subtitle={null}
 		/>
 	);
 	const resolvedBottomView = bottomView ?? <BottomNav />;

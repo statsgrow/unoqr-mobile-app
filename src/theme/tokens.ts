@@ -121,7 +121,6 @@ export const fontFamilies = {
   primaryMedium: "BricolageGrotesque_500Medium",
   primarySemiBold: "BricolageGrotesque_600SemiBold",
   primaryBold: "BricolageGrotesque_700Bold",
-  serif: "InstrumentSerif_400Regular",
   mono: "monospace"
 } as const;
 
@@ -174,7 +173,7 @@ export const typography = {
     letterSpacing: -0.8
   },
   headlineLarge: {
-    fontFamily: fontFamilies.serif,
+    fontFamily: fontFamilies.primarySemiBold,
     fontSize: fontSizes.h4,
     lineHeight: toLineHeight(fontSizes.h4, lineHeights.tight),
     letterSpacing: -0.4
