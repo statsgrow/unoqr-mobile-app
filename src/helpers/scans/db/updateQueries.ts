@@ -1,6 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { db } from '@/utils/sqlite/db';
 import { InsertScanInput, scansTable } from './init';
+import { Toast } from '@/utils/general/Toast';
 
 /* ------------------ BREAK ------------------ */
 
@@ -18,7 +19,8 @@ export async function updateScan(id: string, data: UpdateScanInput) {
   try {
     const result = await db.update(scansTable).set(data).where(eq(scansTable.id, id)).run();
     return result;
-  } catch (error) {
+  } catch (error:any) {
+    Toast.error({ message: error?.message });
     console.error('Error updating scan:', error);
     return null;
   };//try catch ends

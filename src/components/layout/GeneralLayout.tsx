@@ -17,6 +17,7 @@ import { colors, sizes } from "@/theme/themeSettings";
 import { removeUserTokens } from "@/utils/auth/AuthTokens";
 import { getUser } from "@/utils/auth/AuthUser";
 import type { UserType } from "@/utils/auth/UserTypes";
+import { Toast, ToastProvider } from "@/utils/general/Toast";
 
 import { BottomNav } from "./BottomNav";
 import { TopNav } from "./TopNav";
@@ -84,8 +85,10 @@ export function GeneralLayout({
 		(async () => {
 			try {
 				await insertAppInstall();
-			} catch (error) {
+				Toast.success({ message: "App install info inserted successfully" });
+			} catch (error:any) {
 				console.error("Error inserting app install info:", error);
+				Toast.error({ message: error?.message });
 			};//catch ends
 		})();
 	}, []);//useEffect ends
@@ -135,7 +138,8 @@ export function GeneralLayout({
 					setAuthUser(user);
 					setIsAuthResolved(true);
 				};//if ends
-			} catch (error) {
+			} catch (error:any) {
+				Toast.error({ message: error?.message });
 				console.error("GeneralLayout auth check failed:", error);
 				//If error occurs, clear tokens and redirect to login
 				//await removeUserTokens();
@@ -173,12 +177,7 @@ export function GeneralLayout({
 	}, []);
 
 	//Resolve top and bottom views
-	const resolvedTopView = topView ?? (
-		<TopNav
-			title={null}
-			subtitle={null}
-		/>
-	);
+	const resolvedTopView = topView ?? <TopNav />;
 	const resolvedBottomView = bottomView ?? <BottomNav />;
 
 	//If auth is not resolved, show loader
@@ -188,6 +187,7 @@ export function GeneralLayout({
 				<View style={styles.authLoader}>
 					<ActivityIndicator size="large" color={colors.primary} />
 				</View>
+				<ToastProvider />
 			</SafeAreaView>
 		);
 	};//if ends
@@ -252,6 +252,7 @@ export function GeneralLayout({
 			{content}
 			{fixedFooter ? <View style={styles.fixedFooter}>{fixedFooter}</View> : null}
 			{!hideBottomMenu && !fixedFooter && !(hideBottomViewOnKeyboard && isKeyboardVisible) ? <View>{resolvedBottomView}</View> : null}
+			<ToastProvider />
 		</SafeAreaView>
 	);//return ends
 };//func ends

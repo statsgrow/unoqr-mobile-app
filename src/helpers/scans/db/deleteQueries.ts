@@ -1,6 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { db } from '@/utils/sqlite/db';
 import { scansTable } from './init';
+import { Toast } from '@/utils/general/Toast';
 
 /* ------------------ BREAK ------------------ */
 
@@ -14,7 +15,8 @@ export async function deleteScan(id: string) {
   try {
     const result = await db.delete(scansTable).where(eq(scansTable.id, id)).run();
     return result;
-  } catch (error) {
+  } catch (error:any) {
+    Toast.error({ message: error?.message });
     console.error('Error deleting scan:', error);
     return null;
   };//try catch ends

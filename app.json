@@ -56,7 +56,8 @@
           "barcodeScannerEnabled": true
         }
       ],
-      "expo-sqlite"
+      "expo-sqlite",
+      "expo-notifications"
     ],
     "extra": {
       "router": {

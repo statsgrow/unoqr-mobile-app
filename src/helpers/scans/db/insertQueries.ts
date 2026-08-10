@@ -3,6 +3,7 @@ import { InsertScanInput, scansTable } from './init';
 import { apiSettings, installSettings } from '@/settings';
 import { Axios } from '@/utils/general/Axios';
 import { getData } from '@/utils/general/Storage';
+import { Toast } from '@/utils/general/Toast';
 
 /* ------------------ BREAK ------------------ */
 
@@ -27,7 +28,8 @@ export async function insertScan(data: InsertScanInput) {
 
     //Default return
     return result;
-  } catch (error) {
+  } catch (error:any) {
+    Toast.error({ message: error?.message });
     console.error('Error inserting scan:', error);
     return null;
   };//try catch ends

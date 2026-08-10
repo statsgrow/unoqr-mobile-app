@@ -7,6 +7,7 @@ import { apiSettings, installSettings } from "@/settings";
 import axios from "axios";
 import { getData, setData } from '../general/Storage';
 import { getExpoPushToken } from '../general/PushNotifications';
+import { Toast } from '@/utils/general/Toast';
 
 
 
@@ -39,7 +40,6 @@ export async function getAppInstallInfo(): Promise<any> {
 
 //insert install information from API
 export async function insertAppInstall(): Promise<any> {
-
 
    //try-catch
    try {
@@ -75,7 +75,8 @@ export async function insertAppInstall(): Promise<any> {
 
       //return the app install data
       return appInstallData;
-   } catch (error) {
+   } catch (error:any) {
+      Toast.error({ message: error?.message });
       console.error("Error fetching install info:", error);
       return null;
    };//trycatch ends
