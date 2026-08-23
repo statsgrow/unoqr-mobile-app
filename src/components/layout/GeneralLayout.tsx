@@ -85,7 +85,6 @@ export function GeneralLayout({
 		(async () => {
 			try {
 				await insertAppInstall();
-				Toast.success({ message: "App install info inserted successfully" });
 			} catch (error:any) {
 				console.error("Error inserting app install info:", error);
 				Toast.error({ message: error?.message });

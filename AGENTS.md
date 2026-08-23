@@ -26,6 +26,8 @@ This file defines the coding style conventions for AI agents working in this rep
 - Keep route components as default exports.
 - Keep page-specific code inside that page file by default.
   - Root-level JSX, page helpers, and local page logic should stay in the page unless explicitly asked to move them into `components`, `utils`, `assets`, or other shared folders.
+- Keep feature-specific custom components inside that feature's helper directory.
+  - Scan components must live in `src/helpers/scans/components/`, not `src/components/`.
 - New page routes should live directly in their route path when possible.
   - Prefer files like `/auth/login.tsx` over `/auth/login/index.tsx` unless explicitly told to use folder-based route files.
 - Common style pattern in components:

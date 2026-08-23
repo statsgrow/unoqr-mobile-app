@@ -22,6 +22,7 @@
     },
     "android": {
       "package": "com.statsgrow.unoqr",
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "backgroundColor": "#FF5528",
         "foregroundImage": "./src/assets/images/android-icon-foreground.png",
@@ -57,6 +58,12 @@
         }
       ],
       "expo-sqlite",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Allow Uno QR to use your location while saving a QR scan."
+        }
+      ],
       "expo-notifications"
     ],
     "extra": {

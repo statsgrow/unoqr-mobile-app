@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import {
   FlatList,
+  Pressable,
   RefreshControl,
   StyleSheet,
   TextInput,
@@ -8,7 +9,7 @@ import {
   type ListRenderItemInfo
 } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { useFocusEffect } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { ActivityIndicator, Text } from "react-native-paper";
 
 import { GeneralLayout } from "@/components/layout/GeneralLayout";
@@ -163,7 +164,15 @@ function filterScans(records: ScanRecord[], searchText: string): ScanRecord[] {
   };//if ends
 
   return records.filter((record) =>
-    [record.value, record.status, record.location]
+    [
+      record.value,
+      record.status,
+      record.sync_status,
+      record.metadata?.title,
+      record.input_url,
+      record.final_url,
+      getLocationText(record.location)
+    ]
       .filter((value): value is string => Boolean(value))
       .some((value) => value.toLocaleLowerCase().includes(normalizedSearch))
   );
@@ -173,12 +182,20 @@ function filterScans(records: ScanRecord[], searchText: string): ScanRecord[] {
 
 // Renders one saved scan as a compact history card.
 function renderScanItem({ item }: ListRenderItemInfo<ScanRecord>) {
-  const displayUrl = getDisplayUrl(item.value);
-  const statusColor = getStatusColor(item.status);
+  const displayUrl = item.metadata?.title || getDisplayUrl(item.final_url || item.input_url || item.value);
+  const location = getLocationText(item.location);
+  const status = item.status || "pending";
+  const statusColor = getStatusColor(status);
 
   //Default Return
   return (
-    <View style={styles.scanCard}>
+    <Pressable
+      accessibilityHint="Shows all metadata collected for this scan"
+      accessibilityLabel={`Open scan ${displayUrl}`}
+      accessibilityRole="button"
+      onPress={() => router.push(`/scans/${item.id}/view`)}
+      style={({ pressed }) => [styles.scanCard, pressed && styles.scanCardPressed]}
+    >
       <View style={styles.scanIcon}>
         <MaterialCommunityIcons name="qrcode-scan" size={24} color={colors.secondary.main} />
       </View>
@@ -187,10 +204,10 @@ function renderScanItem({ item }: ListRenderItemInfo<ScanRecord>) {
         <Text numberOfLines={1} style={styles.scanUrl}>{item.value}</Text>
         <View style={styles.scanMetaRow}>
           <Text style={styles.scanDate}>{formatScanDate(item.created_at)}</Text>
-          {item.location ? (
+          {location ? (
             <>
               <View style={styles.metaDot} />
-              <Text numberOfLines={1} style={styles.scanLocation}>{item.location}</Text>
+              <Text numberOfLines={1} style={styles.scanLocation}>{location}</Text>
             </>
           ) : null}
         </View>
@@ -198,10 +215,11 @@ function renderScanItem({ item }: ListRenderItemInfo<ScanRecord>) {
       <View style={[styles.statusBadge, { backgroundColor: `${statusColor}18` }]}>
         <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
         <Text numberOfLines={1} style={[styles.statusText, { color: statusColor }]}>
-          {formatStatus(item.status)}
+          {formatStatus(status)}
         </Text>
       </View>
-    </View>
+      <MaterialCommunityIcons name="chevron-right" size={22} color={colors.mute.light} />
+    </Pressable>
   );//return ends
 };//func ends
 
@@ -246,6 +264,16 @@ function getDisplayUrl(value: string): string {
   } catch {
     return value;
   };//try ends
+};//func ends
+
+/* ------------------ BREAK ------------------ */
+
+// Combines the structured scan location into one searchable display value.
+function getLocationText(location: ScanRecord["location"]): string | null {
+  if (!location) return null;
+
+  const parts = [location.city, location.state, location.country, location.pincode].filter(Boolean);
+  return parts.length > 0 ? parts.join(", ") : null;
 };//func ends
 
 /* ------------------ BREAK ------------------ */
@@ -373,6 +401,9 @@ const styles = StyleSheet.create({
     borderColor: colors.border.main,
     borderRadius: radii.xl,
     backgroundColor: colors.white.main
+  },
+  scanCardPressed: {
+    opacity: 0.72
   },
   scanIcon: {
     width: 46,

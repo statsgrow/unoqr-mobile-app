@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '@/utils/sqlite/db';
 import { Toast } from '@/utils/general/Toast';
 
-import { scansTable } from './init';
+import { initScansTable, scansTable } from './init';
 
 /* ------------------ BREAK ------------------ */
 
@@ -13,6 +13,7 @@ export async function getAllScans() {
     return [];
   };//if ends
 
+   await initScansTable();
    return db.select().from(scansTable);
 }
 
@@ -25,6 +26,7 @@ export async function getScanById(id: string) {
 
    //try catch 
    try {
+      await initScansTable();
       const result = await db.select().from(scansTable).where(eq(scansTable.id, id));
       return result[0] ?? null;
    } catch (error:any) {

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Animated,
   Platform,
@@ -8,7 +8,7 @@ import {
   View,
   useWindowDimensions
 } from "react-native";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { CameraView, useCameraPermissions, type BarcodeScanningResult } from "expo-camera";
 import * as WebBrowser from "expo-web-browser";
@@ -39,12 +39,6 @@ type ScannerOverlayProps = {
   onToggleTorch: () => void;
 };
 
-type ScanResultCardProps = {
-  value: string;
-  onClose: () => void;
-  onScanAgain: () => void;
-};
-
 type RoundedTargetMaskProps = {
   screenWidth: number;
   screenHeight: number;
@@ -68,6 +62,14 @@ export default function ScanScreen() {
   const targetSize = Math.min(340, Math.max(260, width - spacing.lg * 2));
   const showTestDestination = process.env.EXPO_PUBLIC_API_ENV === "development"
     && (Platform.OS === "android" || Platform.OS === "ios");
+
+  // Unlocks camera scanning whenever the user returns from the completed browser flow.
+  useFocusEffect(
+    useCallback(() => {
+      scanLockRef.current = false;
+      setScanResult(null);
+    }, [])
+  );
 
   // Closes the scanner and returns to the previous app screen.
   const handleClose = () => {
@@ -95,12 +97,6 @@ export default function ScanScreen() {
   // Passes a detected camera barcode into the shared destination flow.
   const handleBarcodeScanned = ({ data }: BarcodeScanningResult) => {
     handleScannedValue(data);
-  };//func ends
-
-  // Resets the scanner so another QR value can be processed.
-  const handleScanAgain = () => {
-    scanLockRef.current = false;
-    setScanResult(null);
   };//func ends
 
   if (!permission) {
@@ -154,52 +150,59 @@ export default function ScanScreen() {
         onToggleTorch={() => setTorchEnabled((currentValue) => !currentValue)}
       />
 
-      {scanResult ? (
-        <ScanResultCard
-          value={scanResult}
-          onClose={handleClose}
-          onScanAgain={handleScanAgain}
-        />
-      ) : null}
     </View>
   );//return ends
 };//export ends
 
 /* ------------------ BREAK ------------------ */
 
-// Saves a scanned value and opens web destinations in the in-app browser concurrently.
+// Saves a scanned value before opening native web destinations in the metadata test route.
 async function processScannedDestination(value: string) {
-  const operations: Promise<unknown>[] = [];
+  const scanStartedAt = Date.now();
 
   if (Platform.OS === "android" || Platform.OS === "ios") {
-    operations.push(persistScannedDestination(value));
+    const scanId = await persistScannedDestination(value, scanStartedAt);
+
+    if (scanId && isWebDestination(value)) {
+      router.push({
+        pathname: "/scans/webview",
+        params: { id: scanId, url: value, startedAt: scanStartedAt.toString() }
+      });
+    };//if ends
+
+    return;
   };//if ends
 
   if (isWebDestination(value)) {
-    operations.push(WebBrowser.openBrowserAsync(value));
+    await WebBrowser.openBrowserAsync(value);
   };//if ends
-
-  await Promise.allSettled(operations);
 };//func ends
 
-// Persists a native scan locally, sends it to the API, and verifies the stored row.
-async function persistScannedDestination(value: string) {
-  const now = new Date().toISOString();
+// Persists a native scan locally and returns its UUID for later metadata updates.
+async function persistScannedDestination(value: string, scanStartedAt: number) {
+  const now = new Date(scanStartedAt).toISOString();
+  const isWebsiteScan = isWebDestination(value);
   const scanData: InsertScanInput = {
     id: getUUIDv4(),
-    value,
-    type: isWebDestination(value) ? "url" : "text",
-    status: "pending",
-    lantitude: null,
-    longitude: null,
-    location: null,
     created_at: now,
-    updated_at: now
+    updated_at: now,
+    value,
+    input_url: isWebsiteScan ? value : null,
+    final_url: null,
+    type: isWebsiteScan ? "url" : "text",
+    status: isWebsiteScan ? "pending" : "completed",
+    user_ip: null,
+    location: null,
+    user_id: null,
+    website_id: null,
+    sync_status: isWebsiteScan ? "pending" : "synced",
+    metadata: null
   };
 
   await insertScan(scanData);
   const storedScan = await getScanById(scanData.id);
   console.log("Stored scan after insert:", storedScan);
+  return storedScan?.id ?? null;
 };//func ends
 
 // Returns whether a scanned value is a safe HTTP or HTTPS browser destination.
@@ -406,40 +409,6 @@ function RoundedTargetMask({ screenWidth, screenHeight, targetSize }: RoundedTar
         mask="url(#roundedScannerOpening)"
       />
     </Svg>
-  );//return ends
-};//func ends
-
-/* ------------------ BREAK ------------------ */
-
-// Shows the detected QR value and the next available actions.
-function ScanResultCard({ value, onClose, onScanAgain }: ScanResultCardProps) {
-  //Default Return
-  return (
-    <SafeAreaView edges={["bottom"]} style={styles.resultWrap}>
-      <View style={styles.resultCard}>
-        <View style={styles.resultHeader}>
-          <View style={styles.successIcon}>
-            <MaterialCommunityIcons name="check" size={22} color={colors.white.main} />
-          </View>
-          <View style={styles.resultCopy}>
-            <Text style={styles.resultTitle}>QR code found</Text>
-            <Text numberOfLines={2} style={styles.resultValue}>{value}</Text>
-          </View>
-        </View>
-        <View style={styles.resultActions}>
-          <View style={styles.resultAction}>
-            <PxButton mode="outlined" color="primary" fullWidth onPress={onScanAgain}>
-              Scan again
-            </PxButton>
-          </View>
-          <View style={styles.resultAction}>
-            <PxButton color="secondary" fullWidth onPress={onClose}>
-              Done
-            </PxButton>
-          </View>
-        </View>
-      </View>
-    </SafeAreaView>
   );//return ends
 };//func ends
 
@@ -661,52 +630,5 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.8,
     shadowRadius: 8,
     elevation: 6
-  },
-  resultWrap: {
-    position: "absolute",
-    right: 0,
-    bottom: 0,
-    left: 0,
-    zIndex: 6,
-    padding: spacing.md
-  },
-  resultCard: {
-    padding: spacing.lg,
-    gap: spacing.md,
-    borderRadius: radii.xl,
-    backgroundColor: colors.white.main
-  },
-  resultHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm
-  },
-  successIcon: {
-    width: 38,
-    height: 38,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: radii.pill,
-    backgroundColor: colors.success.main
-  },
-  resultCopy: {
-    flex: 1
-  },
-  resultTitle: {
-    color: colors.primary.main,
-    fontFamily: fontFamilies.primarySemiBold,
-    fontSize: fontSizes.subtitle1
-  },
-  resultValue: {
-    color: colors.mute.main,
-    fontFamily: fontFamilies.primaryRegular,
-    fontSize: fontSizes.caption
-  },
-  resultActions: {
-    flexDirection: "row",
-    gap: spacing.sm
-  },
-  resultAction: {
-    flex: 1
   }
 });

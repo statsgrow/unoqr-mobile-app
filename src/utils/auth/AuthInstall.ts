@@ -46,15 +46,22 @@ export async function insertAppInstall(): Promise<any> {
       //check if install info already exists in local storage
       const existingInstallInfo = await getData({ key: installSettings.storageKeys.installInfo.name });
       //if exists, return it
-      //if(existingInstallInfo) return existingInstallInfo;
+      if(existingInstallInfo) return existingInstallInfo;
 
       //get device details
       const deviceDetails:any = await getDeviceDetails();
 
-      //add expo push token if exists
-      const expoPushTokenInfo = await getExpoPushToken();
-      deviceDetails.expo_token = expoPushTokenInfo?.token;
-      deviceDetails.expo_token_updated_at = expoPushTokenInfo?.updated_at;
+      //add the required Expo push token only for Android installs
+      if (Platform.OS === "android" && deviceDetails?.is_real_device) {
+         const expoPushTokenInfo = await getExpoPushToken();
+         //if no token, throw error
+         if (!expoPushTokenInfo?.token) {
+            throw new Error("A push notification token is required to register this Android app.");
+         };//if ends
+         //add token to device details
+         deviceDetails.expo_token = expoPushTokenInfo.token;
+         deviceDetails.expo_token_updated_at = expoPushTokenInfo.updated_at;
+      };//if ends
       
       //url
       const apiUrl = apiSettings.getApiUrl({ path: '/app/install' }).href;
@@ -63,6 +70,7 @@ export async function insertAppInstall(): Promise<any> {
 
       //insert to storage
       if (appInstallData){
+         Toast.success({ message: `App install saved in API: ${appInstallData.id}` });
          //store in local storage
          setData({
             key: installSettings.storageKeys.installInfo.name,
