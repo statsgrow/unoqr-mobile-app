@@ -22,6 +22,8 @@ import { PxButton } from "@/components/elements/PxButton";
 import { getScanById } from "@/helpers/scans/db/getQueries";
 import { insertScan } from "@/helpers/scans/db/insertQueries";
 import type { InsertScanInput } from "@/helpers/scans/db/init";
+import { prepareScanLocation } from "@/helpers/scans/location";
+import { identifyScanType, normalizeScannedValue } from "@/helpers/scans/scanIdentifier";
 import { colors, fontFamilies, fontSizes, radii, spacing } from "@/theme/tokens";
 import { getUUIDv4 } from "@/utils/general/Uid";
 
@@ -68,6 +70,10 @@ export default function ScanScreen() {
     useCallback(() => {
       scanLockRef.current = false;
       setScanResult(null);
+
+      if (Platform.OS === "android" || Platform.OS === "ios") {
+        void prepareScanLocation();
+      };//if ends
     }, [])
   );
 
@@ -181,7 +187,8 @@ async function processScannedDestination(value: string) {
 // Persists a native scan locally and returns its UUID for later metadata updates.
 async function persistScannedDestination(value: string, scanStartedAt: number) {
   const now = new Date(scanStartedAt).toISOString();
-  const isWebsiteScan = isWebDestination(value);
+  const scanType = identifyScanType(value);
+  const isWebsiteScan = scanType === "url" && isWebDestination(value);
   const scanData: InsertScanInput = {
     id: getUUIDv4(),
     created_at: now,
@@ -189,13 +196,13 @@ async function persistScannedDestination(value: string, scanStartedAt: number) {
     value,
     input_url: isWebsiteScan ? value : null,
     final_url: null,
-    type: isWebsiteScan ? "url" : "text",
+    type: scanType,
     status: isWebsiteScan ? "pending" : "completed",
     user_ip: null,
     location: null,
     user_id: null,
     website_id: null,
-    sync_status: isWebsiteScan ? "pending" : "synced",
+    sync_status: "pending",
     metadata: null
   };
 
@@ -208,23 +215,6 @@ async function persistScannedDestination(value: string, scanStartedAt: number) {
 // Returns whether a scanned value is a safe HTTP or HTTPS browser destination.
 function isWebDestination(value: string) {
   return /^https?:\/\//i.test(value);
-};//func ends
-
-// Adds HTTPS to recognizable bare web domains while preserving non-URL QR text.
-function normalizeScannedValue(value: string) {
-  const trimmedValue = value.trim();
-
-  if (isWebDestination(trimmedValue)) {
-    return trimmedValue;
-  };//if ends
-
-  const bareDomainPattern = /^(?:www\.)?(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}(?::\d+)?(?:[/?#][^\s]*)?$/i;
-
-  if (bareDomainPattern.test(trimmedValue)) {
-    return `https://${trimmedValue}`;
-  };//if ends
-
-  return trimmedValue;
 };//func ends
 
 /* ------------------ BREAK ------------------ */

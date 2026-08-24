@@ -25,28 +25,35 @@ export type ScanSecurityMetadata = {
 };
 
 export type ScanMetadata = {
-  id: string;
-  inputUrl: string;
-  finalUrl: string | null;
-  title: string | null;
-  description: string | null;
-  siteName: string | null;
-  canonicalUrl: string | null;
-  logoUrl: string | null;
-  mediaType: string | null;
-  contentType: string | null;
-  images: string[];
-  favicons: string[];
-  metadataSource: {
+  [key: string]: unknown;
+  id?: string;
+  inputUrl?: string;
+  finalUrl?: string | null;
+  title?: string | null;
+  description?: string | null;
+  siteName?: string | null;
+  canonicalUrl?: string | null;
+  logoUrl?: string | null;
+  mediaType?: string | null;
+  contentType?: string | null;
+  images?: string[];
+  favicons?: string[];
+  metadataSource?: {
     title: "browser_page" | null;
     description: "browser_page" | null;
     logo: "browser_page" | null;
   };
-  metadataStatus: "pending" | "resolved" | "partial";
-  scan_to_final_duration: number | null;
-  httpStatus: number | null;
-  security: ScanSecurityMetadata;
-  error: null;
+  metadataStatus?: "pending" | "resolved" | "partial";
+  scan_to_final_duration?: number | null;
+  httpStatus?: number | null;
+  security?: ScanSecurityMetadata;
+  error?: unknown;
+  payeeVpa?: string | null;
+  payeeName?: string | null;
+  transactionNote?: string | null;
+  transactionRefId?: string | null;
+  amount?: string | null;
+  currency?: string | null;
 };
 
 export type InsertScanInput = {

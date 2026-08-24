@@ -14,6 +14,8 @@ import { ActivityIndicator, Text } from "react-native-paper";
 
 import { GeneralLayout } from "@/components/layout/GeneralLayout";
 import { getAllScans } from "@/helpers/scans/db/getQueries";
+import { getScanTypeInit } from "@/helpers/scans/identifiers";
+import { getScanStatusColor, getScanStatusLabel } from "@/helpers/scans/status";
 import { colors, fontFamilies, fontSizes, radii, spacing } from "@/theme/tokens";
 
 /* ------------------ BREAK ------------------ */
@@ -182,25 +184,27 @@ function filterScans(records: ScanRecord[], searchText: string): ScanRecord[] {
 
 // Renders one saved scan as a compact history card.
 function renderScanItem({ item }: ListRenderItemInfo<ScanRecord>) {
-  const displayUrl = item.metadata?.title || getDisplayUrl(item.final_url || item.input_url || item.value);
+  const scanTypeInit = getScanTypeInit(item.type);
+  const displayTitle = item.metadata?.title
+    || (item.type === "url" ? getDisplayUrl(item.final_url || item.input_url || item.value) : scanTypeInit.label);
   const location = getLocationText(item.location);
   const status = item.status || "pending";
-  const statusColor = getStatusColor(status);
+  const statusColor = getScanStatusColor(status);
 
   //Default Return
   return (
     <Pressable
       accessibilityHint="Shows all metadata collected for this scan"
-      accessibilityLabel={`Open scan ${displayUrl}`}
+      accessibilityLabel={`Open scan ${displayTitle}`}
       accessibilityRole="button"
       onPress={() => router.push(`/scans/${item.id}/view`)}
       style={({ pressed }) => [styles.scanCard, pressed && styles.scanCardPressed]}
     >
       <View style={styles.scanIcon}>
-        <MaterialCommunityIcons name="qrcode-scan" size={24} color={colors.secondary.main} />
+        <MaterialCommunityIcons name={scanTypeInit.icon} size={24} color={colors.secondary.main} />
       </View>
       <View style={styles.scanContent}>
-        <Text numberOfLines={1} style={styles.scanTitle}>{displayUrl}</Text>
+        <Text numberOfLines={1} style={styles.scanTitle}>{displayTitle}</Text>
         <Text numberOfLines={1} style={styles.scanUrl}>{item.value}</Text>
         <View style={styles.scanMetaRow}>
           <Text style={styles.scanDate}>{formatScanDate(item.created_at)}</Text>
@@ -212,12 +216,11 @@ function renderScanItem({ item }: ListRenderItemInfo<ScanRecord>) {
           ) : null}
         </View>
       </View>
-      <View style={[styles.statusBadge, { backgroundColor: `${statusColor}18` }]}>
-        <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
-        <Text numberOfLines={1} style={[styles.statusText, { color: statusColor }]}>
-          {formatStatus(status)}
-        </Text>
-      </View>
+      <View
+        accessible
+        accessibilityLabel={`Status: ${getScanStatusLabel(status)}`}
+        style={[styles.statusDot, { backgroundColor: statusColor }]}
+      />
       <MaterialCommunityIcons name="chevron-right" size={22} color={colors.mute.light} />
     </Pressable>
   );//return ends
@@ -292,32 +295,6 @@ function formatScanDate(value: string): string {
     hour: "numeric",
     minute: "2-digit"
   }).format(date);
-};//func ends
-
-/* ------------------ BREAK ------------------ */
-
-// Converts a stored scan status into a readable label.
-function formatStatus(status: string): string {
-  return status
-    .replace(/[_-]+/g, " ")
-    .replace(/\b\w/g, (character) => character.toUpperCase());
-};//func ends
-
-/* ------------------ BREAK ------------------ */
-
-// Selects a semantic badge color for the scan processing status.
-function getStatusColor(status: string): string {
-  const normalizedStatus = status.toLocaleLowerCase();
-
-  if (["complete", "completed", "processed", "synced", "success"].includes(normalizedStatus)) {
-    return colors.success.dark;
-  };//if ends
-
-  if (["failed", "error"].includes(normalizedStatus)) {
-    return colors.error.main;
-  };//if ends
-
-  return colors.warning.dark;
 };//func ends
 
 /* ------------------ BREAK ------------------ */
@@ -453,24 +430,10 @@ const styles = StyleSheet.create({
     fontFamily: fontFamilies.primaryRegular,
     fontSize: fontSizes.caption
   },
-  statusBadge: {
-    maxWidth: 82,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.xxs,
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.sm,
-    borderRadius: radii.pill
-  },
   statusDot: {
-    width: 6,
-    height: 6,
+    width: 9,
+    height: 9,
     borderRadius: radii.pill
-  },
-  statusText: {
-    flexShrink: 1,
-    fontFamily: fontFamilies.primarySemiBold,
-    fontSize: fontSizes.caption
   },
   centerState: {
     flex: 1,

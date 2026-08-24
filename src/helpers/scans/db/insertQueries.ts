@@ -1,13 +1,14 @@
 import { eq } from "drizzle-orm";
 
 import { apiSettings, installSettings } from "@/settings";
+import { insertAppInstall } from "@/utils/auth/AuthInstall";
 import { Axios } from "@/utils/general/Axios";
 import { getData } from "@/utils/general/Storage";
 import { Toast } from "@/utils/general/Toast";
 import { db } from "@/utils/sqlite/db";
 
 import { collectAndStoreScanLocation } from "../location";
-import { initScansTable, type InsertScanInput, scansTable } from "./init";
+import { initScansTable, type InsertScanInput, type ScanLocation, scansTable } from "./init";
 
 /* ------------------ BREAK ------------------ */
 
@@ -19,9 +20,16 @@ type ScanApiResponse = {
   data?: InsertScanInput | null;
 };
 
+type LateLocationUpdateInput = {
+  install_id: string;
+  sync_status: "synced";
+  location: ScanLocation;
+};
+
 /* ------------------ BREAK ------------------ */
 
 const initialSyncPromises = new Map<string, Promise<boolean>>();
+const initialLocationWaitMilliseconds = 3_000;
 
 /* ------------------ BREAK ------------------ */
 
@@ -31,9 +39,7 @@ export async function insertScan(data: InsertScanInput) {
 
   try {
     await initScansTable();
-    const installInfo = await getData({
-      key: installSettings.storageKeys.installInfo.name
-    }) as InstallInfo | null;
+    const installInfo = await resolveInstallInfo();
     const scanData: InsertScanInput = {
       ...data,
       install_id: data.install_id || installInfo?.id || null
@@ -83,39 +89,93 @@ async function syncInitialScan(
   data: InsertScanInput,
   locationPromise: ReturnType<typeof collectAndStoreScanLocation>
 ): Promise<boolean> {
-  const location = await locationPromise;
-
   if (!db || !data.install_id) {
-    await setLocalInitialSyncResult(data.id, "incomplete", null);
+    await setLocalInitialSyncResult(data, null, "incomplete");
     return false;
   };//if ends
 
+  const location = await getInitialScanLocation(locationPromise);
   const insertedScan = await insertScanToAPI({ ...data, location });
-  const successfulStatus = data.sync_status === "synced" ? "synced" : "processing";
-  await setLocalInitialSyncResult(
-    data.id,
-    insertedScan ? successfulStatus : "incomplete",
-    insertedScan?.user_ip ?? null
-  );
+  const successfulStatus = data.type === "url" ? "processing" : "synced";
+  await setLocalInitialSyncResult(data, insertedScan, insertedScan ? successfulStatus : "incomplete");
+
+  if (insertedScan && data.type !== "url" && !location) {
+    void syncLateNonWebScanLocation(data, locationPromise);
+  };//if ends
+
   return Boolean(insertedScan);
 };//func ends
 
-// Persists the initial sync state and server-observed IP without restarting synchronization.
+// Resolves the stored install or creates it before a scan attempts synchronization.
+async function resolveInstallInfo(): Promise<InstallInfo | null> {
+  const storedInstallInfo = await getData({
+    key: installSettings.storageKeys.installInfo.name
+  }) as InstallInfo | null;
+
+  if (storedInstallInfo?.id) return storedInstallInfo;
+
+  const createdInstallInfo = await insertAppInstall() as InstallInfo | null;
+  return createdInstallInfo?.id ? createdInstallInfo : null;
+};//func ends
+
+// Waits briefly for scan location without allowing it to block the initial API request indefinitely.
+async function getInitialScanLocation(
+  locationPromise: ReturnType<typeof collectAndStoreScanLocation>
+): Promise<Awaited<ReturnType<typeof collectAndStoreScanLocation>>> {
+  return new Promise((resolve) => {
+    const timeout = setTimeout(() => resolve(null), initialLocationWaitMilliseconds);
+
+    void locationPromise.then((location) => {
+      clearTimeout(timeout);
+      resolve(location);
+    });
+  });
+};//func ends
+
+// Sends a late-arriving location for non-web scans without entering the WebView completion flow.
+async function syncLateNonWebScanLocation(
+  scan: InsertScanInput,
+  locationPromise: ReturnType<typeof collectAndStoreScanLocation>
+): Promise<void> {
+  const location = await locationPromise;
+
+  if (!scan.install_id || !location) return;
+
+  const updateData: LateLocationUpdateInput = {
+    install_id: scan.install_id,
+    sync_status: "synced",
+    location
+  };
+
+  try {
+    const apiUrl = apiSettings.getApiUrl({ path: `/app/scans/${scan.id}` });
+    await Axios.put<ScanApiResponse>(apiUrl.href, updateData);
+  } catch (error: unknown) {
+    console.error("Error synchronizing late non-web scan location:", error);
+  };//try-catch ends
+};//func ends
+
+// Persists the API-returned scan fields and initial synchronization result locally.
 async function setLocalInitialSyncResult(
-  id: string,
-  syncStatus: InsertScanInput["sync_status"],
-  userIp: string | null
+  localScan: InsertScanInput,
+  insertedScan: InsertScanInput | null,
+  syncStatus: InsertScanInput["sync_status"]
 ) {
   if (!db) return;
 
   await db
     .update(scansTable)
     .set({
+      type: insertedScan?.type ?? localScan.type ?? null,
+      status: insertedScan?.status ?? localScan.status ?? null,
+      input_url: insertedScan?.input_url ?? localScan.input_url ?? null,
+      final_url: insertedScan?.final_url ?? localScan.final_url ?? null,
+      metadata: insertedScan?.metadata ?? localScan.metadata ?? null,
       sync_status: syncStatus,
-      user_ip: userIp,
+      user_ip: insertedScan?.user_ip ?? null,
       updated_at: new Date().toISOString()
     })
-    .where(eq(scansTable.id, id))
+    .where(eq(scansTable.id, localScan.id))
     .run();
 };//func ends
 
