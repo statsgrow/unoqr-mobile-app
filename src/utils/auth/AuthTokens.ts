@@ -1,156 +1,251 @@
+import { jwtDecode } from "jwt-decode";
 
+import { apiSettings, userTokenSettings } from "@/settings";
+import type { UserType } from "@/utils/auth/UserTypes";
+import { getData, removeData, setData } from "@/utils/general/Storage";
 
-//Imports
-import { jwtDecode } from 'jwt-decode';
-import { userTokenSettings } from '@/settings';
-import { UserType } from './UserTypes';
-import { getData, removeData, setData } from '../general/Storage';
+/* ------------------ BREAK ------------------ */
 
-//Constants
-let tokenCheckIntervalId: number | null = null;
-let tokenCheckInFlight = false;
+export type StoredUserTokens = {
+  accessToken: string | null;
+  refreshToken: string | null;
+};
 
-/* ----------------- BREAK ----------------- */
+export type SetUserTokensInput = {
+  access_token: string;
+  refresh_token: string;
+};
 
-export function isTokenExpired(token?: string | null) {
+type RefreshTokenResult = "missing" | "valid" | "refreshed" | "failed";
+
+type SupabaseJwtClaims = {
+  sub?: string;
+  email?: string;
+  phone?: string;
+  role?: string;
+  exp?: number;
+  user_metadata?: Record<string, unknown>;
+};
+
+/* ------------------ BREAK ------------------ */
+
+let tokenCheckIntervalId: ReturnType<typeof setInterval> | null = null;
+let tokenRefreshPromise: Promise<RefreshTokenResult> | null = null;
+const tokenRefreshTimeoutMilliseconds = 5_000;
+
+/* ------------------ BREAK ------------------ */
+
+// Reports whether a JWT is missing, invalid, or within thirty seconds of expiry.
+export function isTokenExpired(token?: string | null): boolean {
   if (!token) return true;
 
   try {
     const { exp } = jwtDecode<{ exp?: number }>(token);
-
-    //default return
     return !exp || exp * 1000 <= Date.now() + 30_000;
   } catch {
     return true;
-  };//trycatch ends
-};//func ends
+  };//try-catch ends
+};//export ends
 
-/* ----------------- BREAK ----------------- */
+/* ------------------ BREAK ------------------ */
 
-//get tokens from storage
-export async function getUserTokens() {
-  //access token
-  const accessToken = await getData({ key: userTokenSettings.storageTokens.accessToken.name }) || null;
+// Loads UnoQR tokens and migrates the earlier uq-prefixed storage keys when found.
+export async function getUserTokens(): Promise<StoredUserTokens> {
+  const accessToken = await getStoredToken(
+    userTokenSettings.storageTokens.accessToken.name,
+    userTokenSettings.storageTokens.accessToken.legacyName
+  );
+  const refreshToken = await getStoredToken(
+    userTokenSettings.storageTokens.refreshToken.name,
+    userTokenSettings.storageTokens.refreshToken.legacyName
+  );
 
-  //refresh token
-  const refreshToken = await getData({ key: userTokenSettings.storageTokens.refreshToken.name }) || null;
-
-  //return tokens
   return { accessToken, refreshToken };
-};//func ends
+};//export ends
 
-/* ----------------- BREAK ----------------- */
+/* ------------------ BREAK ------------------ */
 
-async function refreshTokensSilently() {
-  if (tokenCheckInFlight) return;
+// Refreshes an existing expired session while allowing anonymous users to continue untouched.
+export function refreshTokensSilently(): Promise<RefreshTokenResult> {
+  if (tokenRefreshPromise) return tokenRefreshPromise;
 
-  //get access token & refresh from storage
+  tokenRefreshPromise = performTokenRefresh().finally(() => {
+    tokenRefreshPromise = null;
+  });
+
+  return tokenRefreshPromise;
+};//export ends
+
+/* ------------------ BREAK ------------------ */
+
+// Performs one guarded refresh through the UnoQR auth-user endpoint.
+async function performTokenRefresh(): Promise<RefreshTokenResult> {
   const { accessToken, refreshToken } = await getUserTokens();
+  let refreshTimeout: ReturnType<typeof setTimeout> | null = null;
 
-  //check if access token is expired
-  const accessTokenExpired = isTokenExpired(accessToken);
+  if (!refreshToken) return "missing";
+  if (accessToken && !isTokenExpired(accessToken)) return "valid";
 
-  //Skip refresh if there is no refresh token
-  if (!refreshToken) return;
-
-  //Skip refresh if access token is still valid
-  if (accessToken && !accessTokenExpired) return;
-
-  // Mark that a token check is in progress
-  tokenCheckInFlight = true;
-
-  // Attempt to refresh tokens
   try {
-    const response = await fetch('/auth/user', {
-      cache: 'no-store',
-      credentials: 'same-origin',
+    const authApiUrl = apiSettings.getApiUrl({ path: "/auth/user" });
+    const abortController = new AbortController();
+    refreshTimeout = setTimeout(() => abortController.abort(), tokenRefreshTimeoutMilliseconds);
+    const response = await fetch(authApiUrl.href, {
+      cache: "no-store",
+      signal: abortController.signal,
       headers: {
-        ...(accessToken ? { 'X-Auth-Token': accessToken } : {}),
-        ...(refreshToken ? { 'X-Auth-Refresh-Token': refreshToken } : {}),
-      },
+        ...(accessToken
+          ? { [userTokenSettings.headerTokens.accessToken.name]: accessToken }
+          : {}),
+        [userTokenSettings.headerTokens.refreshToken.name]: refreshToken
+      }
     });
-    //If error, return
-    if (!response.ok) return;
 
-    //Parse the response and extract new tokens
-    const responseBody = await response.json().catch(() => null);
-    const newTokens = responseBody?.data?.tokens || null;
+    if (!response.ok) {
+      if (response.status === 401) await removeUserTokens();
+      return "failed";
+    };//if ends
 
-    //If new tokens are present, update the stored tokens
-    if (newTokens?.access_token || newTokens?.refresh_token) {
-      //set new access token
-      await setData({
-        key: userTokenSettings.storageTokens.accessToken.name,
-        value: newTokens.access_token || null,
-      });
-      //set new refresh token
+    const newAccessToken = response.headers.get(
+      userTokenSettings.headerTokens.newAccessToken.name
+    );
+    const newRefreshToken = response.headers.get(
+      userTokenSettings.headerTokens.newRefreshToken.name
+    );
+
+    if (newAccessToken) {
+      await persistAccessTokenAndUser(newAccessToken);
+    };//if ends
+
+    if (newRefreshToken) {
       await setData({
         key: userTokenSettings.storageTokens.refreshToken.name,
-        value: newTokens.refresh_token || null,
+        value: newRefreshToken
       });
     };//if ends
-  } catch {
-    // Silent background refresh should not interrupt the user flow.
+
+    return newAccessToken || newRefreshToken ? "refreshed" : "valid";
+  } catch (error: unknown) {
+    console.warn("Unable to refresh the stored UnoQR session:", error);
+    return "failed";
   } finally {
-    tokenCheckInFlight = false;
-  };//trycatch ends
+    if (refreshTimeout) clearTimeout(refreshTimeout);
+  };//try-catch ends
 };//func ends
 
-/* ----------------- BREAK ----------------- */
+/* ------------------ BREAK ------------------ */
 
-export function triggerTokenChecking() {
-  if (typeof window === 'undefined') return () => {};
-
-  if (tokenCheckIntervalId) {
-    window.clearInterval(tokenCheckIntervalId);
-    tokenCheckIntervalId = null;
-  }
+// Starts optional background token checks on both native and web runtimes.
+export function triggerTokenChecking(): () => void {
+  if (tokenCheckIntervalId) clearInterval(tokenCheckIntervalId);
 
   void refreshTokensSilently();
-  tokenCheckIntervalId = window.setInterval(() => {
+  tokenCheckIntervalId = setInterval(() => {
     void refreshTokensSilently();
   }, 60_000);
 
   return () => {
     if (!tokenCheckIntervalId) return;
-    window.clearInterval(tokenCheckIntervalId);
+    clearInterval(tokenCheckIntervalId);
     tokenCheckIntervalId = null;
+  };
+};//export ends
+
+/* ------------------ BREAK ------------------ */
+
+// Stores a complete authenticated UnoQR access and refresh token pair.
+export async function setUserTokens({
+  access_token,
+  refresh_token
+}: SetUserTokensInput): Promise<void> {
+  if (!access_token) throw new Error("Access token is missing.");
+  if (!refresh_token) throw new Error("Refresh token is missing.");
+
+  await Promise.all([
+    persistAccessTokenAndUser(access_token),
+    setData({
+      key: userTokenSettings.storageTokens.refreshToken.name,
+      value: refresh_token
+    })
+  ]);
+};//export ends
+
+/* ------------------ BREAK ------------------ */
+
+// Stores an access token together with user details decoded from its Supabase claims.
+async function persistAccessTokenAndUser(accessToken: string): Promise<void> {
+  const user = decodeSupabaseUser(accessToken);
+
+  await Promise.all([
+    setData({
+      key: userTokenSettings.storageTokens.accessToken.name,
+      value: accessToken
+    }),
+    setData({
+      key: userTokenSettings.storageTokens.userData.name,
+      value: user
+    })
+  ]);
+};//func ends
+
+// Converts Supabase access-token claims into the stored UnoQR user shape.
+function decodeSupabaseUser(accessToken: string): UserType {
+  const claims = jwtDecode<SupabaseJwtClaims>(accessToken);
+  const metadata = claims.user_metadata || {};
+  const metadataFullName = getMetadataString(metadata, "full_name")
+    || getMetadataString(metadata, "name");
+  const suppliedFirstName = getMetadataString(metadata, "first_name")
+    || getMetadataString(metadata, "given_name");
+  const suppliedLastName = getMetadataString(metadata, "last_name")
+    || getMetadataString(metadata, "family_name");
+  const nameParts = metadataFullName.trim().split(/\s+/).filter(Boolean);
+  const firstName = suppliedFirstName || nameParts[0] || "";
+  const lastName = suppliedLastName || nameParts.slice(1).join(" ");
+  const fullName = metadataFullName || [firstName, lastName].filter(Boolean).join(" ");
+
+  return {
+    id: claims.sub || "",
+    email: claims.email || getMetadataString(metadata, "email"),
+    first_name: firstName,
+    last_name: lastName,
+    full_name: fullName,
+    avatar_url: getMetadataString(metadata, "avatar_url")
+      || getMetadataString(metadata, "picture"),
+    phone: claims.phone || getMetadataString(metadata, "phone"),
+    role: "user",
+    is_authenticated: claims.role === "authenticated" || Boolean(claims.sub),
+    created_at: "",
+    updated_at: ""
   };
 };//func ends
 
-/* ----------------- BREAK ----------------- */
-
-export async function setUserTokens({ token = null, refreshToken = null, user = null }: { token?: string | null, refreshToken?: string | null, user?: UserType | null }) {
-  //check both token are present
-  if (!token) throw new Error("Access token is missing.");
-  if (!refreshToken) throw new Error("Refresh token is missing.");
-
-  console.log("Setting user cookies:", token, refreshToken);
-
-  //set access token
-  if (token) await setData({
-    key: userTokenSettings.storageTokens.accessToken.name,
-    value: token,
-  });
-
-  //set refresh token
-  if (refreshToken) await setData({
-    key: userTokenSettings.storageTokens.refreshToken.name,
-    value: refreshToken,
-  });
+// Reads a string value from Supabase user metadata.
+function getMetadataString(metadata: Record<string, unknown>, key: string): string {
+  const value = metadata[key];
+  return typeof value === "string" ? value.trim() : "";
 };//func ends
 
-/* ------------------- BREAK ---------------- */
+/* ------------------ BREAK ------------------ */
 
-//remove and clear tokens from storage
-export async function removeUserTokens() {
-  
-  //remove access token
-  await removeData({ key: userTokenSettings.storageTokens.accessToken.name });
+// Removes all UnoQR session tokens, including the earlier uq-prefixed keys.
+export async function removeUserTokens(): Promise<void> {
+  await Promise.all([
+    removeData({ key: userTokenSettings.storageTokens.accessToken.name }),
+    removeData({ key: userTokenSettings.storageTokens.refreshToken.name }),
+    removeData({ key: userTokenSettings.storageTokens.accessToken.legacyName }),
+    removeData({ key: userTokenSettings.storageTokens.refreshToken.legacyName })
+  ]);
+};//export ends
 
-  //remove refresh token
-  await removeData({ key: userTokenSettings.storageTokens.refreshToken.name });
+// Reads a current token or migrates its legacy storage value into the new key.
+async function getStoredToken(currentKey: string, legacyKey: string): Promise<string | null> {
+  const currentValue = await getData({ key: currentKey });
+  if (typeof currentValue === "string" && currentValue) return currentValue;
 
+  const legacyValue = await getData({ key: legacyKey });
+  if (typeof legacyValue !== "string" || !legacyValue) return null;
+
+  await setData({ key: currentKey, value: legacyValue });
+  await removeData({ key: legacyKey });
+  return legacyValue;
 };//func ends
-
-/* ----------------- BREAK ----------------- */

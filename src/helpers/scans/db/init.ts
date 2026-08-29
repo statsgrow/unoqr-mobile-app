@@ -24,11 +24,21 @@ export type ScanSecurityMetadata = {
   warning: string | null;
 };
 
+export type ScanUrlMetadata = {
+  url: string | null;
+  isSecure: boolean;
+  httpStatus: number | null;
+  protocol: "http:" | "https:" | null;
+  warning: string | null;
+  favicons: string[];
+};
+
 export type ScanMetadata = {
   [key: string]: unknown;
   id?: string;
-  inputUrl?: string;
-  finalUrl?: string | null;
+  inputUrl?: string | ScanUrlMetadata;
+  finalUrl?: string | ScanUrlMetadata | null;
+  redirectStatus?: "direct" | "redirected" | "unresolved";
   title?: string | null;
   description?: string | null;
   siteName?: string | null;
@@ -36,6 +46,7 @@ export type ScanMetadata = {
   logoUrl?: string | null;
   mediaType?: string | null;
   contentType?: string | null;
+  server?: string | null;
   images?: string[];
   favicons?: string[];
   metadataSource?: {
@@ -45,6 +56,11 @@ export type ScanMetadata = {
   };
   metadataStatus?: "pending" | "resolved" | "partial";
   scan_to_final_duration?: number | null;
+  crawlInfo?: {
+    duration: number;
+    attempts: number | null;
+    retries: number | null;
+  };
   httpStatus?: number | null;
   security?: ScanSecurityMetadata;
   error?: unknown;

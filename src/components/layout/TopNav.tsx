@@ -1,16 +1,40 @@
 import { Pressable, StyleSheet, View } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { router, usePathname } from "expo-router";
+import { CloudAlert } from "lucide-react-native";
+import { Text } from "react-native-paper";
 
 import { UnoQrLogo } from "@/components/brand/UnoQrLogo";
-import { colors, radii, spacing } from "@/theme/tokens";
+import { colors, fontFamilies, fontSizes, radii, spacing } from "@/theme/tokens";
 
 /* ------------------ BREAK ------------------ */
 
-// Renders the minimal UnoQR brand header with home and notification actions.
-export function TopNav() {
+type TopNavProps = {
+  title?: string;
+  showSyncStatus?: boolean;
+  onSyncInfoPress?: () => void;
+};
+
+/* ------------------ BREAK ------------------ */
+
+// Renders a titled page header or the default UnoQR brand navigation.
+export function TopNav({
+  title,
+  showSyncStatus = false,
+  onSyncInfoPress
+}: TopNavProps) {
   const pathname = usePathname();
   const isHome = pathname === "/";
+
+  // Returns to the previous app route from a titled page header.
+  const handleBackPress = () => {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    };//if ends
+
+    router.replace("/");
+  };//func ends
 
   // Opens the app home route without adding another history entry.
   const handleHomePress = () => {
@@ -18,6 +42,35 @@ export function TopNav() {
       router.replace("/");
     };//if ends
   };//func ends
+
+  if (title) {
+    //Default Return
+    return (
+      <View style={[styles.root, styles.titleRoot]}>
+        <Pressable
+          accessibilityLabel="Go back"
+          accessibilityRole="button"
+          hitSlop={spacing.xs}
+          onPress={handleBackPress}
+          style={({ pressed }) => [styles.backButton, pressed && styles.actionButtonPressed]}
+        >
+          <MaterialCommunityIcons name="arrow-left" size={24} color={colors.primary.main} />
+        </Pressable>
+        <Text numberOfLines={1} style={styles.title}>{title}</Text>
+        {showSyncStatus ? (
+          <Pressable
+            accessibilityLabel="Show cloud sync information"
+            accessibilityRole="button"
+            hitSlop={spacing.xs}
+            onPress={onSyncInfoPress}
+            style={({ pressed }) => [styles.syncStatus, pressed && styles.actionButtonPressed]}
+          >
+            <CloudAlert size={19} strokeWidth={1.25} color={colors.error.main} />
+          </Pressable>
+        ) : null}
+      </View>
+    );//return ends
+  };//if ends
 
   //Default Return
   return (
@@ -75,6 +128,31 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.line.main,
     backgroundColor: colors.white.main
+  },
+  titleRoot: {
+    justifyContent: "flex-start",
+    gap: spacing.sm
+  },
+  backButton: {
+    width: 42,
+    height: 42,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: radii.pill,
+    backgroundColor: colors.cream.main
+  },
+  title: {
+    minWidth: 0,
+    flex: 1,
+    color: colors.primary.main,
+    fontFamily: fontFamilies.primarySemiBold,
+    fontSize: fontSizes.h6
+  },
+  syncStatus: {
+    width: 38,
+    height: 38,
+    alignItems: "center",
+    justifyContent: "center"
   },
   brand: {
     flexDirection: "row",

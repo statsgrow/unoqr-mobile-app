@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  Alert,
   Animated,
   Platform,
   Pressable,
@@ -11,7 +12,6 @@ import {
 import { router, useFocusEffect } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { CameraView, useCameraPermissions, type BarcodeScanningResult } from "expo-camera";
-import * as WebBrowser from "expo-web-browser";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Text } from "react-native-paper";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -19,13 +19,15 @@ import Svg, { Defs, Mask, Rect } from "react-native-svg";
 
 import { UnoQrLogo } from "@/components/brand/UnoQrLogo";
 import { PxButton } from "@/components/elements/PxButton";
-import { getScanById } from "@/helpers/scans/db/getQueries";
-import { insertScan } from "@/helpers/scans/db/insertQueries";
-import type { InsertScanInput } from "@/helpers/scans/db/init";
+import { PxPageLoader } from "@/components/elements/PxPageLoader";
 import { prepareScanLocation } from "@/helpers/scans/location";
-import { identifyScanType, normalizeScannedValue } from "@/helpers/scans/scanIdentifier";
+import {
+  prepareScannedValue,
+  processPreparedScan,
+  type PreparedScan
+} from "@/helpers/scans/scanIdentifier";
+import { TextScanDialog } from "@/helpers/scans/scanTypes/Text";
 import { colors, fontFamilies, fontSizes, radii, spacing } from "@/theme/tokens";
-import { getUUIDv4 } from "@/utils/general/Uid";
 
 /* ------------------ BREAK ------------------ */
 
@@ -58,8 +60,9 @@ export default function ScanScreen() {
   const { width } = useWindowDimensions();
   const [permission, requestPermission] = useCameraPermissions();
   const [torchEnabled, setTorchEnabled] = useState(false);
-  const [scanResult, setScanResult] = useState<string | null>(null);
+  const [scanResult, setScanResult] = useState<PreparedScan | null>(null);
   const [testDestination, setTestDestination] = useState("");
+  const [textDialogValue, setTextDialogValue] = useState<string | null>(null);
   const scanLockRef = useRef(false);
   const targetSize = Math.min(340, Math.max(260, width - spacing.lg * 2));
   const showTestDestination = process.env.EXPO_PUBLIC_API_ENV === "development"
@@ -70,6 +73,7 @@ export default function ScanScreen() {
     useCallback(() => {
       scanLockRef.current = false;
       setScanResult(null);
+      setTextDialogValue(null);
 
       if (Platform.OS === "android" || Platform.OS === "ios") {
         void prepareScanLocation();
@@ -89,15 +93,36 @@ export default function ScanScreen() {
 
   // Locks the scanner after receiving the first valid destination value.
   const handleScannedValue = (value: string) => {
-    const normalizedValue = normalizeScannedValue(value);
-    console.log("Scanned value:", normalizedValue);
-    //If scan is set or normalized value is empty, return
-    if (scanLockRef.current || !normalizedValue) return;
+    const preparedScan = prepareScannedValue(value);
+
+    //If scan is set or the scanned value is empty, return
+    if (scanLockRef.current || !preparedScan) return;
+
+    console.log("Scanned value:", preparedScan.value);
   
     //Lock repeated camera callbacks and process the destination once.
     scanLockRef.current = true;
-    setScanResult(normalizedValue);
-    void processScannedDestination(normalizedValue);
+    setScanResult(preparedScan);
+    void processPreparedScan(preparedScan)
+      .then(({ textValue }) => {
+        if (textValue) setTextDialogValue(textValue);
+      })
+      .catch((error: unknown) => {
+        console.error("Unable to process scanned destination:", error);
+        scanLockRef.current = false;
+        setScanResult(null);
+        Alert.alert(
+          "Unable to open scan",
+          "The scan was saved, but no compatible app could open this destination."
+        );
+      });
+  };//func ends
+
+  // Closes the text dialog and unlocks the camera for another scan.
+  const handleTextDialogClose = () => {
+    setTextDialogValue(null);
+    setScanResult(null);
+    scanLockRef.current = false;
   };//func ends
 
   // Passes a detected camera barcode into the shared destination flow.
@@ -156,66 +181,20 @@ export default function ScanScreen() {
         onToggleTorch={() => setTorchEnabled((currentValue) => !currentValue)}
       />
 
+      <PxPageLoader
+        visible={scanResult?.type === "url"}
+        title="Checking this link"
+        description="We’re checking the link while opening the website."
+      />
+
+      <TextScanDialog
+        value={textDialogValue}
+        onClose={handleTextDialogClose}
+      />
+
     </View>
   );//return ends
 };//export ends
-
-/* ------------------ BREAK ------------------ */
-
-// Saves a scanned value before opening native web destinations in the metadata test route.
-async function processScannedDestination(value: string) {
-  const scanStartedAt = Date.now();
-
-  if (Platform.OS === "android" || Platform.OS === "ios") {
-    const scanId = await persistScannedDestination(value, scanStartedAt);
-
-    if (scanId && isWebDestination(value)) {
-      router.push({
-        pathname: "/scans/webview",
-        params: { id: scanId, url: value, startedAt: scanStartedAt.toString() }
-      });
-    };//if ends
-
-    return;
-  };//if ends
-
-  if (isWebDestination(value)) {
-    await WebBrowser.openBrowserAsync(value);
-  };//if ends
-};//func ends
-
-// Persists a native scan locally and returns its UUID for later metadata updates.
-async function persistScannedDestination(value: string, scanStartedAt: number) {
-  const now = new Date(scanStartedAt).toISOString();
-  const scanType = identifyScanType(value);
-  const isWebsiteScan = scanType === "url" && isWebDestination(value);
-  const scanData: InsertScanInput = {
-    id: getUUIDv4(),
-    created_at: now,
-    updated_at: now,
-    value,
-    input_url: isWebsiteScan ? value : null,
-    final_url: null,
-    type: scanType,
-    status: isWebsiteScan ? "pending" : "completed",
-    user_ip: null,
-    location: null,
-    user_id: null,
-    website_id: null,
-    sync_status: "pending",
-    metadata: null
-  };
-
-  await insertScan(scanData);
-  const storedScan = await getScanById(scanData.id);
-  console.log("Stored scan after insert:", storedScan);
-  return storedScan?.id ?? null;
-};//func ends
-
-// Returns whether a scanned value is a safe HTTP or HTTPS browser destination.
-function isWebDestination(value: string) {
-  return /^https?:\/\//i.test(value);
-};//func ends
 
 /* ------------------ BREAK ------------------ */
 

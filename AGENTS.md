@@ -38,6 +38,13 @@ This file defines the coding style conventions for AI agents working in this rep
   - Return blocks should end with comments like `);//return ends` when applicable.
   - `if` blocks should end with comments like `};//if ends` when applicable.
 
+## Implementation Simplicity
+
+- Prefer the smallest implementation that satisfies the requested flow.
+- Follow an existing working project pattern when the user points to one; do not add speculative validation, fallback mechanisms, abstractions, or alternate flows unless they are required by the stated contract or a concrete security boundary.
+- Before adding logic to fix an integration failure, verify that the app and API deployments are running compatible versions.
+- Keep necessary validation focused at the actual trust boundary and avoid duplicating the same check across layers without a demonstrated need.
+
 ## Validation
 
 - Run `npm run typecheck` after non-trivial changes.

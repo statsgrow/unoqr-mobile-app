@@ -14,14 +14,13 @@ import { SafeAreaView, type Edge } from "react-native-safe-area-context";
 import { ActivityIndicator, Text } from "react-native-paper";
 
 import { colors, sizes } from "@/theme/themeSettings";
-import { removeUserTokens } from "@/utils/auth/AuthTokens";
 import { getUser } from "@/utils/auth/AuthUser";
 import type { UserType } from "@/utils/auth/UserTypes";
 import { Toast, ToastProvider } from "@/utils/general/Toast";
 
 import { BottomNav } from "./BottomNav";
-import { TopNav } from "./TopNav";
-import { getAppInstallInfo, insertAppInstall } from "@/utils/auth/AuthInstall";
+import { HeaderNav } from "./HeaderNav";
+import { insertAppInstall } from "@/utils/auth/AppInstall";
 
 /* ------------------ BREAK ------------------ */
 
@@ -176,7 +175,7 @@ export function GeneralLayout({
 	}, []);
 
 	//Resolve top and bottom views
-	const resolvedTopView = topView ?? <TopNav />;
+	const resolvedTopView = topView ?? <HeaderNav />;
 	const resolvedBottomView = bottomView ?? <BottomNav />;
 
 	//If auth is not resolved, show loader
@@ -198,7 +197,7 @@ export function GeneralLayout({
 	const content = scroll ? (
 	<ScrollView
 		ref={scrollRef}
-		style={{ flex: 1 }}
+		style={styles.scrollView}
 		contentContainerStyle={[
 			styles.content,
 			contentContainerStyle,
@@ -261,14 +260,16 @@ export function GeneralLayout({
 const styles = StyleSheet.create({
 	root: {
 		flex: 1,
-		backgroundColor: colors.background
+		backgroundColor: colors.surface
 	},
 	keyboardView: {
-		flex: 1
+		flex: 1,
+		backgroundColor: colors.background
 	},
 	content: {
 		flexGrow: 1,
-		gap: 0
+		gap: 0,
+		backgroundColor: colors.background
 	},
 	staticContent: {
 		flex: 1
@@ -293,7 +294,8 @@ const styles = StyleSheet.create({
 		flex: 1
 	},
 	scrollView: {
-		flex: 1
+		flex: 1,
+		backgroundColor: colors.background
 	},
 	footer: {
 		marginTop: sizes.spacing.sm

@@ -1,7 +1,7 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { StatusBar } from "expo-status-bar";
 import { Stack } from "expo-router";
-import { Platform, StyleSheet, View, type ViewStyle } from "react-native";
+import { AppState, Platform, StyleSheet, View, type ViewStyle } from "react-native";
 import {
   BricolageGrotesque_400Regular,
   BricolageGrotesque_500Medium,
@@ -14,12 +14,14 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { colors } from "@/theme/tokens";
 import { paperTheme } from "@/theme/paperTheme";
-import { initScansTable } from "@/helpers/scans/db/init";
+import { checkPendingScans } from "@/helpers/scans/scanSync";
+import { refreshTokensSilently, triggerTokenChecking } from "@/utils/auth/AuthTokens";
 
 /* ------------------ BREAK ------------------ */
 
 // Renders the app shell and shared providers.
 export default function RootLayout() {
+  const [isStoredSessionReady, setIsStoredSessionReady] = useState(false);
   // Loads custom fonts for consistent typography across the app.
   const [fontsLoaded] = useFonts({
     BricolageGrotesque_400Regular,
@@ -27,6 +29,24 @@ export default function RootLayout() {
     BricolageGrotesque_600SemiBold,
     BricolageGrotesque_700Bold
   });
+
+  // Refreshes a stored session before rendering while leaving anonymous startup unrestricted.
+  useEffect(() => {
+    let isMounted = true;
+    let stopTokenChecking: () => void = () => undefined;
+
+    void refreshTokensSilently().finally(() => {
+      if (!isMounted) return;
+
+      setIsStoredSessionReady(true);
+      stopTokenChecking = triggerTokenChecking();
+    });
+
+    return () => {
+      isMounted = false;
+      stopTokenChecking();
+    };
+  }, []);
 
   // Sets up the web viewport and mobile frame for consistent styling across platforms.
   useEffect(() => {
@@ -47,14 +67,22 @@ export default function RootLayout() {
     }
   }, []);
 
-  //Create new tables if not exists
+  // Initializes scan storage and retries pending rows at startup and on each app foreground.
   useEffect(() => {
-    //create scans table if not exists
-    void initScansTable();
+    void checkPendingScans();
+
+    const subscription = AppState.addEventListener("change", (nextState) => {
+      if (nextState === "active") {
+        void checkPendingScans();
+        void refreshTokensSilently();
+      }
+    });
+
+    return () => subscription.remove();
   }, []);
 
   // Prevents rendering until fonts are loaded to avoid layout shifts.
-  if (!fontsLoaded) {
+  if (!fontsLoaded || !isStoredSessionReady) {
     return null;
   }
 

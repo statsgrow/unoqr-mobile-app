@@ -1,3 +1,9 @@
+import { persistScan } from "./db/persistScan";
+import { processDeepLinkScan } from "./scanTypes/DeepLink";
+import { processTextScan } from "./scanTypes/Text";
+import { processUpiPaymentScan } from "./scanTypes/UpiPayment";
+import { processWebsiteScan } from "./scanTypes/Website";
+
 /* ---------------------- BREAK ---------------------- */
 
 export type ScanType =
@@ -10,10 +16,66 @@ export type ScanType =
   | "contact"
   | "location"
   | "calendar"
+  | "upi_payment"
   | "payment"
   | "product"
   | "auth"
+  | "deep_link"
   | "custom";
+
+export type PreparedScan = {
+  type: ScanType;
+  value: string;
+};
+
+export type ProcessedScanResult = {
+  scanId: string | null;
+  textValue: string | null;
+};
+
+/* ---------------------- BREAK ---------------------- */
+
+// Normalizes actionable destinations while preserving text QR content byte-for-byte.
+export function prepareScannedValue(rawValue: string): PreparedScan | null {
+  const normalizedValue = normalizeScannedValue(rawValue);
+
+  if (!normalizedValue) return null;
+
+  const scanType = identifyScanType(normalizedValue);
+  return {
+    type: scanType,
+    value: scanType === "text" ? rawValue : normalizedValue
+  };
+};//export ends
+
+// Creates one SQLite row and dispatches it to the handler owned by its scan type.
+export async function processPreparedScan(scan: PreparedScan): Promise<ProcessedScanResult> {
+  const storedScan = await persistScan(scan.value, scan.type);
+
+  if (!storedScan) return { scanId: null, textValue: null };
+
+  if (scan.type === "url") {
+    await processWebsiteScan(storedScan);
+    return { scanId: storedScan.id, textValue: null };
+  };//if ends
+
+  if (scan.type === "upi_payment") {
+    await processUpiPaymentScan(storedScan);
+    return { scanId: storedScan.id, textValue: null };
+  };//if ends
+
+  if (scan.type === "deep_link") {
+    await processDeepLinkScan(storedScan);
+    return { scanId: storedScan.id, textValue: null };
+  };//if ends
+
+  if (scan.type === "text") {
+    const textValue = processTextScan(storedScan);
+    return { scanId: storedScan.id, textValue };
+  };//if ends
+
+  return { scanId: storedScan.id, textValue: null };
+};//export ends
 
 /* ---------------------- BREAK ---------------------- */
 
@@ -25,11 +87,13 @@ export function identifyScanType(value: string): ScanType {
   if (isWifiScan(value)) return "wifi";
   if (isSmsScan(value)) return "sms";
   if (isLocationScan(value)) return "location";
+  if (isUpiPaymentScan(value)) return "upi_payment";
   if (isPaymentScan(value)) return "payment";
   if (isEmailScan(value)) return "email";
   if (isUrlScan(value)) return "url";
   if (isProductScan(value)) return "product";
   if (isPhoneScan(value)) return "phone";
+  if (isDeepLinkScan(value)) return "deep_link";
   if (isCustomScan(value)) return "custom";
   if (isTextScan(value)) return "text";
 
@@ -97,10 +161,18 @@ export function isLocationScan(value: string): boolean {
 
 /* ---------------------- BREAK ---------------------- */
 
+// Returns whether the payload contains a UPI payment destination.
+export function isUpiPaymentScan(value: string): boolean {
+  const text = (value || "").trim();
+  return /^upi:\/\/pay(?:\?|$)/i.test(text);
+};//export ends
+
+/* ---------------------- BREAK ---------------------- */
+
 // Returns whether the payload uses a recognized payment URI scheme.
 export function isPaymentScan(value: string): boolean {
   const text = (value || "").trim();
-  return /^(?:bitcoin|ethereum|litecoin|upi|payto|venmo|paypal):/i.test(text);
+  return /^(?:bitcoin|ethereum|litecoin|payto|venmo|paypal):/i.test(text);
 };//export ends
 
 /* ---------------------- BREAK ---------------------- */
@@ -134,6 +206,14 @@ export function isProductScan(value: string): boolean {
   const text = (value || "").trim();
   const productBarcodeLengths = new Set([8, 12, 13, 14, 18]);
   return /^[0-9]+$/.test(text) && productBarcodeLengths.has(text.length);
+};//export ends
+
+/* ---------------------- BREAK ---------------------- */
+
+// Returns whether the payload uses a custom URI scheme with an explicit destination.
+export function isDeepLinkScan(value: string): boolean {
+  const text = (value || "").trim();
+  return /^[a-z][a-z0-9+.-]*:\/\/\S+$/i.test(text);
 };//export ends
 
 /* ---------------------- BREAK ---------------------- */

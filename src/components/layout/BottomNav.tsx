@@ -1,10 +1,8 @@
-import { useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import { router, usePathname, type Href } from "expo-router";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Text } from "react-native-paper";
 
-import { MoreMenu } from "@/components/layout/MoreMenu";
 import { colors, fontFamilies, fontSizes, radii, spacing } from "@/theme/tokens";
 
 /* ------------------ BREAK ------------------ */
@@ -27,54 +25,49 @@ const scansItem: StandardNavItem = {
   matchingPath: "/scans"
 };
 
+const moreItem: StandardNavItem = {
+  label: "More",
+  icon: "apps",
+  activeIcon: "apps",
+  href: "/more" as Href,
+  matchingPath: "/more"
+};
+
 /* ------------------ BREAK ------------------ */
 
 // Renders the primary app navigation with a prominent central scan action.
 export function BottomNav() {
   const pathname = usePathname();
-  const [isMoreMenuVisible, setIsMoreMenuVisible] = useState(false);
 
   //Default Return
   return (
-    <>
-      <View style={styles.root}>
-        <View style={styles.container}>
-          <NavItem
-            item={scansItem}
-            isActive={
-              pathname === scansItem.matchingPath
-              || pathname.startsWith(`${scansItem.matchingPath}/`)
-            }
-          />
+    <View style={styles.root}>
+      <View style={styles.container}>
+        <NavItem
+          item={scansItem}
+          isActive={
+            pathname === scansItem.matchingPath
+            || pathname.startsWith(`${scansItem.matchingPath}/`)
+          }
+        />
 
-          <View style={styles.scanSlot}>
-            <Pressable
-              accessibilityLabel="Scan QR code"
-              accessibilityRole="button"
-              onPress={() => router.push("/scan")}
-              style={({ pressed }) => [styles.scanButton, pressed && styles.pressedButton]}
-            >
-              <MaterialCommunityIcons name="qrcode-scan" size={32} color={colors.white.main} />
-            </Pressable>
-            <Text style={[styles.label, styles.scanLabel, pathname === "/scan" && styles.activeLabel]}>
-              Scan
-            </Text>
-          </View>
-
+        <View style={styles.scanSlot}>
           <Pressable
+            accessibilityLabel="Scan QR code"
             accessibilityRole="button"
-            accessibilityState={{ expanded: isMoreMenuVisible }}
-            onPress={() => setIsMoreMenuVisible(true)}
-            style={({ pressed }) => [styles.itemButton, pressed && styles.pressedButton]}
+            onPress={() => router.push("/scans/scanner")}
+            style={({ pressed }) => [styles.scanButton, pressed && styles.pressedButton]}
           >
-            <MaterialCommunityIcons name="apps" size={25} color={colors.mute.main} />
-            <Text style={[styles.label, styles.inactiveLabel]}>More</Text>
+            <MaterialCommunityIcons name="qrcode-scan" size={36} color={colors.white.main} />
           </Pressable>
         </View>
-      </View>
 
-      <MoreMenu visible={isMoreMenuVisible} onClose={() => setIsMoreMenuVisible(false)} />
-    </>
+        <NavItem
+          item={moreItem}
+          isActive={pathname === moreItem.matchingPath}
+        />
+      </View>
+    </View>
   );//return ends
 };//export ends
 
@@ -106,22 +99,24 @@ function NavItem({ item, isActive }: { item: StandardNavItem; isActive: boolean 
 
 const styles = StyleSheet.create({
   root: {
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.xs,
+    paddingTop: spacing.xs,
+    paddingBottom: spacing.xxs,
+    overflow: "visible",
     borderTopWidth: 1,
     borderTopColor: colors.border.main,
     backgroundColor: colors.white.main
   },
   container: {
-    minHeight: 62,
+    height: 50,
     flexDirection: "row",
     alignItems: "flex-end",
     justifyContent: "space-around",
-    paddingHorizontal: spacing.lg
+    paddingHorizontal: spacing.lg,
+    overflow: "visible"
   },
   itemButton: {
     width: 96,
-    minHeight: 54,
+    height: 46,
     alignItems: "center",
     justifyContent: "center",
     gap: spacing.xxs,
@@ -129,13 +124,16 @@ const styles = StyleSheet.create({
   },
   scanSlot: {
     width: 96,
+    height: 46,
     alignItems: "center",
-    gap: spacing.xxs
+    justifyContent: "flex-end",
+    overflow: "visible"
   },
   scanButton: {
-    width: 68,
-    height: 68,
-    marginTop: -spacing.xxl,
+    position: "absolute",
+    bottom: 0,
+    width: 72,
+    height: 72,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 5,
@@ -156,10 +154,6 @@ const styles = StyleSheet.create({
     fontSize: fontSizes.caption,
     lineHeight: 16,
     textAlign: "center"
-  },
-  scanLabel: {
-    color: colors.primary.main,
-    fontFamily: fontFamilies.primarySemiBold
   },
   activeLabel: {
     color: colors.secondary.main,

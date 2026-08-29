@@ -3,8 +3,10 @@
 /* ------------------- BREAK ---------------- */
 
 export type UserType = {
-   id: any;
+   id: string;
    email: string, first_name: string, last_name: string,
+   full_name?: string,
+   avatar_url?: string,
    role: UserRolesType, is_authenticated: boolean,
    phone?: string,
    created_at: string, updated_at: string,

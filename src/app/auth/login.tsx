@@ -1,40 +1,154 @@
+import { useState } from "react";
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
-import { useForm, type SubmitHandler } from "react-hook-form";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import * as Linking from "expo-linking";
+import { router, useLocalSearchParams, type Href } from "expo-router";
+import * as WebBrowser from "expo-web-browser";
+import { useForm, type SubmitHandler } from "react-hook-form";
 import { Text } from "react-native-paper";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { UnoQrLogo } from "@/components/brand/UnoQrLogo";
 import { PxButton } from "@/components/elements/PxButton";
 import { PxTextInput } from "@/components/form/PxTextInput";
+import { apiSettings } from "@/settings";
 import { colors, fontFamilies, fontSizes, radii, spacing } from "@/theme/tokens";
+import { addUserData } from "@/utils/auth/AuthUser";
+import type { UserSessionType } from "@/utils/auth/UserTypes";
+import { Toast } from "@/utils/general/Toast";
 
 /* ------------------ BREAK ------------------ */
 
 type LoginFormValues = {
   email: string;
-  password: string;
+  otp: string;
 };
 
-type GoogleLoginButtonProps = {
-  onPress: () => void;
+type LoginParams = {
+  mode?: string | string[];
+  next?: string | string[];
+};
+
+type AuthApiResponse<T> = {
+  data?: T | null;
+  message?: string;
 };
 
 /* ------------------ BREAK ------------------ */
 
-// Displays and manages the UnoQR login experience.
-export default function LoginForm() {
+WebBrowser.maybeCompleteAuthSession();
+
+/* ------------------ BREAK ------------------ */
+
+// Manages email OTP and Google authentication from one UnoQR login page.
+export default function LoginScreen() {
+  const params = useLocalSearchParams<LoginParams>();
+  const [isOtpSent, setIsOtpSent] = useState(false);
+  const [isRequestingOtp, setIsRequestingOtp] = useState(false);
+  const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
+  const [isOpeningGoogle, setIsOpeningGoogle] = useState(false);
+  const isSignup = getFirstParam(params.mode) === "signup";
+  const nextRoute = getSafeNextRoute(getFirstParam(params.next));
   const RHF = useForm<LoginFormValues>({
-    defaultValues: {
-      email: "",
-      password: ""
-    }
+    defaultValues: { email: "", otp: "" },
+    mode: "onChange"
   });
 
-  // Handles valid login form submissions until the authentication API is connected.
-  const handleLogin: SubmitHandler<LoginFormValues> = () => {
-    // Authentication will be connected when the login API is available.
-  };
+  // Requests an eight-digit OTP for the validated email address.
+  const handleRequestOtp: SubmitHandler<LoginFormValues> = async ({ email }) => {
+    setIsRequestingOtp(true);
+    RHF.clearErrors("root");
+
+    try {
+      const apiUrl = apiSettings.getApiUrl({ path: "/auth/app/login/email" });
+      const response = await fetch(apiUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim().toLowerCase() })
+      });
+      const responseBody = await response.json().catch(() => null) as AuthApiResponse<unknown> | null;
+      if (!response.ok) throw new Error(responseBody?.message || "Unable to send the OTP.");
+
+      setIsOtpSent(true);
+      Toast.success({ message: responseBody?.message || "An 8-digit OTP was sent to your email." });
+    } catch (error: unknown) {
+      const message = getErrorMessage(error, "Unable to send the OTP.");
+      RHF.setError("root", { type: "server", message });
+      Toast.error({ message });
+    } finally {
+      setIsRequestingOtp(false);
+    };//try-catch ends
+  };//func ends
+
+  // Verifies the OTP, stores the session, connects the install, and follows the next route.
+  const handleVerifyOtp: SubmitHandler<LoginFormValues> = async ({ email, otp }) => {
+    setIsVerifyingOtp(true);
+    RHF.clearErrors("root");
+
+    try {
+      const apiUrl = apiSettings.getApiUrl({ path: "/auth/app/login/email" });
+      const response = await fetch(apiUrl.href, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: email.trim().toLowerCase(),
+          otp: otp.trim()
+        })
+      });
+      const responseBody = await response.json().catch(() => null) as AuthApiResponse<UserSessionType> | null;
+      if (!response.ok) throw new Error(responseBody?.message || "Unable to verify the OTP.");
+
+      const session = responseBody?.data;
+      if (!session?.access_token || !session.refresh_token) {
+        throw new Error("The authenticated session did not include tokens.");
+      };//if ends
+
+      await addUserData({
+        userData: session.user,
+        accessToken: session.access_token,
+        refreshToken: session.refresh_token
+      });
+      Toast.success({ message: "You are now logged in." });
+      router.replace(nextRoute as Href);
+    } catch (error: unknown) {
+      const message = getErrorMessage(error, "Unable to verify the OTP.");
+      RHF.setError("root", { type: "server", message });
+      Toast.error({ message });
+    } finally {
+      setIsVerifyingOtp(false);
+    };//try-catch ends
+  };//func ends
+
+  // Starts Google OAuth through the isolated mobile API route and hands success to the callback page.
+  const handleGoogleLogin = async () => {
+    setIsOpeningGoogle(true);
+
+    try {
+      const callbackUrl = new URL(Linking.createURL("/auth/callback"));
+      callbackUrl.searchParams.set("next", nextRoute);
+      const loginUrl = new URL(`https://api.unoqr.com/auth/app/login/google`);
+      loginUrl.searchParams.set("next", callbackUrl.href);
+      const result = await WebBrowser.openAuthSessionAsync(loginUrl.href, callbackUrl.href);
+
+      if (result.type === "success") {
+        router.replace({
+          pathname: "/auth/callback",
+          params: { callback_url: result.url, next: nextRoute }
+        });
+      };//if ends
+    } catch (error: unknown) {
+      Toast.error({ message: getErrorMessage(error, "Unable to start Google login.") });
+    } finally {
+      setIsOpeningGoogle(false);
+    };//try-catch ends
+  };//func ends
+
+  // Returns to email entry so the user can correct the destination address.
+  const handleChangeEmail = () => {
+    setIsOtpSent(false);
+    RHF.setValue("otp", "");
+    RHF.clearErrors();
+  };//func ends
 
   //Default Return
   return (
@@ -48,22 +162,37 @@ export default function LoginForm() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <UnoQrLogo variant="icon" width={32} style={styles.logo} />
+          <UnoQrLogo variant="icon" width={36} style={styles.logo} />
 
           <View style={styles.hero}>
-            <Text style={styles.title}>Welcome back</Text>
-            <Text style={styles.subtitle}>Log in to manage your QR codes.</Text>
+            <Text style={styles.title}>
+              {isOtpSent ? "Enter your OTP" : isSignup ? "Create your account" : "Welcome to UNOQR"}
+            </Text>
+            <Text style={styles.subtitle}>
+              {isOtpSent
+                ? `We sent an 8-digit code to ${RHF.getValues("email")}.`
+                : "Log in to sync your scans and access them across devices."}
+            </Text>
           </View>
 
           <View style={styles.form}>
             <View style={styles.fieldGroup}>
-              <Text style={styles.fieldLabel}>EMAIL</Text>
+              <View style={styles.fieldLabelRow}>
+                <Text style={styles.fieldLabel}>EMAIL</Text>
+                {isOtpSent ? (
+                  <Pressable accessibilityRole="button" hitSlop={spacing.xs} onPress={handleChangeEmail}>
+                    <Text style={styles.changeEmailText}>Change</Text>
+                  </Pressable>
+                ) : null}
+              </View>
               <PxTextInput
                 name="email"
                 RHF={RHF}
                 type="email"
                 size="large"
-                placeholder="you@company.com"
+                leftAdornment={{ icon: "email-outline" }}
+                placeholder="you@example.com"
+                disabled={isOtpSent}
                 rules={{
                   required: "Email address is required",
                   pattern: {
@@ -74,28 +203,31 @@ export default function LoginForm() {
               />
             </View>
 
-            <View style={styles.fieldGroup}>
-              <View style={styles.passwordLabelRow}>
-                <Text style={styles.fieldLabel}>PASSWORD</Text>
-                <Pressable accessibilityRole="button" onPress={() => undefined} hitSlop={spacing.xs}>
-                  <Text style={styles.forgotLink}>Forgot?</Text>
-                </Pressable>
+            {isOtpSent ? (
+              <View style={styles.fieldGroup}>
+                <Text style={styles.fieldLabel}>8-DIGIT OTP</Text>
+                <PxTextInput
+                  name="otp"
+                  RHF={RHF}
+                  type="number"
+                  size="large"
+                  leftAdornment={{ icon: "shield-key-outline" }}
+                  placeholder="00000000"
+                  autoFocus
+                  rules={{
+                    required: "OTP is required",
+                    pattern: {
+                      value: /^\d{8}$/,
+                      message: "Enter the 8-digit OTP"
+                    }
+                  }}
+                />
               </View>
-              <PxTextInput
-                name="password"
-                RHF={RHF}
-                type="password"
-                size="large"
-                placeholder="••••••••"
-                rules={{
-                  required: "Password is required",
-                  minLength: {
-                    value: 8,
-                    message: "Password must be at least 8 characters"
-                  }
-                }}
-              />
-            </View>
+            ) : null}
+
+            {RHF.formState.errors.root?.message ? (
+              <Text style={styles.serverError}>{RHF.formState.errors.root.message}</Text>
+            ) : null}
 
             <PxButton
               mode="contained"
@@ -103,27 +235,38 @@ export default function LoginForm() {
               size="lg"
               shape="rounded"
               fullWidth
-              loading={RHF.formState.isSubmitting}
-              onPress={RHF.handleSubmit(handleLogin)}
+              loading={isOtpSent ? isVerifyingOtp : isRequestingOtp}
+              onPress={RHF.handleSubmit(isOtpSent ? handleVerifyOtp : handleRequestOtp)}
             >
-              Log in
+              {isOtpSent ? "Verify OTP" : "Continue with email"}
             </PxButton>
 
             <View style={styles.dividerRow}>
               <View style={styles.dividerLine} />
-              <Text style={styles.dividerText}>or</Text>
+              <Text style={styles.dividerText}>OR</Text>
               <View style={styles.dividerLine} />
             </View>
 
-            <GoogleLoginButton onPress={() => undefined} />
-          </View>
-
-          <View style={styles.signupRow}>
-            <Text style={styles.signupPrompt}>Don&apos;t have an account?</Text>
-            <Pressable accessibilityRole="button" onPress={() => undefined} hitSlop={spacing.xs}>
-              <Text style={styles.signupLink}>Sign up</Text>
+            <Pressable
+              accessibilityLabel="Continue with Google"
+              accessibilityRole="button"
+              disabled={isOpeningGoogle}
+              onPress={() => void handleGoogleLogin()}
+              style={({ pressed }) => [
+                styles.socialButton,
+                (pressed || isOpeningGoogle) && styles.socialButtonPressed
+              ]}
+            >
+              <MaterialCommunityIcons name="google" size={23} color={colors.info.main} />
+              <Text style={styles.socialButtonText}>
+                {isOpeningGoogle ? "Opening Google…" : "Continue with Google"}
+              </Text>
             </Pressable>
           </View>
+
+          <Text style={styles.privacyText}>
+            By continuing, you agree to securely authenticate with UNOQR.
+          </Text>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -132,24 +275,20 @@ export default function LoginForm() {
 
 /* ------------------ BREAK ------------------ */
 
-// Renders the full-width Google authentication button.
-function GoogleLoginButton({ onPress }: GoogleLoginButtonProps) {
-  //Default Return
-  return (
-    <Pressable
-      accessibilityLabel="Continue with Google"
-      accessibilityRole="button"
-      onPress={onPress}
-      style={({ pressed }) => [styles.socialButton, pressed && styles.socialButtonPressed]}
-    >
-      <MaterialCommunityIcons
-        name="google"
-        size={24}
-        color={colors.info.main}
-      />
-      <Text style={styles.socialButtonText}>Google</Text>
-    </Pressable>
-  );//return ends
+// Returns the first scalar route parameter value.
+function getFirstParam(value?: string | string[]): string | null {
+  return Array.isArray(value) ? value[0] || null : value || null;
+};//func ends
+
+// Restricts post-login navigation to an internal Expo route.
+function getSafeNextRoute(value: string | null): string {
+  if (!value || !value.startsWith("/") || value.startsWith("//") || value.includes("\\")) return "/";
+  return value;
+};//func ends
+
+// Converts an unknown request failure into readable login feedback.
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message : fallback;
 };//func ends
 
 /* ------------------ BREAK ------------------ */
@@ -194,21 +333,27 @@ const styles = StyleSheet.create({
   fieldGroup: {
     gap: spacing.xs
   },
+  fieldLabelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between"
+  },
   fieldLabel: {
     color: colors.mute.main,
     fontFamily: fontFamilies.mono,
     fontSize: fontSizes.overline,
     letterSpacing: 1.6
   },
-  passwordLabelRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between"
-  },
-  forgotLink: {
+  changeEmailText: {
     color: colors.secondary.main,
     fontFamily: fontFamilies.primarySemiBold,
-    fontSize: fontSizes.body2
+    fontSize: fontSizes.caption
+  },
+  serverError: {
+    color: colors.error.main,
+    fontFamily: fontFamilies.primaryRegular,
+    fontSize: fontSizes.body2,
+    lineHeight: 20
   },
   dividerRow: {
     flexDirection: "row",
@@ -223,11 +368,11 @@ const styles = StyleSheet.create({
   dividerText: {
     color: colors.mute.main,
     fontFamily: fontFamilies.mono,
-    fontSize: fontSizes.body2
+    fontSize: fontSizes.caption
   },
   socialButton: {
     width: "100%",
-    minHeight: 52,
+    minHeight: 54,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -238,29 +383,20 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white.main
   },
   socialButtonPressed: {
-    opacity: 0.7
+    opacity: 0.68
   },
   socialButtonText: {
     color: colors.primary.main,
     fontFamily: fontFamilies.primarySemiBold,
     fontSize: fontSizes.body1
   },
-  signupRow: {
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    gap: spacing.xs,
+  privacyText: {
     marginTop: "auto",
-    paddingTop: spacing.xxl
-  },
-  signupPrompt: {
-    color: colors.mute.main,
+    paddingTop: spacing.xxl,
+    color: colors.mute.light,
     fontFamily: fontFamilies.primaryRegular,
-    fontSize: fontSizes.body2
-  },
-  signupLink: {
-    color: colors.secondary.main,
-    fontFamily: fontFamilies.primaryBold,
-    fontSize: fontSizes.body2
+    fontSize: fontSizes.caption,
+    lineHeight: 18,
+    textAlign: "center"
   }
 });

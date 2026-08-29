@@ -1,13 +1,20 @@
-import { StyleSheet, View } from "react-native";
+import { useCallback, useMemo, useState } from "react";
+import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { Text } from "react-native-paper";
+import { router, useFocusEffect } from "expo-router";
+import { ActivityIndicator, Text } from "react-native-paper";
 
 import { PxCard } from "@/components/elements/PxCard";
+import { getAllScans } from "@/helpers/scans/db/getQueries";
+import { getScanTypeInit, normalizeScanType } from "@/helpers/scans/identifiers";
 import { colors, fontFamilies, fontSizes, radii, spacing } from "@/theme/tokens";
 
 /* ------------------ BREAK ------------------ */
 
-type ScanCategory = {
+type ScanRecord = Awaited<ReturnType<typeof getAllScans>>[number];
+
+type ScanTypeSummary = {
+  type: string;
   label: string;
   count: number;
   percentage: number;
@@ -16,45 +23,34 @@ type ScanCategory = {
   backgroundColor: string;
 };
 
-type CategoryCardProps = {
-  category: ScanCategory;
+type TypeCardProps = {
+  summary: ScanTypeSummary;
+};
+
+type TypePalette = {
+  color: string;
+  backgroundColor: string;
 };
 
 /* ------------------ BREAK ------------------ */
 
-const totalScans = 248;
 const patternLines = Array.from({ length: 24 }, (_, index) => index);
-
-const scanCategories: ScanCategory[] = [
+const maximumVisibleTypes = 4;
+const maximumRecentScans = 3;
+const typePalettes: TypePalette[] = [
   {
-    label: "Shopping",
-    count: 86,
-    percentage: 35,
-    icon: "shopping-outline",
     color: colors.secondary.main,
     backgroundColor: colors.secondary.light
   },
   {
-    label: "Real Estate",
-    count: 64,
-    percentage: 26,
-    icon: "home-city-outline",
     color: colors.info.main,
     backgroundColor: "#EAF2FF"
   },
   {
-    label: "Payments",
-    count: 58,
-    percentage: 23,
-    icon: "credit-card-outline",
     color: colors.success.dark,
     backgroundColor: "#E8F7ED"
   },
   {
-    label: "Events",
-    count: 40,
-    percentage: 16,
-    icon: "calendar-star",
     color: colors.warning.dark,
     backgroundColor: "#FFF3DE"
   }
@@ -64,9 +60,45 @@ const scanCategories: ScanCategory[] = [
 
 // Displays a compact single-screen summary of the user's QR scan activity.
 export function HomeAnalytics() {
+  const [records, setRecords] = useState<ScanRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Reloads SQLite activity whenever the home route becomes active.
+  useFocusEffect(
+    useCallback(() => {
+      let isMounted = true;
+
+      setLoading(true);
+      void getAllScans()
+        .then((storedRecords) => {
+          if (!isMounted) return;
+          setRecords(storedRecords);
+        })
+        .catch((error: unknown) => {
+          console.error("Unable to load home scan analytics:", error);
+          if (isMounted) setRecords([]);
+        })
+        .finally(() => {
+          if (isMounted) setLoading(false);
+        });
+
+      return () => {
+        isMounted = false;
+      };
+    }, [])
+  );
+
+  const typeSummaries = useMemo(() => createTypeSummaries(records), [records]);
+  const visibleTypeSummaries = typeSummaries.slice(0, maximumVisibleTypes);
+  const totalScans = records.length;
+  const recentScans = useMemo(() => createRecentScans(records), [records]);
+
   //Default Return
   return (
-    <View style={styles.root}>
+    <ScrollView
+      showsVerticalScrollIndicator={false}
+      contentContainerStyle={styles.root}
+    >
       <View style={styles.headingRow}>
         <View style={styles.headingCopy}>
           <Text style={styles.eyebrow}>YOUR ACTIVITY</Text>
@@ -89,28 +121,61 @@ export function HomeAnalytics() {
           <Text style={styles.totalValue}>{totalScans}</Text>
         </View>
 
-        <View style={styles.growthPill}>
-          <MaterialCommunityIcons name="trending-up" size={15} color={colors.success.dark} />
-          <Text style={styles.growthText}>18%</Text>
-        </View>
       </PxCard>
 
-      <View style={styles.categoryHeadingRow}>
-        <Text style={styles.categoryHeading}>By category</Text>
-        <Text style={styles.categoryCaption}>{scanCategories.length} categories</Text>
+      <View style={styles.typeHeadingRow}>
+        <Text style={styles.typeHeading}>By Type</Text>
+        <Text style={styles.typeCaption}>
+          {typeSummaries.length} {typeSummaries.length === 1 ? "type" : "types"}
+        </Text>
       </View>
 
-      <View style={styles.categoryGrid}>
-        {scanCategories.map((category) => (
-          <CategoryCard key={category.label} category={category} />
-        ))}
-      </View>
+      {loading ? (
+        <View style={styles.loadingTypes}>
+          <ActivityIndicator size="small" color={colors.secondary.main} />
+          <Text style={styles.emptyMessage}>Loading scan types…</Text>
+        </View>
+      ) : visibleTypeSummaries.length > 0 ? (
+        <>
+          <View style={styles.typeGrid}>
+            {visibleTypeSummaries.map((summary) => (
+              <TypeCard key={summary.type} summary={summary} />
+            ))}
+          </View>
+        </>
+      ) : (
+        <View style={styles.emptyTypes}>
+          <View style={styles.emptyIcon}>
+            <MaterialCommunityIcons name="qrcode-scan" size={28} color={colors.secondary.main} />
+          </View>
+          <Text style={styles.emptyTitle}>No scans available</Text>
+          <Text style={styles.emptyMessage}>Start scanning to see magic</Text>
+        </View>
+      )}
 
-      <View style={styles.insightRow}>
-        <MaterialCommunityIcons name="lightning-bolt" size={18} color={colors.secondary.main} />
-        <Text style={styles.insightText}>Shopping is your most-scanned category.</Text>
+      <View style={styles.recentSection}>
+        <View style={styles.recentHeadingRow}>
+          <Text style={styles.recentHeading}>Recent Scans</Text>
+          {recentScans.length > 0 ? (
+            <Pressable onPress={() => router.push("/scans/list")}>
+              <Text style={styles.viewAllText}>View all</Text>
+            </Pressable>
+          ) : null}
+        </View>
+
+        {recentScans.length > 0 ? (
+          <View style={styles.recentList}>
+            {recentScans.map((record) => (
+              <RecentScanCard key={record.id} record={record} />
+            ))}
+          </View>
+        ) : (
+          <View style={styles.emptyRecentScans}>
+            <Text style={styles.emptyMessage}>No recent scans yet</Text>
+          </View>
+        )}
       </View>
-    </View>
+    </ScrollView>
   );//return ends
 };//export ends
 
@@ -142,26 +207,106 @@ function ScanCardPattern() {
 
 /* ------------------ BREAK ------------------ */
 
-// Displays one category's scan count and proportional activity.
-function CategoryCard({ category }: CategoryCardProps) {
+// Renders one recent SQLite scan with its type, title, timestamp, and detail action.
+function RecentScanCard({ record }: { record: ScanRecord }) {
+  const typeInit = getScanTypeInit(record.type);
+  const title = getRecentScanTitle(record, typeInit.label);
+
   //Default Return
   return (
-    <PxCard padded={false} bordered style={styles.categoryCard} contentStyle={styles.categoryCardContent}>
-      <View style={styles.categoryTopRow}>
-        <View style={[styles.categoryIconWrap, { backgroundColor: category.backgroundColor }]}>
-          <MaterialCommunityIcons name={category.icon} size={20} color={category.color} />
+    <Pressable
+      accessibilityLabel={`Open recent scan ${title}`}
+      accessibilityRole="button"
+      onPress={() => router.push(`/scans/${record.id}/view`)}
+      style={({ pressed }) => [styles.recentCard, pressed && styles.recentCardPressed]}
+    >
+      <View style={styles.recentIcon}>
+        <MaterialCommunityIcons name={typeInit.icon} size={21} color={colors.secondary.main} />
+      </View>
+      <View style={styles.recentContent}>
+        <Text numberOfLines={1} style={styles.recentTitle}>{title}</Text>
+        <Text style={styles.recentTimestamp}>{formatRecentScanDate(record.created_at)}</Text>
+      </View>
+      <MaterialCommunityIcons name="chevron-right" size={21} color={colors.mute.light} />
+    </Pressable>
+  );//return ends
+};//func ends
+
+/* ------------------ BREAK ------------------ */
+
+// Selects the newest saved scans for the compact home activity list.
+function createRecentScans(records: ScanRecord[]): ScanRecord[] {
+  return [...records]
+    .sort(
+      (firstRecord, secondRecord) =>
+        new Date(secondRecord.created_at).getTime() - new Date(firstRecord.created_at).getTime()
+    )
+    .slice(0, maximumRecentScans);
+};//func ends
+
+// Resolves a readable recent-scan title without exposing the full database row.
+function getRecentScanTitle(record: ScanRecord, fallbackLabel: string): string {
+  if (record.metadata?.title) return record.metadata.title;
+
+  if (normalizeScanType(record.type) === "url") {
+    return getRecentWebsiteTitle(record.final_url || record.input_url || record.value);
+  };//if ends
+
+  return fallbackLabel;
+};//func ends
+
+// Extracts a compact website host when crawl metadata has no title.
+function getRecentWebsiteTitle(value: string): string {
+  try {
+    const parsedUrl = new URL(value);
+    return parsedUrl.hostname.replace(/^www\./, "") || value;
+  } catch {
+    return value;
+  };//try-catch ends
+};//func ends
+
+// Formats a recent scan timestamp using the device locale.
+function formatRecentScanDate(value: string): string {
+  const timestamp = new Date(value);
+
+  if (Number.isNaN(timestamp.getTime())) return "Unknown date";
+
+  return new Intl.DateTimeFormat(undefined, {
+    day: "numeric",
+    month: "short",
+    hour: "numeric",
+    minute: "2-digit"
+  }).format(timestamp);
+};//func ends
+
+/* ------------------ BREAK ------------------ */
+
+// Displays one SQLite scan type's count and proportional activity.
+function TypeCard({ summary }: TypeCardProps) {
+  //Default Return
+  return (
+    <PxCard
+      padded={false}
+      bordered
+      onPress={() => router.push({ pathname: "/scans/list", params: { type: summary.type } })}
+      style={styles.typeCard}
+      contentStyle={styles.typeCardContent}
+    >
+      <View style={styles.typeTopRow}>
+        <View style={[styles.typeIconWrap, { backgroundColor: summary.backgroundColor }]}>
+          <MaterialCommunityIcons name={summary.icon} size={20} color={summary.color} />
         </View>
-        <Text style={styles.categoryPercentage}>{category.percentage}%</Text>
+        <Text style={styles.typePercentage}>{summary.percentage}%</Text>
       </View>
 
-      <Text style={styles.categoryValue}>{category.count}</Text>
-      <Text numberOfLines={1} style={styles.categoryLabel}>{category.label}</Text>
+      <Text style={styles.typeValue}>{summary.count}</Text>
+      <Text numberOfLines={1} style={styles.typeLabel}>{summary.label}</Text>
 
       <View style={styles.progressTrack}>
         <View
           style={[
             styles.progressFill,
-            { width: `${category.percentage}%`, backgroundColor: category.color }
+            { width: `${summary.percentage}%`, backgroundColor: summary.color }
           ]}
         />
       </View>
@@ -171,12 +316,41 @@ function CategoryCard({ category }: CategoryCardProps) {
 
 /* ------------------ BREAK ------------------ */
 
+// Groups saved SQLite rows by their normalized scan type and ranks them by count.
+function createTypeSummaries(records: ScanRecord[]): ScanTypeSummary[] {
+  const countsByType = new Map<string, number>();
+
+  records.forEach((record) => {
+    const scanType = normalizeScanType(record.type);
+    countsByType.set(scanType, (countsByType.get(scanType) || 0) + 1);
+  });
+
+  return [...countsByType.entries()]
+    .sort((firstEntry, secondEntry) => secondEntry[1] - firstEntry[1])
+    .map(([type, count], index) => {
+      const typeInit = getScanTypeInit(type);
+      const palette = typePalettes[index % typePalettes.length];
+
+      return {
+        type,
+        label: typeInit.label,
+        count,
+        percentage: records.length > 0 ? Math.round((count / records.length) * 100) : 0,
+        icon: typeInit.icon,
+        color: palette.color,
+        backgroundColor: palette.backgroundColor
+      };
+    });
+};//func ends
+
+/* ------------------ BREAK ------------------ */
+
 const styles = StyleSheet.create({
   root: {
-    flex: 1,
+    flexGrow: 1,
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.lg,
-    paddingBottom: spacing.md,
+    paddingBottom: spacing.xl,
     gap: spacing.md,
     backgroundColor: colors.cream.main
   },
@@ -298,74 +472,60 @@ const styles = StyleSheet.create({
     fontSize: fontSizes.h3,
     lineHeight: 38
   },
-  growthPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.xxs,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderRadius: radii.pill,
-    backgroundColor: "#E8F7ED"
-  },
-  growthText: {
-    color: colors.success.dark,
-    fontFamily: fontFamilies.primarySemiBold,
-    fontSize: fontSizes.caption
-  },
-  categoryHeadingRow: {
+  typeHeadingRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between"
   },
-  categoryHeading: {
+  typeHeading: {
     color: colors.primary.main,
     fontFamily: fontFamilies.primarySemiBold,
     fontSize: fontSizes.subtitle1
   },
-  categoryCaption: {
+  typeCaption: {
     color: colors.mute.main,
     fontFamily: fontFamilies.primaryRegular,
     fontSize: fontSizes.caption
   },
-  categoryGrid: {
+  typeGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: spacing.sm
   },
-  categoryCard: {
+  typeCard: {
     width: "48%",
     flexGrow: 1,
     borderRadius: radii.lg
   },
-  categoryCardContent: {
+  typeCardContent: {
     minHeight: 124,
     padding: spacing.md
   },
-  categoryTopRow: {
+  typeTopRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between"
   },
-  categoryIconWrap: {
+  typeIconWrap: {
     width: 34,
     height: 34,
     alignItems: "center",
     justifyContent: "center",
     borderRadius: radii.md
   },
-  categoryPercentage: {
+  typePercentage: {
     color: colors.mute.main,
     fontFamily: fontFamilies.primaryMedium,
     fontSize: fontSizes.caption
   },
-  categoryValue: {
+  typeValue: {
     marginTop: spacing.xs,
     color: colors.primary.main,
     fontFamily: fontFamilies.primaryBold,
     fontSize: fontSizes.h6,
     lineHeight: 24
   },
-  categoryLabel: {
+  typeLabel: {
     color: colors.mute.main,
     fontFamily: fontFamilies.primaryRegular,
     fontSize: fontSizes.caption
@@ -381,19 +541,111 @@ const styles = StyleSheet.create({
     height: "100%",
     borderRadius: radii.pill
   },
-  insightRow: {
+  loadingTypes: {
+    minHeight: 160,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.sm
+  },
+  emptyTypes: {
+    minHeight: 180,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.xs,
+    padding: spacing.lg,
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: colors.border.dark,
+    borderRadius: radii.xl,
+    backgroundColor: colors.white.main
+  },
+  emptyIcon: {
+    width: 52,
+    height: 52,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: spacing.xs,
+    borderRadius: radii.pill,
+    backgroundColor: colors.secondary.light
+  },
+  emptyTitle: {
+    color: colors.primary.main,
+    fontFamily: fontFamilies.primarySemiBold,
+    fontSize: fontSizes.subtitle1
+  },
+  emptyMessage: {
+    color: colors.mute.main,
+    fontFamily: fontFamilies.primaryRegular,
+    fontSize: fontSizes.body2,
+    textAlign: "center"
+  },
+  recentSection: {
+    gap: spacing.sm,
+    marginTop: spacing.xs
+  },
+  recentHeadingRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    justifyContent: "space-between"
+  },
+  recentHeading: {
+    color: colors.primary.main,
+    fontFamily: fontFamilies.primarySemiBold,
+    fontSize: fontSizes.subtitle1
+  },
+  viewAllText: {
+    color: colors.secondary.main,
+    fontFamily: fontFamilies.primarySemiBold,
+    fontSize: fontSizes.caption
+  },
+  recentList: {
+    gap: spacing.sm
+  },
+  recentCard: {
+    minHeight: 72,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    padding: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border.main,
+    borderRadius: radii.xl,
+    backgroundColor: colors.white.main
+  },
+  recentCardPressed: {
+    opacity: 0.72
+  },
+  recentIcon: {
+    width: 42,
+    height: 42,
+    alignItems: "center",
+    justifyContent: "center",
     borderRadius: radii.lg,
     backgroundColor: colors.secondary.light
   },
-  insightText: {
-    flex: 1,
-    color: colors.neutral.dark,
+  recentContent: {
+    minWidth: 0,
+    flex: 1
+  },
+  recentTitle: {
+    color: colors.primary.main,
+    fontFamily: fontFamilies.primarySemiBold,
+    fontSize: fontSizes.body2
+  },
+  recentTimestamp: {
+    marginTop: spacing.xxs,
+    color: colors.mute.main,
     fontFamily: fontFamilies.primaryMedium,
     fontSize: fontSizes.caption
+  },
+  emptyRecentScans: {
+    minHeight: 84,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: colors.border.dark,
+    borderRadius: radii.xl,
+    backgroundColor: colors.white.main
   }
 });

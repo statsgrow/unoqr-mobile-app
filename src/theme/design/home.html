@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>UnoQR Mobile Home</title>
+  <style>
+    :root {
+      color-scheme: light;
+
+      /* Values sourced from src/theme/colors.ts. */
+      --primary-main: #ff4f00;
+      --primary-light: #fff3e6;
+      --primary-contrast: #ffffff;
+      --secondary-main: #1c1212;
+      --text-main: #1c1212;
+      --grey-light: #f8f9fa;
+      --border-main: #dee2e6;
+      --background-main: #ffffff;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+    }
+
+    body {
+      display: flex;
+      justify-content: center;
+      overflow: hidden;
+      background: var(--grey-light);
+    }
+
+    .mobile-shell {
+      position: relative;
+      width: 100%;
+      max-width: 430px;
+      height: 100vh;
+      height: 100dvh;
+      overflow: hidden;
+      border-right: 1px solid var(--border-main);
+      border-left: 1px solid var(--border-main);
+      background: var(--background-main);
+      box-shadow: 0 0 32px rgba(52, 58, 64, 0.08);
+    }
+
+    .scroll-content {
+      height: 100%;
+      min-height: 0;
+      overflow-x: hidden;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      scrollbar-gutter: stable;
+      background: var(--background-main);
+    }
+
+    .app-header {
+      position: sticky;
+      z-index: 10;
+      top: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      min-height: 64px;
+      padding: 0 18px;
+      border-bottom: 1px solid var(--border-main);
+      background: var(--background-main);
+    }
+
+    .brand-logo {
+      width: 112px;
+      height: 25px;
+      flex: 0 0 auto;
+      background: var(--primary-main);
+      -webkit-mask: url("../../assets/svg/unoqr_logo.svg") center / contain no-repeat;
+      mask: url("../../assets/svg/unoqr_logo.svg") center / contain no-repeat;
+    }
+
+    .profile-button {
+      display: grid;
+      width: 40px;
+      height: 40px;
+      place-items: center;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: var(--secondary-main);
+      cursor: pointer;
+    }
+
+    .profile-button:focus-visible {
+      outline: 2px solid var(--primary-main);
+      outline-offset: 2px;
+    }
+
+    .profile-icon {
+      width: 24px;
+      height: 24px;
+    }
+
+    .page-content {
+      min-height: calc(100% + 1px);
+      padding-bottom: 112px;
+    }
+
+    .bottom-nav {
+      position: absolute;
+      z-index: 20;
+      right: 16px;
+      bottom: max(16px, env(safe-area-inset-bottom));
+      left: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      width: auto;
+      padding: 4px;
+      border: 1px solid var(--border-main);
+      border-radius: 32px;
+      background: var(--grey-light);
+      box-shadow: 0 8px 24px rgba(28, 18, 18, 0.12);
+    }
+
+    .nav-button {
+      display: flex;
+      width: 88px;
+      height: 52px;
+      flex: 1 1 0;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+      padding: 0;
+      border: 0;
+      border-radius: 24px;
+      background: transparent;
+      color: var(--secondary-main);
+      cursor: pointer;
+    }
+
+    .nav-icon-shell {
+      display: grid;
+      width: 24px;
+      height: 24px;
+      flex: 0 0 24px;
+      place-items: center;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+    }
+
+    .nav-button[aria-current="page"] {
+      border: 1px solid var(--border-main);
+      background: var(--background-main);
+      box-shadow: 0 4px 12px rgba(28, 18, 18, 0.08);
+    }
+
+    .nav-button[aria-current="page"] .nav-icon {
+      width: 22px;
+      height: 22px;
+    }
+
+    .nav-button[aria-label="Scan"] .nav-icon-shell {
+      width: 68px;
+      height: 68px;
+      flex: 0 0 68px;
+      border: 1px solid var(--primary-main);
+      border-radius: 50%;
+      background: var(--primary-light);
+      color: var(--primary-main);
+      box-shadow: 0 8px 18px rgba(255, 79, 0, 0.18);
+      transform: translateY(-2px);
+    }
+
+    .scan-image-icon {
+      width: 28px;
+      height: 28px;
+      background: currentColor;
+      -webkit-mask: url("../../assets/images/qr-code.png") center / contain no-repeat;
+      mask: url("../../assets/images/qr-code.png") center / contain no-repeat;
+    }
+
+    .nav-button:focus-visible {
+      outline: 2px solid var(--primary-main);
+      outline-offset: 2px;
+    }
+
+    .nav-icon {
+      width: 19px;
+      height: 19px;
+    }
+
+    .nav-label {
+      min-height: 12px;
+      color: var(--secondary-main);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 10px;
+      font-weight: 600;
+      line-height: 12px;
+      white-space: nowrap;
+    }
+
+    @media (max-width: 430px) {
+      .mobile-shell {
+        border-right: 0;
+        border-left: 0;
+        box-shadow: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="mobile-shell" aria-label="UnoQR mobile preview">
+    <div class="scroll-content">
+      <header class="app-header">
+        <span class="brand-logo" role="img" aria-label="UnoQR"></span>
+        <button class="profile-button" type="button" aria-label="Open profile">
+          <svg class="profile-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
+            <circle cx="12" cy="7" r="4" />
+          </svg>
+        </button>
+      </header>
+      <div class="page-content"></div>
+    </div>
+
+    <nav class="bottom-nav" aria-label="Primary navigation">
+      <button class="nav-button" type="button" aria-label="My scans" aria-current="page">
+        <span class="nav-icon-shell">
+          <svg class="nav-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M3 7V5a2 2 0 0 1 2-2h2" />
+            <path d="M17 3h2a2 2 0 0 1 2 2v2" />
+            <path d="M21 17v2a2 2 0 0 1-2 2h-2" />
+            <path d="M7 21H5a2 2 0 0 1-2-2v-2" />
+            <path d="M8 7v10" />
+            <path d="M12 7v10" />
+            <path d="M17 7v10" />
+          </svg>
+        </span>
+        <span class="nav-label">My Scans</span>
+      </button>
+
+      <button class="nav-button" type="button" aria-label="Scan">
+        <span class="nav-icon-shell">
+          <span class="scan-image-icon" aria-hidden="true"></span>
+        </span>
+      </button>
+
+      <button class="nav-button" type="button" aria-label="More">
+        <span class="nav-icon-shell">
+          <svg class="nav-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect width="7" height="7" x="3" y="3" rx="1" />
+            <rect width="7" height="7" x="14" y="3" rx="1" />
+            <rect width="7" height="7" x="14" y="14" rx="1" />
+            <rect width="7" height="7" x="3" y="14" rx="1" />
+          </svg>
+        </span>
+        <span class="nav-label">More</span>
+      </button>
+    </nav>
+  </main>
+</body>
+</html>

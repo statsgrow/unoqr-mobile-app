@@ -1,13 +1,14 @@
 import { eq } from "drizzle-orm";
 
 import { apiSettings, installSettings } from "@/settings";
-import { insertAppInstall } from "@/utils/auth/AuthInstall";
+import { insertAppInstall } from "@/utils/auth/AppInstall";
 import { Axios } from "@/utils/general/Axios";
 import { getData } from "@/utils/general/Storage";
 import { Toast } from "@/utils/general/Toast";
 import { db } from "@/utils/sqlite/db";
 
 import { collectAndStoreScanLocation } from "../location";
+import { getScanById } from "./getQueries";
 import { initScansTable, type InsertScanInput, type ScanLocation, scansTable } from "./init";
 
 /* ------------------ BREAK ------------------ */
@@ -163,9 +164,12 @@ async function setLocalInitialSyncResult(
 ) {
   if (!db) return;
 
+  const currentLocalScan = await getScanById(localScan.id);
+
   await db
     .update(scansTable)
     .set({
+      value: insertedScan?.value ?? localScan.value,
       type: insertedScan?.type ?? localScan.type ?? null,
       status: insertedScan?.status ?? localScan.status ?? null,
       input_url: insertedScan?.input_url ?? localScan.input_url ?? null,
@@ -173,7 +177,11 @@ async function setLocalInitialSyncResult(
       metadata: insertedScan?.metadata ?? localScan.metadata ?? null,
       sync_status: syncStatus,
       user_ip: insertedScan?.user_ip ?? null,
-      updated_at: new Date().toISOString()
+      location: insertedScan?.location ?? currentLocalScan?.location ?? localScan.location ?? null,
+      user_id: insertedScan?.user_id ?? localScan.user_id ?? null,
+      website_id: insertedScan?.website_id ?? localScan.website_id ?? null,
+      install_id: insertedScan?.install_id ?? localScan.install_id ?? null,
+      updated_at: insertedScan?.updated_at ?? new Date().toISOString()
     })
     .where(eq(scansTable.id, localScan.id))
     .run();

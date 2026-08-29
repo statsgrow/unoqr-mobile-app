@@ -64,7 +64,8 @@
           "locationWhenInUsePermission": "Allow Uno QR to use your location while saving a QR scan."
         }
       ],
-      "expo-notifications"
+      "expo-notifications",
+      "expo-secure-store"
     ],
     "extra": {
       "router": {

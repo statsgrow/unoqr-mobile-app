@@ -1,6 +1,7 @@
 import { getInit as calendarEventInit } from "./CalendarEvent";
 import { getInit as contactCardInit } from "./ContactCard";
 import { getInit as customSchemeInit } from "./CustomScheme";
+import { getInit as deepLinkInit } from "./DeepLink";
 import { getInit as emailAddressInit } from "./EmailAddress";
 import { getInit as genericPaymentInit } from "./GenericPayment";
 import { getInit as geoLocationInit } from "./GeoLocation";
@@ -20,6 +21,7 @@ const scanTypeInitializers: ScanTypeInit[] = [
   calendarEventInit,
   contactCardInit,
   customSchemeInit,
+  deepLinkInit,
   emailAddressInit,
   genericPaymentInit,
   geoLocationInit,
@@ -41,6 +43,13 @@ const scanTypeInitializersByType = new Map(
 
 // Returns the label and icon owned by a scan identifier, with a safe custom fallback.
 export function getScanTypeInit(type: string | null): ScanTypeInit {
-  return scanTypeInitializersByType.get(type || "") || customSchemeInit;
+  return scanTypeInitializersByType.get(normalizeScanType(type)) || customSchemeInit;
 };//export ends
 
+// Maps legacy database aliases to the current scan type identifiers.
+export function normalizeScanType(type: string | null): string {
+  if (type === "vcard") return "contact";
+  if (type === "website") return "url";
+  if (type === "plain_text") return "text";
+  return type || "custom";
+};//export ends

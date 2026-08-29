@@ -2,10 +2,13 @@ import { useState } from "react";
 import { Image, Pressable, StyleSheet, View } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
+import { router } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import { Chip, IconButton, Text } from "react-native-paper";
 
 import { getScanById } from "@/helpers/scans/db/getQueries";
+import type { ScanUrlMetadata } from "@/helpers/scans/db/init";
+import type { StoredScanReference } from "@/helpers/scans/db/persistScan";
 import { colors, fontFamilies, fontSizes, radii, spacing } from "@/theme/tokens";
 
 /* ------------------ BREAK ------------------ */
@@ -29,9 +32,11 @@ export function Website({ record }: WebsiteProps) {
   const [showFullTitle, setShowFullTitle] = useState(false);
   const [showFullDescription, setShowFullDescription] = useState(false);
   const metadata = record.metadata;
-  const finalUrl = record.final_url || metadata?.finalUrl || null;
-  const startUrl = record.input_url || metadata?.inputUrl || record.value;
-  const faviconUrl = getSafeWebUrl(metadata?.favicons?.[0] || metadata?.logoUrl || null);
+  const finalUrl = record.final_url || getMetadataUrl(metadata?.finalUrl);
+  const startUrl = record.input_url || getMetadataUrl(metadata?.inputUrl) || record.value;
+  const faviconUrl = getSafeWebUrl(
+    getMetadataFavicons(metadata?.finalUrl)[0] || metadata?.favicons?.[0] || metadata?.logoUrl || null
+  );
   const title = metadata?.title || getHostname(finalUrl || startUrl);
   const description = metadata?.description || "No description was collected for this website.";
   const timestamp = formatScanTimestamp(record.created_at);
@@ -79,17 +84,28 @@ export function Website({ record }: WebsiteProps) {
       {showStartUrl ? (
         <UrlCard
           label="Start URL"
-          protocol={metadata?.security?.inputProtocol}
+          protocol={getMetadataProtocol(metadata?.inputUrl) || metadata?.security?.inputProtocol}
           url={startUrl}
         />
       ) : null}
       <UrlCard
         label="Final URL"
-        protocol={metadata?.security?.finalProtocol}
+        protocol={getMetadataProtocol(metadata?.finalUrl) || metadata?.security?.finalProtocol}
         url={finalUrl}
       />
     </View>
   );//return ends
+};//export ends
+
+/* ------------------ BREAK ------------------ */
+
+// Routes an already stored website scan to the crawl-and-browser page with its UUID.
+export async function processWebsiteScan(scan: StoredScanReference): Promise<void> {
+  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  router.push({
+    pathname: "/scans/website",
+    params: { id: scan.id, u: scan.value }
+  });
 };//export ends
 
 /* ------------------ BREAK ------------------ */
@@ -148,6 +164,23 @@ function UrlCard({ label, protocol, url }: UrlCardProps) {
       </View>
     </View>
   );//return ends
+};//func ends
+
+// Reads a URL string from legacy metadata or the current structured crawl URL object.
+function getMetadataUrl(value: string | ScanUrlMetadata | null | undefined): string | null {
+  return typeof value === "string" ? value : value?.url || null;
+};//func ends
+
+// Reads the protocol stored with a structured Crawl4AI URL result.
+function getMetadataProtocol(
+  value: string | ScanUrlMetadata | null | undefined
+): "http:" | "https:" | null {
+  return typeof value === "object" && value ? value.protocol : null;
+};//func ends
+
+// Reads favicons stored on the final structured Crawl4AI URL result.
+function getMetadataFavicons(value: string | ScanUrlMetadata | null | undefined): string[] {
+  return typeof value === "object" && value ? value.favicons : [];
 };//func ends
 
 // Copies one stored URL without opening it or starting scan collection.

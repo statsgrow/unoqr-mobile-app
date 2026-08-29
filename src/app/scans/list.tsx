@@ -1,20 +1,26 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState, type ComponentProps } from "react";
 import {
   FlatList,
   Pressable,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   TextInput,
   View,
-  type ListRenderItemInfo
+  type LayoutChangeEvent,
+  type ListRenderItemInfo,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent
 } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { router, useFocusEffect } from "expo-router";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { ActivityIndicator, Text } from "react-native-paper";
+import Svg, { Defs, LinearGradient as SvgLinearGradient, Rect, Stop } from "react-native-svg";
 
 import { GeneralLayout } from "@/components/layout/GeneralLayout";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { getAllScans } from "@/helpers/scans/db/getQueries";
-import { getScanTypeInit } from "@/helpers/scans/identifiers";
+import { getScanTypeInit, normalizeScanType } from "@/helpers/scans/identifiers";
 import { getScanStatusColor, getScanStatusLabel } from "@/helpers/scans/status";
 import { colors, fontFamilies, fontSizes, radii, spacing } from "@/theme/tokens";
 
@@ -29,10 +35,26 @@ type ScanListState = {
   error: string | null;
 };
 
+type ScanTypeFilter = {
+  type: string;
+  label: string;
+  icon: ComponentProps<typeof MaterialCommunityIcons>["name"];
+  count: number;
+};
+
+type TypeFilterScrollerProps = {
+  filters: ScanTypeFilter[];
+  selectedType: string;
+};
+
 /* ------------------ BREAK ------------------ */
 
 // Renders saved scan history with local SQLite-backed search and refresh controls.
 export default function ScansListScreen() {
+  const params = useLocalSearchParams<{ type?: string | string[] }>();
+  const typeFilter = getRouteParam(params.type);
+  const normalizedTypeFilter = typeFilter ? normalizeScanType(typeFilter) : "";
+  const typeFilterInit = normalizedTypeFilter ? getScanTypeInit(normalizedTypeFilter) : null;
   const [searchText, setSearchText] = useState("");
   const [listState, setListState] = useState<ScanListState>({
     records: [],
@@ -76,45 +98,50 @@ export default function ScansListScreen() {
   );
 
   const filteredRecords = useMemo(
-    () => filterScans(listState.records, searchText),
-    [listState.records, searchText]
+    () => filterScans(listState.records, searchText, normalizedTypeFilter),
+    [listState.records, normalizedTypeFilter, searchText]
+  );
+  const availableTypeFilters = useMemo(
+    () => createAvailableTypeFilters(listState.records),
+    [listState.records]
   );
 
   //Default Return
   return (
     <GeneralLayout scroll={false} bodyStyle={styles.layoutBody}>
       <View style={styles.screen}>
-        <View style={styles.headingRow}>
-          <View>
-            <Text style={styles.eyebrow}>SCAN HISTORY</Text>
-            <Text style={styles.title}>My Scans</Text>
-          </View>
-          <View style={styles.countBadge}>
-            <Text style={styles.countText}>{listState.records.length}</Text>
-          </View>
-        </View>
+        <PageHeader title="My Scans" />
 
-        <View style={styles.searchShell}>
-          <MaterialCommunityIcons name="magnify" size={22} color={colors.mute.main} />
-          <TextInput
-            accessibilityLabel="Search saved scans"
-            value={searchText}
-            onChangeText={setSearchText}
-            placeholder="Search value, status or location"
-            placeholderTextColor={colors.mute.light}
-            autoCapitalize="none"
-            autoCorrect={false}
-            returnKeyType="search"
-            style={styles.searchInput}
-          />
-          {searchText ? (
-            <MaterialCommunityIcons
-              accessibilityLabel="Clear search"
-              accessibilityRole="button"
-              name="close-circle"
-              size={20}
-              color={colors.mute.main}
-              onPress={() => setSearchText("")}
+        <View style={styles.filterControls}>
+          <View style={styles.searchShell}>
+            <MaterialCommunityIcons name="magnify" size={22} color={colors.mute.main} />
+            <TextInput
+              accessibilityLabel="Search saved scans"
+              value={searchText}
+              onChangeText={setSearchText}
+              placeholder="Search value, status or location"
+              placeholderTextColor={colors.mute.light}
+              autoCapitalize="none"
+              autoCorrect={false}
+              returnKeyType="search"
+              style={styles.searchInput}
+            />
+            {searchText ? (
+              <MaterialCommunityIcons
+                accessibilityLabel="Clear search"
+                accessibilityRole="button"
+                name="close-circle"
+                size={20}
+                color={colors.mute.main}
+                onPress={() => setSearchText("")}
+              />
+            ) : null}
+          </View>
+
+          {availableTypeFilters.length > 0 ? (
+            <TypeFilterScroller
+              filters={availableTypeFilters}
+              selectedType={normalizedTypeFilter}
             />
           ) : null}
         </View>
@@ -131,7 +158,11 @@ export default function ScansListScreen() {
             renderItem={renderScanItem}
             ItemSeparatorComponent={ScanSeparator}
             ListEmptyComponent={
-              <EmptyScansState hasSearch={Boolean(searchText.trim())} error={listState.error} />
+              <EmptyScansState
+                hasSearch={Boolean(searchText.trim())}
+                typeLabel={typeFilterInit?.label ?? null}
+                error={listState.error}
+              />
             }
             contentContainerStyle={[
               styles.listContent,
@@ -157,15 +188,209 @@ export default function ScansListScreen() {
 
 /* ------------------ BREAK ------------------ */
 
+// Keeps available type chips on one line with measured previous and next controls.
+function TypeFilterScroller({ filters, selectedType }: TypeFilterScrollerProps) {
+  const scrollRef = useRef<ScrollView>(null);
+  const [viewportWidth, setViewportWidth] = useState(0);
+  const [contentWidth, setContentWidth] = useState(0);
+  const [scrollOffset, setScrollOffset] = useState(0);
+  const canScrollLeft = scrollOffset > 4;
+  const canScrollRight = scrollOffset + viewportWidth < contentWidth - 4;
+
+  // Tracks the visible chip viewport after arrow controls take their space.
+  const handleLayout = ({ nativeEvent }: LayoutChangeEvent) => {
+    setViewportWidth(nativeEvent.layout.width);
+  };//func ends
+
+  // Tracks manual and animated chip scrolling to toggle each arrow accurately.
+  const handleScroll = ({ nativeEvent }: NativeSyntheticEvent<NativeScrollEvent>) => {
+    setScrollOffset(nativeEvent.contentOffset.x);
+  };//func ends
+
+  // Moves the chip row by most of its visible width in the requested direction.
+  const handleArrowPress = (direction: "left" | "right") => {
+    const scrollStep = Math.max(140, viewportWidth * 0.75);
+    const maximumOffset = Math.max(0, contentWidth - viewportWidth);
+    const requestedOffset = direction === "right"
+      ? scrollOffset + scrollStep
+      : scrollOffset - scrollStep;
+    const nextOffset = Math.min(maximumOffset, Math.max(0, requestedOffset));
+
+    scrollRef.current?.scrollTo({ x: nextOffset, animated: true });
+  };//func ends
+
+  //Default Return
+  return (
+    <View style={styles.typeFilterScroller}>
+      {canScrollLeft ? (
+        <TypeScrollButton direction="left" onPress={() => handleArrowPress("left")} />
+      ) : null}
+
+      <ScrollView
+        ref={scrollRef}
+        horizontal
+        onContentSizeChange={(width) => setContentWidth(width)}
+        onLayout={handleLayout}
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
+        showsHorizontalScrollIndicator={false}
+        style={styles.typeFilterScroll}
+        contentContainerStyle={styles.typeFilterContent}
+      >
+        {filters.map((filter) => (
+          <TypeFilterChip
+            key={filter.type}
+            filter={filter}
+            selected={filter.type === selectedType}
+          />
+        ))}
+      </ScrollView>
+
+      {canScrollRight ? (
+        <TypeScrollButton direction="right" onPress={() => handleArrowPress("right")} />
+      ) : null}
+    </View>
+  );//return ends
+};//func ends
+
+/* ------------------ BREAK ------------------ */
+
+// Renders one directional control for the horizontal type-chip scroller.
+function TypeScrollButton({
+  direction,
+  onPress
+}: {
+  direction: "left" | "right";
+  onPress: () => void;
+}) {
+  //Default Return
+  return (
+    <View style={styles.typeScrollControl}>
+      <TypeScrollFade direction={direction} />
+      <Pressable
+        accessibilityLabel={`Scroll scan types ${direction}`}
+        accessibilityRole="button"
+        onPress={onPress}
+        style={({ pressed }) => [styles.typeScrollButton, pressed && styles.typeScrollButtonPressed]}
+      >
+        <MaterialCommunityIcons
+        name={direction === "left" ? "chevron-left" : "chevron-right"}
+        size={21}
+        color={colors.mute.main}
+        />
+      </Pressable>
+    </View>
+  );//return ends
+};//func ends
+
+/* ------------------ BREAK ------------------ */
+
+// Fades each chip-row edge from cream near its arrow to transparent over the chips.
+function TypeScrollFade({ direction }: { direction: "left" | "right" }) {
+  const gradientId = `type-scroll-${direction}`;
+  const isLeft = direction === "left";
+
+  //Default Return
+  return (
+    <Svg
+      pointerEvents="none"
+      width={64}
+      height={44}
+      style={[styles.typeScrollFade, isLeft ? styles.leftTypeScrollFade : styles.rightTypeScrollFade]}
+    >
+      <Defs>
+        <SvgLinearGradient id={gradientId} x1="0" y1="0" x2="1" y2="0">
+          <Stop
+            offset="0"
+            stopColor={colors.cream.dark}
+            stopOpacity={isLeft ? 0.86 : 0}
+          />
+          <Stop
+            offset="1"
+            stopColor={colors.cream.dark}
+            stopOpacity={isLeft ? 0 : 0.86}
+          />
+        </SvgLinearGradient>
+      </Defs>
+      <Rect width={64} height={44} fill={`url(#${gradientId})`} />
+    </Svg>
+  );//return ends
+};//func ends
+
+/* ------------------ BREAK ------------------ */
+
+// Displays one available SQLite scan type as a selectable filter chip.
+function TypeFilterChip({ filter, selected }: { filter: ScanTypeFilter; selected: boolean }) {
+  // Applies or clears the selected type through the list route query.
+  const handlePress = () => {
+    if (selected) {
+      router.replace("/scans/list");
+      return;
+    };//if ends
+
+    router.setParams({ type: filter.type });
+  };//func ends
+
+  //Default Return
+  return (
+    <Pressable
+      accessibilityLabel={`${selected ? "Clear" : "Filter by"} ${filter.label}`}
+      accessibilityRole="button"
+      onPress={handlePress}
+      style={({ pressed }) => [
+        styles.typeFilterChip,
+        selected && styles.selectedTypeFilterChip,
+        pressed && styles.typeFilterChipPressed
+      ]}
+    >
+      <MaterialCommunityIcons
+        name={filter.icon}
+        size={16}
+        color={selected ? colors.secondary.main : colors.mute.main}
+      />
+      <Text style={[styles.typeFilterText, selected && styles.selectedTypeFilterText]}>
+        {filter.label}
+      </Text>
+      {selected ? (
+        <MaterialCommunityIcons name="close" size={16} color={colors.secondary.main} />
+      ) : null}
+    </Pressable>
+  );//return ends
+};//func ends
+
+/* ------------------ BREAK ------------------ */
+
+// Builds count-ranked filter chips only for scan types that exist in SQLite.
+function createAvailableTypeFilters(records: ScanRecord[]): ScanTypeFilter[] {
+  const countsByType = new Map<string, number>();
+
+  records.forEach((record) => {
+    const scanType = normalizeScanType(record.type);
+    countsByType.set(scanType, (countsByType.get(scanType) || 0) + 1);
+  });
+
+  return [...countsByType.entries()]
+    .sort((firstEntry, secondEntry) => secondEntry[1] - firstEntry[1])
+    .map(([type, count]) => {
+      const typeInit = getScanTypeInit(type);
+      return { type, count, label: typeInit.label, icon: typeInit.icon };
+    });
+};//func ends
+
+/* ------------------ BREAK ------------------ */
+
 // Filters scan records using their searchable local database fields.
-function filterScans(records: ScanRecord[], searchText: string): ScanRecord[] {
+function filterScans(records: ScanRecord[], searchText: string, typeFilter: string): ScanRecord[] {
   const normalizedSearch = searchText.trim().toLocaleLowerCase();
+  const typeRecords = typeFilter
+    ? records.filter((record) => normalizeScanType(record.type) === typeFilter)
+    : records;
 
   if (!normalizedSearch) {
-    return records;
+    return typeRecords;
   };//if ends
 
-  return records.filter((record) =>
+  return typeRecords.filter((record) =>
     [
       record.value,
       record.status,
@@ -205,7 +430,6 @@ function renderScanItem({ item }: ListRenderItemInfo<ScanRecord>) {
       </View>
       <View style={styles.scanContent}>
         <Text numberOfLines={1} style={styles.scanTitle}>{displayTitle}</Text>
-        <Text numberOfLines={1} style={styles.scanUrl}>{item.value}</Text>
         <View style={styles.scanMetaRow}>
           <Text style={styles.scanDate}>{formatScanDate(item.created_at)}</Text>
           {location ? (
@@ -229,13 +453,29 @@ function renderScanItem({ item }: ListRenderItemInfo<ScanRecord>) {
 /* ------------------ BREAK ------------------ */
 
 // Displays the appropriate empty or error state for the scan list.
-function EmptyScansState({ hasSearch, error }: { hasSearch: boolean; error: string | null }) {
-  const icon = error ? "alert-circle-outline" : hasSearch ? "magnify" : "history";
-  const title = error ? "Unable to load scans" : hasSearch ? "No scans found" : "No scans yet";
+function EmptyScansState({
+  hasSearch,
+  typeLabel,
+  error
+}: {
+  hasSearch: boolean;
+  typeLabel: string | null;
+  error: string | null;
+}) {
+  const icon = error ? "alert-circle-outline" : hasSearch ? "magnify" : typeLabel ? "filter-outline" : "history";
+  const title = error
+    ? "Unable to load scans"
+    : hasSearch
+      ? "No scans found"
+      : typeLabel
+        ? `No ${typeLabel} scans`
+        : "No scans yet";
   const message = error
     ?? (hasSearch
       ? "Try searching with another URL, status or location."
-      : "Your saved QR scans will appear here after your first scan.");
+      : typeLabel
+        ? `Your saved ${typeLabel} scans will appear here.`
+        : "Your saved QR scans will appear here after your first scan.");
 
   //Default Return
   return (
@@ -247,6 +487,13 @@ function EmptyScansState({ hasSearch, error }: { hasSearch: boolean; error: stri
       <Text style={styles.stateText}>{message}</Text>
     </View>
   );//return ends
+};//func ends
+
+/* ------------------ BREAK ------------------ */
+
+// Converts an Expo query parameter into one scalar scan type value.
+function getRouteParam(value: string | string[] | undefined): string {
+  return Array.isArray(value) ? value[0] ?? "" : value ?? "";
 };//func ends
 
 /* ------------------ BREAK ------------------ */
@@ -306,40 +553,12 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     gap: spacing.md,
-    paddingTop: spacing.lg,
-    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xs,
+    paddingHorizontal: spacing.lg * 0.6,
     backgroundColor: colors.cream.main
   },
-  headingRow: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    justifyContent: "space-between"
-  },
-  eyebrow: {
-    marginBottom: spacing.xxs,
-    color: colors.secondary.main,
-    fontFamily: fontFamilies.mono,
-    fontSize: fontSizes.overline,
-    letterSpacing: 1.8
-  },
-  title: {
-    color: colors.primary.main,
-    fontFamily: fontFamilies.primaryBold,
-    fontSize: fontSizes.h4
-  },
-  countBadge: {
-    minWidth: 42,
-    height: 32,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: spacing.sm,
-    borderRadius: radii.pill,
-    backgroundColor: colors.secondary.light
-  },
-  countText: {
-    color: colors.secondary.dark,
-    fontFamily: fontFamilies.primarySemiBold,
-    fontSize: fontSizes.body2
+  filterControls: {
+    gap: spacing.xs
   },
   searchShell: {
     minHeight: 52,
@@ -351,6 +570,81 @@ const styles = StyleSheet.create({
     borderColor: colors.border.main,
     borderRadius: radii.lg,
     backgroundColor: colors.white.main
+  },
+  typeFilterScroller: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 0,
+    overflow: "hidden",
+    borderRadius: radii.pill
+  },
+  typeFilterScroll: {
+    minWidth: 0,
+    flex: 1
+  },
+  typeFilterContent: {
+    flexDirection: "row",
+    gap: spacing.xs
+  },
+  typeScrollControl: {
+    position: "relative",
+    width: 40,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 2
+  },
+  typeScrollFade: {
+    position: "absolute",
+    top: 0
+  },
+  leftTypeScrollFade: {
+    left: 0
+  },
+  rightTypeScrollFade: {
+    right: 0
+  },
+  typeScrollButton: {
+    width: 34,
+    height: 34,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: colors.border.main,
+    borderRadius: radii.pill,
+    backgroundColor: "rgba(250, 247, 242, 0.88)",
+    zIndex: 1
+  },
+  typeScrollButtonPressed: {
+    backgroundColor: colors.cream.dark
+  },
+  typeFilterChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border.main,
+    borderRadius: radii.pill,
+    backgroundColor: colors.white.main
+  },
+  selectedTypeFilterChip: {
+    borderColor: colors.secondary.light,
+    backgroundColor: colors.secondary.light
+  },
+  typeFilterText: {
+    color: colors.mute.main,
+    fontFamily: fontFamilies.primaryMedium,
+    fontSize: fontSizes.caption
+  },
+  selectedTypeFilterText: {
+    color: colors.secondary.dark,
+    fontFamily: fontFamilies.primarySemiBold
+  },
+  typeFilterChipPressed: {
+    opacity: 0.7
   },
   searchInput: {
     flex: 1,
@@ -369,7 +663,7 @@ const styles = StyleSheet.create({
     height: spacing.sm
   },
   scanCard: {
-    minHeight: 104,
+    minHeight: 88,
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
@@ -398,12 +692,6 @@ const styles = StyleSheet.create({
     color: colors.primary.main,
     fontFamily: fontFamilies.primarySemiBold,
     fontSize: fontSizes.body1
-  },
-  scanUrl: {
-    marginTop: spacing.xxs,
-    color: colors.mute.main,
-    fontFamily: fontFamilies.primaryRegular,
-    fontSize: fontSizes.caption
   },
   scanMetaRow: {
     minWidth: 0,

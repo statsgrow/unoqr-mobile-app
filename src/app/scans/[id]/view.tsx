@@ -2,14 +2,17 @@ import { useCallback, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
-import * as WebBrowser from "expo-web-browser";
-import { ActivityIndicator, IconButton, Text } from "react-native-paper";
+import { ActivityIndicator, Text } from "react-native-paper";
 
+import { PxDialog } from "@/components/elements/PxDialog";
 import { GeneralLayout } from "@/components/layout/GeneralLayout";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { TopNav } from "@/components/layout/TopNav";
 import { getScanById } from "@/helpers/scans/db/getQueries";
+import { getScanTypeInit } from "@/helpers/scans/identifiers";
+import { PlainText } from "@/helpers/scans/scanTypes/Text";
 import { UpiPayment } from "@/helpers/scans/scanTypes/UpiPayment";
 import { Website } from "@/helpers/scans/scanTypes/Website";
-import { getScanStatusColor, getScanStatusLabel } from "@/helpers/scans/status";
 import { colors, fontFamilies, fontSizes, radii, spacing } from "@/theme/tokens";
 
 /* ------------------ BREAK ------------------ */
@@ -22,13 +25,6 @@ type ScanDetailState = {
   error: string | null;
 };
 
-type ScanDetailHeaderProps = {
-  finalUrl: string | null;
-  status: string | null;
-};
-
-/* ------------------ BREAK ------------------ */
-
 // Shows the complete locally stored scan row as temporary raw output.
 export default function ScanDetailScreen() {
   const params = useLocalSearchParams<{ id?: string | string[] }>();
@@ -38,6 +34,7 @@ export default function ScanDetailScreen() {
     loading: true,
     error: null
   });
+  const [isSyncInfoOpen, setIsSyncInfoOpen] = useState(false);
 
   // Reloads the local scan whenever this detail route receives focus.
   useFocusEffect(
@@ -75,12 +72,12 @@ export default function ScanDetailScreen() {
   return (
     <GeneralLayout
       topView={(
-        <ScanDetailHeader
-          finalUrl={record?.final_url ?? null}
-          status={record?.status ?? null}
+        <TopNav
+          title="Collected data"
+          showSyncStatus
+          onSyncInfoPress={() => setIsSyncInfoOpen(true)}
         />
       )}
-      hideBottomMenu
       contentContainerStyle={styles.layoutContent}
       bodyStyle={styles.layoutBody}
     >
@@ -91,6 +88,10 @@ export default function ScanDetailScreen() {
         </View>
       ) : record ? (
         <View style={styles.screen}>
+          <PageHeader
+            title={getScanTypeLabel(record)}
+            description={getScanTypeDescription(record)}
+          />
           <ScanTypeContent record={record} />
         </View>
       ) : (
@@ -107,6 +108,13 @@ export default function ScanDetailScreen() {
           </Pressable>
         </View>
       )}
+      <PxDialog
+        open={isSyncInfoOpen}
+        setOpen={setIsSyncInfoOpen}
+        title="Cloud sync is not active"
+        subtitle="This scan is saved only on this device because you are not logged in. Log in later to access your scans across devices."
+        color="warning"
+      />
     </GeneralLayout>
   );//return ends
 };//export ends
@@ -116,6 +124,7 @@ export default function ScanDetailScreen() {
 // Selects the dedicated scan detail component for the stored scan type.
 function ScanTypeContent({ record }: { record: ScanRecord }) {
   if (record.type === "url") return <Website record={record} />;
+  if (record.type === "text") return <PlainText record={record} />;
   if (record.type === "upi_payment" || /^upi:\/\//i.test(record.value)) {
     return <UpiPayment record={record} />;
   };//if ends
@@ -130,45 +139,19 @@ function ScanTypeContent({ record }: { record: ScanRecord }) {
   );//return ends
 };//func ends
 
-// Renders the detail heading, back control, and optional final-URL link button.
-function ScanDetailHeader({ finalUrl, status }: ScanDetailHeaderProps) {
-  const safeFinalUrl = getSafeWebUrl(finalUrl);
-  const statusColor = getScanStatusColor(status);
+// Resolves the page heading from the stored type while recognizing legacy UPI rows.
+function getScanTypeLabel(record: ScanRecord): string {
+  const scanType = /^upi:\/\//i.test(record.value) ? "upi_payment" : record.type;
+  return getScanTypeInit(scanType).label;
+};//func ends
 
-  //Default Return
-  return (
-    <View style={styles.header}>
-      <Pressable
-        accessibilityLabel="Back to My Scans"
-        accessibilityRole="button"
-        onPress={goToScansList}
-        style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
-      >
-        <MaterialCommunityIcons name="arrow-left" size={24} color={colors.primary.main} />
-      </Pressable>
-      <View style={styles.headerText}>
-        <Text style={styles.eyebrow}>MY SCANS</Text>
-        <View style={styles.headerTitleRow}>
-          <Text style={styles.headerTitle}>Collected data</Text>
-          {status ? (
-            <View
-              accessible
-              accessibilityLabel={`Status: ${getScanStatusLabel(status)}`}
-              style={[styles.statusDot, { backgroundColor: statusColor }]}
-            />
-          ) : null}
-        </View>
-      </View>
-      <IconButton
-        accessibilityLabel="Open final URL"
-        disabled={!safeFinalUrl}
-        icon="link-variant"
-        iconColor={safeFinalUrl ? colors.secondary.main : colors.mute.light}
-        onPress={() => void openFinalUrl(safeFinalUrl)}
-        style={styles.linkButton}
-      />
-    </View>
-  );//return ends
+// Provides supporting page copy for scan types that benefit from added context.
+function getScanTypeDescription(record: ScanRecord): string | undefined {
+  if (record.type === "text") return "The exact text collected from this QR code.";
+
+  return /^upi:\/\//i.test(record.value)
+    ? "Payment details collected from this UPI QR code."
+    : undefined;
 };//func ends
 
 // Returns to the existing scan list route or opens it as a fallback.
@@ -176,32 +159,9 @@ function goToScansList() {
   router.dismissTo("/scans/list");
 };//func ends
 
-// Opens a validated final HTTP(S) destination in Expo Web Browser.
-async function openFinalUrl(finalUrl: string | null): Promise<void> {
-  if (!finalUrl) return;
-
-  try {
-    await WebBrowser.openBrowserAsync(finalUrl);
-  } catch (error: unknown) {
-    console.error("Unable to reopen final scan URL:", error);
-  };//try-catch ends
-};//func ends
-
 // Converts an Expo route parameter into one string value.
 function getRouteParam(value: string | string[] | undefined): string {
   return Array.isArray(value) ? value[0] ?? "" : value ?? "";
-};//func ends
-
-// Accepts only a complete HTTP or HTTPS final URL.
-function getSafeWebUrl(value: string | null): string | null {
-  if (!value) return null;
-
-  try {
-    const parsedUrl = new URL(value);
-    return parsedUrl.protocol === "http:" || parsedUrl.protocol === "https:" ? value : null;
-  } catch {
-    return null;
-  };//try-catch ends
 };//func ends
 
 // Pretty-prints the complete SQLite scan row for temporary raw inspection.
@@ -213,62 +173,17 @@ function formatRawScanRow(record: ScanRecord): string {
 
 const styles = StyleSheet.create({
   layoutContent: {
-    backgroundColor: colors.white.main
+    backgroundColor: colors.cream.main
   },
   layoutBody: {
     flex: 1
   },
-  header: {
-    minHeight: 72,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    paddingHorizontal: spacing.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border.main,
-    backgroundColor: colors.white.main
-  },
-  backButton: {
-    width: 44,
-    height: 44,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: radii.pill,
-    backgroundColor: colors.cream.main
-  },
-  pressed: {
-    opacity: 0.65
-  },
-  headerText: {
-    flex: 1
-  },
-  eyebrow: {
-    color: colors.secondary.main,
-    fontFamily: fontFamilies.mono,
-    fontSize: fontSizes.overline,
-    letterSpacing: 1.5
-  },
-  headerTitle: {
-    color: colors.primary.main,
-    fontFamily: fontFamilies.primarySemiBold,
-    fontSize: fontSizes.h6
-  },
-  headerTitleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.xs
-  },
-  statusDot: {
-    width: 9,
-    height: 9,
-    borderRadius: radii.pill
-  },
-  linkButton: {
-    margin: 0,
-    backgroundColor: colors.cream.main
-  },
   screen: {
-    padding: spacing.lg
+    gap: spacing.md,
+    paddingTop: spacing.xs,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.lg,
+    backgroundColor: colors.cream.main
   },
   rawOutputCard: {
     padding: spacing.md,

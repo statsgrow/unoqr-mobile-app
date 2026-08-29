@@ -23,8 +23,9 @@ export const sqliteSettings = {
 export const userTokenSettings = {
   //local storage keys for user tokens
   storageTokens: {
-    accessToken: { name: 'uq-auth-token' },
-    refreshToken: { name: 'uq-auth-refresh-token' },
+    accessToken: { name: 'unoqr-auth-access-token', legacyName: 'uq-auth-token' },
+    refreshToken: { name: 'unoqr-auth-refresh-token', legacyName: 'uq-auth-refresh-token' },
+    userData: { name: 'unoqr-auth-user' },
   },
   
   //header tokens for api requests

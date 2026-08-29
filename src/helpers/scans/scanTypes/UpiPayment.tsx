@@ -1,9 +1,11 @@
+import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import * as Linking from "expo-linking";
 import { Text } from "react-native-paper";
 
 import { getScanById } from "@/helpers/scans/db/getQueries";
+import type { StoredScanReference } from "@/helpers/scans/db/persistScan";
 import { colors, fontFamilies, fontSizes, radii, spacing } from "@/theme/tokens";
 
 /* ------------------ BREAK ------------------ */
@@ -23,6 +25,14 @@ type UpiHandle = {
 type PaymentDetailProps = {
   label: string;
   value: string;
+};
+
+type UpiAppDefinition = {
+  name: string;
+  scheme: string;
+  icon: keyof typeof MaterialCommunityIcons.glyphMap;
+  iconColor: string;
+  iconBackground: string;
 };
 
 /* ------------------ BREAK ------------------ */
@@ -83,10 +93,49 @@ const upiHandles: UpiHandle[] = [
   { identifier: "upi", bank: "NPCI Managed", app: "BHIM" }
 ];
 
+const upiAppDefinitions: UpiAppDefinition[] = [
+  {
+    name: "PhonePe",
+    scheme: "phonepe://",
+    icon: "cellphone-check",
+    iconColor: "#5F259F",
+    iconBackground: "#F0E8FA"
+  },
+  {
+    name: "Google Pay",
+    scheme: "tez://",
+    icon: "google",
+    iconColor: "#4285F4",
+    iconBackground: "#E8F0FE"
+  },
+  {
+    name: "Paytm",
+    scheme: "paytmmp://",
+    icon: "wallet-outline",
+    iconColor: "#00BAF2",
+    iconBackground: "#E5F8FD"
+  },
+  {
+    name: "BHIM",
+    scheme: "bhim://",
+    icon: "bank-outline",
+    iconColor: "#F36F21",
+    iconBackground: "#FFF0E7"
+  },
+  {
+    name: "Amazon Pay",
+    scheme: "amazonpay://",
+    icon: "shopping-outline",
+    iconColor: "#232F3E",
+    iconBackground: "#EEF0F2"
+  }
+];
+
 /* ------------------ BREAK ------------------ */
 
 // Shows a UPI payment summary with the provider inferred from the payee VPA.
 export function UpiPayment({ record }: UpiPaymentProps) {
+  const [installedUpiApps, setInstalledUpiApps] = useState<UpiAppDefinition[]>([]);
   const metadata = record.metadata;
   const payeeVpa = metadata?.payeeVpa || null;
   const payeeName = metadata?.payeeName || null;
@@ -97,6 +146,19 @@ export function UpiPayment({ record }: UpiPaymentProps) {
   const transactionRefId = metadata?.transactionRefId || null;
   const hasPayeeData = Boolean(payeeName || payeeVpa);
   const timestamp = formatScanTimestamp(record.created_at);
+
+  // Checks supported payment-app schemes and stores only confirmed installed apps.
+  useEffect(() => {
+    let isMounted = true;
+
+    void findInstalledUpiApps().then((apps) => {
+      if (isMounted) setInstalledUpiApps(apps);
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   //Default Return
   return (
@@ -115,11 +177,15 @@ export function UpiPayment({ record }: UpiPaymentProps) {
             accessibilityRole="link"
             disabled={!paymentUrl}
             onPress={() => void openUpiPayment(paymentUrl)}
-            style={({ pressed }) => [styles.chevronButton, pressed && styles.pressedChevron]}
+            style={({ pressed }) => [
+              styles.openPaymentButton,
+              !paymentUrl && styles.disabledOpenPaymentButton,
+              pressed && styles.pressedOpenPaymentButton
+            ]}
           >
             <MaterialCommunityIcons
-              name="chevron-right"
-              size={24}
+              name="arrow-top-right"
+              size={20}
               color={paymentUrl ? colors.secondary.main : colors.mute.light}
             />
           </Pressable>
@@ -143,11 +209,44 @@ export function UpiPayment({ record }: UpiPaymentProps) {
         </View>
       ) : null}
 
+      <View style={styles.detailSection}>
+        <Text style={styles.sectionLabel}>UPI App Installed</Text>
+        <View style={styles.upiAppsCard}>
+          {installedUpiApps.length > 0 ? installedUpiApps.map((app, index) => (
+            <View
+              key={app.name}
+              style={[
+                styles.upiAppRow,
+                index < installedUpiApps.length - 1 && styles.upiAppRowDivider
+              ]}
+            >
+              <View style={[styles.upiAppIcon, { backgroundColor: app.iconBackground }]}>
+                <MaterialCommunityIcons name={app.icon} size={20} color={app.iconColor} />
+              </View>
+              <Text style={styles.upiAppName}>{app.name}</Text>
+              <MaterialCommunityIcons name="check-circle" size={18} color={colors.success.main} />
+            </View>
+          )) : (
+            <View style={styles.noUpiAppsRow}>
+              <MaterialCommunityIcons name="cellphone-remove" size={20} color={colors.mute.light} />
+              <Text style={styles.noUpiAppsText}>No Apps Found</Text>
+            </View>
+          )}
+        </View>
+      </View>
+
       {amount ? <PaymentDetail label="Amount" value={amount} /> : null}
       {transactionNote ? <PaymentDetail label="Transaction note" value={transactionNote} /> : null}
       {transactionRefId ? <PaymentDetail label="Reference ID" value={transactionRefId} /> : null}
     </View>
   );//return ends
+};//export ends
+
+/* ------------------ BREAK ------------------ */
+
+// Opens an already stored UPI payment scan in its payment app chooser.
+export async function processUpiPaymentScan(scan: StoredScanReference): Promise<void> {
+  await Linking.openURL(scan.value);
 };//export ends
 
 /* ------------------ BREAK ------------------ */
@@ -163,6 +262,22 @@ function PaymentDetail({ label, value }: PaymentDetailProps) {
       </View>
     </View>
   );//return ends
+};//func ends
+
+// Finds recognized UPI apps through their registered deep-link schemes.
+async function findInstalledUpiApps(): Promise<UpiAppDefinition[]> {
+  const availability = await Promise.all(
+    upiAppDefinitions.map(async (app) => {
+      try {
+        return await Linking.canOpenURL(app.scheme) ? app : null;
+      } catch (error: unknown) {
+        console.warn(`Unable to check the ${app.name} payment intent:`, error);
+        return null;
+      };//try-catch ends
+    })
+  );
+
+  return availability.filter((app): app is UpiAppDefinition => app !== null);
 };//func ends
 
 // Resolves a payment app and partner bank from the exact handle after the VPA at-sign.
@@ -254,13 +369,18 @@ const styles = StyleSheet.create({
     fontSize: fontSizes.body2,
     lineHeight: 20
   },
-  chevronButton: {
-    width: 28,
+  openPaymentButton: {
+    width: 40,
     height: 40,
     alignItems: "center",
-    justifyContent: "center"
+    justifyContent: "center",
+    borderRadius: radii.pill,
+    backgroundColor: colors.secondary.light
   },
-  pressedChevron: {
+  disabledOpenPaymentButton: {
+    backgroundColor: colors.cream.dark
+  },
+  pressedOpenPaymentButton: {
     opacity: 0.65
   },
   timestampRow: {
@@ -313,6 +433,50 @@ const styles = StyleSheet.create({
     fontFamily: fontFamilies.mono,
     fontSize: fontSizes.caption,
     lineHeight: 18
+  },
+  upiAppsCard: {
+    overflow: "hidden",
+    paddingHorizontal: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border.main,
+    borderRadius: radii.xl,
+    backgroundColor: colors.white.main
+  },
+  upiAppRow: {
+    minHeight: 58,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm
+  },
+  upiAppRowDivider: {
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border.light
+  },
+  upiAppIcon: {
+    width: 34,
+    height: 34,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: radii.md
+  },
+  upiAppName: {
+    minWidth: 0,
+    flex: 1,
+    color: colors.primary.main,
+    fontFamily: fontFamilies.primaryMedium,
+    fontSize: fontSizes.body2
+  },
+  noUpiAppsRow: {
+    minHeight: 64,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.xs
+  },
+  noUpiAppsText: {
+    color: colors.mute.main,
+    fontFamily: fontFamilies.primaryRegular,
+    fontSize: fontSizes.body2
   },
   detailCard: {
     minHeight: 64,

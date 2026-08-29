@@ -132,7 +132,7 @@ export default function ScanWebViewScreen() {
       return;
     };//if ends
 
-    router.replace("/scan");
+    router.replace("/scans/scanner");
   };//func ends
 
   // Opens the latest top-level destination using the retained Expo Web Browser flow.
@@ -180,7 +180,7 @@ export default function ScanWebViewScreen() {
       console.error("Unable to open resolved scan in Expo Web Browser:", error);
     } finally {
       setShowLoadingOverlay(false);
-      router.dismissTo("/scan");
+      router.dismissTo("/scans/scanner");
     };//try-catch-finally ends
   };//func ends
 
