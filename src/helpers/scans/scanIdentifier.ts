@@ -1,7 +1,10 @@
 import { persistScan } from "./db/persistScan";
 import { processDeepLinkScan } from "./scanTypes/DeepLink";
 import { processTextScan } from "./scanTypes/Text";
-import { processUpiPaymentScan } from "./scanTypes/UpiPayment";
+import {
+  checkBharatQr,
+  getUpiPaymentDetails
+} from "./scanTypes/UpiPayment";
 import { processWebsiteScan } from "./scanTypes/Website";
 
 /* ---------------------- BREAK ---------------------- */
@@ -59,11 +62,6 @@ export async function processPreparedScan(scan: PreparedScan): Promise<Processed
     return { scanId: storedScan.id, textValue: null };
   };//if ends
 
-  if (scan.type === "upi_payment") {
-    await processUpiPaymentScan(storedScan);
-    return { scanId: storedScan.id, textValue: null };
-  };//if ends
-
   if (scan.type === "deep_link") {
     await processDeepLinkScan(storedScan);
     return { scanId: storedScan.id, textValue: null };
@@ -87,7 +85,9 @@ export function identifyScanType(value: string): ScanType {
   if (isWifiScan(value)) return "wifi";
   if (isSmsScan(value)) return "sms";
   if (isLocationScan(value)) return "location";
-  if (isUpiPaymentScan(value)) return "upi_payment";
+  if (/^upi:\/\/pay(?:\?|$)/i.test(value.trim())) {
+    return isUpiPaymentScan(value) ? "upi_payment" : "custom";
+  };//if ends
   if (isPaymentScan(value)) return "payment";
   if (isEmailScan(value)) return "email";
   if (isUrlScan(value)) return "url";
@@ -104,7 +104,9 @@ export function identifyScanType(value: string): ScanType {
 // Adds HTTPS to recognizable bare web domains while preserving non-web QR payloads.
 export function normalizeScannedValue(value: string): string {
   const text = value.trim();
+  const bharatQrPaymentUrl = checkBharatQr(text);
 
+  if (bharatQrPaymentUrl) return bharatQrPaymentUrl;
   if (isHttpUrl(text)) return text;
   if (isBareWebUrl(text)) return `https://${text}`;
 
@@ -163,8 +165,7 @@ export function isLocationScan(value: string): boolean {
 
 // Returns whether the payload contains a UPI payment destination.
 export function isUpiPaymentScan(value: string): boolean {
-  const text = (value || "").trim();
-  return /^upi:\/\/pay(?:\?|$)/i.test(text);
+  return Boolean(getUpiPaymentDetails(value));
 };//export ends
 
 /* ---------------------- BREAK ---------------------- */
@@ -185,10 +186,10 @@ export function isEmailScan(value: string): boolean {
 
 /* ---------------------- BREAK ---------------------- */
 
-// Returns whether the payload contains a phone URI or phone-shaped value.
+// Returns whether the payload explicitly contains a phone URI.
 export function isPhoneScan(value: string): boolean {
   const text = (value || "").trim();
-  return /^tel:/i.test(text) || /^\+?[0-9][0-9\s().-]{5,}$/.test(text);
+  return /^tel:\+?[0-9]/i.test(text);
 };//export ends
 
 /* ---------------------- BREAK ---------------------- */
@@ -241,7 +242,27 @@ function isHttpUrl(value: string): boolean {
 
 // Returns whether the value resembles a web domain that can safely receive an HTTPS prefix.
 function isBareWebUrl(value: string): boolean {
-  return /^(?:www\.)?(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}(?::\d+)?(?:[/?#][^\s]*)?$/i.test(value);
+  if (!value || /\s/.test(value)) return false;
+
+  const destinationStart = value.search(/[/?#]/);
+  const authority = destinationStart >= 0 ? value.slice(0, destinationStart) : value;
+  const portSeparator = authority.lastIndexOf(":");
+  const hasPort = portSeparator >= 0;
+  const hostname = hasPort ? authority.slice(0, portSeparator) : authority;
+  const port = hasPort ? authority.slice(portSeparator + 1) : null;
+
+  if (port !== null && !/^\d+$/.test(port)) return false;
+
+  const labels = hostname.split(".");
+  if (labels.length < 2 || !/^[a-z]{2,}$/i.test(labels.at(-1) || "")) return false;
+
+  return labels.every(isValidHostnameLabel);
+};//func ends
+
+// Validates one hostname label without nested regex repetition or backtracking.
+function isValidHostnameLabel(label: string): boolean {
+  if (!label || label.startsWith("-") || label.endsWith("-")) return false;
+  return /^[a-z0-9-]+$/i.test(label);
 };//func ends
 
 /* ---------------------- BREAK ---------------------- */

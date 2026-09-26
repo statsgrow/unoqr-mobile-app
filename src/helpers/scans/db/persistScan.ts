@@ -32,6 +32,8 @@ export async function persistScan(value: string, scanType: ScanType): Promise<St
     user_id: null,
     website_id: null,
     sync_status: "pending",
+    crawl_status: isWebsiteScan ? "pending" : "not_needed",
+    error: null,
     metadata: null
   };
 

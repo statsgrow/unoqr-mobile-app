@@ -19,9 +19,10 @@ import Svg, { Defs, LinearGradient as SvgLinearGradient, Rect, Stop } from "reac
 
 import { GeneralLayout } from "@/components/layout/GeneralLayout";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { UpiPaymentIcon } from "@/helpers/scans/components/UpiPaymentIcon";
 import { getAllScans } from "@/helpers/scans/db/getQueries";
 import { getScanTypeInit, normalizeScanType } from "@/helpers/scans/identifiers";
-import { getScanStatusColor, getScanStatusLabel } from "@/helpers/scans/status";
+import { getScanCrawlError, getScanStatusColor, getScanStatusLabel } from "@/helpers/scans/status";
 import { colors, fontFamilies, fontSizes, radii, spacing } from "@/theme/tokens";
 
 /* ------------------ BREAK ------------------ */
@@ -343,11 +344,6 @@ function TypeFilterChip({ filter, selected }: { filter: ScanTypeFilter; selected
         pressed && styles.typeFilterChipPressed
       ]}
     >
-      <MaterialCommunityIcons
-        name={filter.icon}
-        size={16}
-        color={selected ? colors.secondary.main : colors.mute.main}
-      />
       <Text style={[styles.typeFilterText, selected && styles.selectedTypeFilterText]}>
         {filter.label}
       </Text>
@@ -410,10 +406,14 @@ function filterScans(records: ScanRecord[], searchText: string, typeFilter: stri
 // Renders one saved scan as a compact history card.
 function renderScanItem({ item }: ListRenderItemInfo<ScanRecord>) {
   const scanTypeInit = getScanTypeInit(item.type);
+  const isUpiPayment = item.type === "upi_payment" || /^upi:\/\/pay(?:\?|$)/i.test(item.value);
   const displayTitle = item.metadata?.title
-    || (item.type === "url" ? getDisplayUrl(item.final_url || item.input_url || item.value) : scanTypeInit.label);
+    || (item.type === "url" || item.type === "file"
+      ? getDisplayUrl(item.final_url || item.input_url || item.value)
+      : scanTypeInit.label);
   const location = getLocationText(item.location);
-  const status = item.status || "pending";
+  const crawlError = getScanCrawlError(item.crawl_status, item.metadata?.error);
+  const status = crawlError ? "failed" : item.status || "pending";
   const statusColor = getScanStatusColor(status);
 
   //Default Return
@@ -425,9 +425,13 @@ function renderScanItem({ item }: ListRenderItemInfo<ScanRecord>) {
       onPress={() => router.push(`/scans/${item.id}/view`)}
       style={({ pressed }) => [styles.scanCard, pressed && styles.scanCardPressed]}
     >
-      <View style={styles.scanIcon}>
-        <MaterialCommunityIcons name={scanTypeInit.icon} size={24} color={colors.secondary.main} />
-      </View>
+      {isUpiPayment ? (
+        <UpiPaymentIcon size={46} />
+      ) : (
+        <View style={styles.scanIcon}>
+          <MaterialCommunityIcons name={scanTypeInit.icon} size={24} color={colors.primary.main} />
+        </View>
+      )}
       <View style={styles.scanContent}>
         <Text numberOfLines={1} style={styles.scanTitle}>{displayTitle}</Text>
         <View style={styles.scanMetaRow}>
@@ -439,6 +443,9 @@ function renderScanItem({ item }: ListRenderItemInfo<ScanRecord>) {
             </>
           ) : null}
         </View>
+        {crawlError ? (
+          <Text numberOfLines={2} style={styles.scanError}>{crawlError}</Text>
+        ) : null}
       </View>
       <View
         accessible
@@ -681,8 +688,10 @@ const styles = StyleSheet.create({
     height: 46,
     alignItems: "center",
     justifyContent: "center",
+    borderWidth: 1,
+    borderColor: colors.neutral.light,
     borderRadius: radii.lg,
-    backgroundColor: colors.secondary.light
+    backgroundColor: colors.white.main
   },
   scanContent: {
     minWidth: 0,
@@ -715,6 +724,12 @@ const styles = StyleSheet.create({
     minWidth: 0,
     flex: 1,
     color: colors.mute.main,
+    fontFamily: fontFamilies.primaryRegular,
+    fontSize: fontSizes.caption
+  },
+  scanError: {
+    marginTop: spacing.xs,
+    color: colors.error.main,
     fontFamily: fontFamilies.primaryRegular,
     fontSize: fontSizes.caption
   },

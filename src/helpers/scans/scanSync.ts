@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import { apiSettings, installSettings } from "@/settings";
 import { insertAppInstall } from "@/utils/auth/AppInstall";
@@ -6,7 +6,13 @@ import { Axios } from "@/utils/general/Axios";
 import { getData } from "@/utils/general/Storage";
 import { db } from "@/utils/sqlite/db";
 
-import { initScansTable, type InsertScanInput, scansTable } from "./db/init";
+import { getScanById } from "./db/getQueries";
+import { appendScanError, waitForInitialScanSync } from "./db/insertQueries";
+import {
+  initScansTable,
+  type InsertScanInput,
+  scansTable
+} from "./db/init";
 import { updateScan } from "./db/updateQueries";
 
 /* ------------------ BREAK ------------------ */
@@ -23,9 +29,19 @@ type InstallInfo = {
   id?: string;
 };
 
+type CrawlApiResponse = {
+  data?: (Omit<InsertScanInput, "crawl_status"> & {
+    crawl_status: InsertScanInput["crawl_status"] | "cached";
+  }) | null;
+};
+
 /* ------------------ BREAK ------------------ */
 
 let pendingScanCheckPromise: Promise<void> | null = null;
+let uncrawledUrlCheckPromise: Promise<void> | null = null;
+let uncrawledUrlTrigger: ReturnType<typeof setInterval> | null = null;
+const crawlingScanPromises = new Map<string, Promise<void>>();
+const uncrawledUrlCheckIntervalMilliseconds = 5_000;
 
 /* ------------------ BREAK ------------------ */
 
@@ -38,6 +54,44 @@ export function checkPendingScans(): Promise<void> {
   });
 
   return pendingScanCheckPromise;
+};//export ends
+
+// Starts one recurring five-second check and returns a cleanup function for the root layout.
+export function startUnCrawledUrlsTrigger(): () => void {
+  void checkUnCrawledUrls();
+
+  if (!uncrawledUrlTrigger) {
+    uncrawledUrlTrigger = setInterval(() => {
+      void checkUnCrawledUrls();
+    }, uncrawledUrlCheckIntervalMilliseconds);
+  };//if ends
+
+  return () => {
+    if (!uncrawledUrlTrigger) return;
+
+    clearInterval(uncrawledUrlTrigger);
+    uncrawledUrlTrigger = null;
+  };
+};//export ends
+
+// Finds pending URL rows and crawls them sequentially without duplicating active requests.
+export function checkUnCrawledUrls(): Promise<void> {
+  if (uncrawledUrlCheckPromise) return uncrawledUrlCheckPromise;
+
+  uncrawledUrlCheckPromise = crawlPendingUrls().finally(() => {
+    uncrawledUrlCheckPromise = null;
+  });
+
+  return uncrawledUrlCheckPromise;
+};//export ends
+
+// Crawls one pending website opened from My Scans and waits for its local row to be updated.
+export async function crawlPendingUrlById(id: string): Promise<void> {
+  const scan = await getScanById(id);
+
+  if (!scan || scan.type !== "url" || scan.crawl_status !== "pending") return;
+
+  await crawlPendingUrl(scan);
 };//export ends
 
 /* ------------------ BREAK ------------------ */
@@ -80,6 +134,69 @@ async function synchronizePendingScans(): Promise<void> {
     }
   } catch (error: unknown) {
     console.error("Unable to synchronize pending scans:", error);
+  };//try-catch ends
+};//func ends
+
+// Loads pending website rows and sends each one through the shared crawl endpoint.
+async function crawlPendingUrls(): Promise<void> {
+  if (!db) return;
+
+  try {
+    await initScansTable();
+    const pendingUrls = await db
+      .select()
+      .from(scansTable)
+      .where(and(
+        eq(scansTable.type, "url"),
+        eq(scansTable.crawl_status, "pending")
+      ));
+
+    for (const pendingUrl of pendingUrls) {
+      await crawlPendingUrl(pendingUrl);
+    }
+  } catch (error: unknown) {
+    console.error("Unable to check uncrawled URLs:", error);
+  };//try-catch ends
+};//func ends
+
+// Shares one in-flight crawl promise for every pending scan ID.
+function crawlPendingUrl(scan: InsertScanInput): Promise<void> {
+  const existingPromise = crawlingScanPromises.get(scan.id);
+  if (existingPromise) return existingPromise;
+
+  const crawlPromise = requestPendingUrlCrawl(scan).finally(() => {
+    crawlingScanPromises.delete(scan.id);
+  });
+  crawlingScanPromises.set(scan.id, crawlPromise);
+  return crawlPromise;
+};//func ends
+
+// Requests one server-owned crawl and mirrors the returned Supabase row into SQLite.
+async function requestPendingUrlCrawl(scan: InsertScanInput): Promise<void> {
+  try {
+    await waitForInitialScanSync(scan.id);
+    const apiUrl = apiSettings.getApiUrl({ path: `/app/scans/${scan.id}/crawl_url` });
+    const response = await Axios.get<CrawlApiResponse>(apiUrl.href, {
+      params: {
+        install_id: scan.install_id
+      }
+    });
+    const crawledScan = response.data?.data;
+
+    if (!crawledScan || crawledScan.id !== scan.id) {
+      await appendScanError(scan.id, "The crawl API returned no website data.");
+      return;
+    };//if ends
+
+    const { id: crawledScanId, ...crawledScanData } = crawledScan;
+    await updateScan(crawledScanId, {
+      ...crawledScanData,
+      crawl_status: crawledScanData.crawl_status === "cached" ? "completed" : crawledScanData.crawl_status,
+      sync_status: "synced"
+    });
+  } catch (error: unknown) {
+    await appendScanError(scan.id, getErrorMessage(error));
+    console.error(`Unable to crawl pending URL scan ${scan.id}:`, error);
   };//try-catch ends
 };//func ends
 
@@ -136,6 +253,11 @@ async function ensurePendingScanInstall(scan: InsertScanInput): Promise<InsertSc
 
   await updateScan(scan.id, { install_id: installInfo.id });
   return { ...scan, install_id: installInfo.id };
+};//func ends
+
+// Converts an unknown crawl failure into a concise persisted message.
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "Unknown URL crawl error.";
 };//func ends
 
 /* ------------------ BREAK ------------------ */

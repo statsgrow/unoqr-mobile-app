@@ -7,6 +7,9 @@
       "environment": "preview",
       "channel": "preview",
       "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_CLOUD_PROJECT_NUMBER": "837653099029"
+      },
       "android": {
         "buildType": "apk"
       }
@@ -14,7 +17,10 @@
     "production": {
       "environment": "production",
       "channel": "production",
-      "autoIncrement": true
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_CLOUD_PROJECT_NUMBER": "837653099029"
+      }
     }
   }
 }

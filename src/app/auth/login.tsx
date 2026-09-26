@@ -22,6 +22,7 @@ import { Toast } from "@/utils/general/Toast";
 type LoginFormValues = {
   email: string;
   otp: string;
+  password: string;
 };
 
 type LoginParams = {
@@ -38,6 +39,8 @@ type AuthApiResponse<T> = {
 
 WebBrowser.maybeCompleteAuthSession();
 
+const TEST_USER_EMAIL = "unoqr.one@gmail.com";
+
 /* ------------------ BREAK ------------------ */
 
 // Manages email OTP and Google authentication from one UnoQR login page.
@@ -46,13 +49,15 @@ export default function LoginScreen() {
   const [isOtpSent, setIsOtpSent] = useState(false);
   const [isRequestingOtp, setIsRequestingOtp] = useState(false);
   const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
+  const [isLoggingInTestUser, setIsLoggingInTestUser] = useState(false);
   const [isOpeningGoogle, setIsOpeningGoogle] = useState(false);
   const isSignup = getFirstParam(params.mode) === "signup";
   const nextRoute = getSafeNextRoute(getFirstParam(params.next));
   const RHF = useForm<LoginFormValues>({
-    defaultValues: { email: "", otp: "" },
+    defaultValues: { email: "", otp: "", password: "" },
     mode: "onChange"
   });
+  const isTestUser = isTestUserEmail(RHF.watch("email"));
 
   // Requests an eight-digit OTP for the validated email address.
   const handleRequestOtp: SubmitHandler<LoginFormValues> = async ({ email }) => {
@@ -98,24 +103,41 @@ export default function LoginScreen() {
       const responseBody = await response.json().catch(() => null) as AuthApiResponse<UserSessionType> | null;
       if (!response.ok) throw new Error(responseBody?.message || "Unable to verify the OTP.");
 
-      const session = responseBody?.data;
-      if (!session?.access_token || !session.refresh_token) {
-        throw new Error("The authenticated session did not include tokens.");
-      };//if ends
-
-      await addUserData({
-        userData: session.user,
-        accessToken: session.access_token,
-        refreshToken: session.refresh_token
-      });
-      Toast.success({ message: "You are now logged in." });
-      router.replace(nextRoute as Href);
+      await completeAuthenticatedLogin(responseBody?.data, nextRoute);
     } catch (error: unknown) {
       const message = getErrorMessage(error, "Unable to verify the OTP.");
       RHF.setError("root", { type: "server", message });
       Toast.error({ message });
     } finally {
       setIsVerifyingOtp(false);
+    };//try-catch ends
+  };//func ends
+
+  // Signs the dedicated Google Play review user in with its reusable password.
+  const handleTestUserLogin: SubmitHandler<LoginFormValues> = async ({ email, password }) => {
+    setIsLoggingInTestUser(true);
+    RHF.clearErrors("root");
+
+    try {
+      const apiUrl = apiSettings.getApiUrl({ path: "/auth/app/login/test" });
+      const response = await fetch(apiUrl.href, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: email.trim().toLowerCase(),
+          password
+        })
+      });
+      const responseBody = await response.json().catch(() => null) as AuthApiResponse<UserSessionType> | null;
+      if (!response.ok) throw new Error(responseBody?.message || "Unable to log in the test user.");
+
+      await completeAuthenticatedLogin(responseBody?.data, nextRoute);
+    } catch (error: unknown) {
+      const message = getErrorMessage(error, "Unable to log in the test user.");
+      RHF.setError("root", { type: "server", message });
+      Toast.error({ message });
+    } finally {
+      setIsLoggingInTestUser(false);
     };//try-catch ends
   };//func ends
 
@@ -225,6 +247,22 @@ export default function LoginScreen() {
               </View>
             ) : null}
 
+            {isTestUser && !isOtpSent ? (
+              <View style={styles.fieldGroup}>
+                <Text style={styles.fieldLabel}>PASSWORD</Text>
+                <PxTextInput
+                  name="password"
+                  RHF={RHF}
+                  type="password"
+                  size="large"
+                  leftAdornment={{ icon: "lock-outline" }}
+                  placeholder="Enter test password"
+                  autoFocus
+                  rules={{ required: "Password is required" }}
+                />
+              </View>
+            ) : null}
+
             {RHF.formState.errors.root?.message ? (
               <Text style={styles.serverError}>{RHF.formState.errors.root.message}</Text>
             ) : null}
@@ -235,10 +273,18 @@ export default function LoginScreen() {
               size="lg"
               shape="rounded"
               fullWidth
-              loading={isOtpSent ? isVerifyingOtp : isRequestingOtp}
-              onPress={RHF.handleSubmit(isOtpSent ? handleVerifyOtp : handleRequestOtp)}
+              loading={isTestUser
+                ? isLoggingInTestUser
+                : isOtpSent
+                  ? isVerifyingOtp
+                  : isRequestingOtp}
+              onPress={RHF.handleSubmit(isTestUser
+                ? handleTestUserLogin
+                : isOtpSent
+                  ? handleVerifyOtp
+                  : handleRequestOtp)}
             >
-              {isOtpSent ? "Verify OTP" : "Continue with email"}
+              {isTestUser ? "Log in" : isOtpSent ? "Verify OTP" : "Continue with email"}
             </PxButton>
 
             <View style={styles.dividerRow}>
@@ -284,6 +330,29 @@ function getFirstParam(value?: string | string[]): string | null {
 function getSafeNextRoute(value: string | null): string {
   if (!value || !value.startsWith("/") || value.startsWith("//") || value.includes("\\")) return "/";
   return value;
+};//func ends
+
+// Returns whether the entered email belongs to the dedicated Play review account.
+function isTestUserEmail(email: string): boolean {
+  return email.trim().toLowerCase() === TEST_USER_EMAIL;
+};//func ends
+
+// Stores a returned Supabase session and completes the shared post-login flow.
+async function completeAuthenticatedLogin(
+  session: UserSessionType | null | undefined,
+  nextRoute: string
+): Promise<void> {
+  if (!session?.access_token || !session.refresh_token) {
+    throw new Error("The authenticated session did not include tokens.");
+  }//if ends
+
+  await addUserData({
+    userData: session.user,
+    accessToken: session.access_token,
+    refreshToken: session.refresh_token
+  });
+  Toast.success({ message: "You are now logged in." });
+  router.replace(nextRoute as Href);
 };//func ends
 
 // Converts an unknown request failure into readable login feedback.

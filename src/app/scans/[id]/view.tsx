@@ -5,14 +5,17 @@ import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { ActivityIndicator, Text } from "react-native-paper";
 
 import { PxDialog } from "@/components/elements/PxDialog";
+import { PxPageLoader } from "@/components/elements/PxPageLoader";
 import { GeneralLayout } from "@/components/layout/GeneralLayout";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { TopNav } from "@/components/layout/TopNav";
 import { getScanById } from "@/helpers/scans/db/getQueries";
 import { getScanTypeInit } from "@/helpers/scans/identifiers";
+import { crawlPendingUrlById } from "@/helpers/scans/scanSync";
 import { PlainText } from "@/helpers/scans/scanTypes/Text";
 import { UpiPayment } from "@/helpers/scans/scanTypes/UpiPayment";
 import { Website } from "@/helpers/scans/scanTypes/Website";
+import { getScanCrawlError } from "@/helpers/scans/status";
 import { colors, fontFamilies, fontSizes, radii, spacing } from "@/theme/tokens";
 
 /* ------------------ BREAK ------------------ */
@@ -22,6 +25,7 @@ type ScanRecord = NonNullable<Awaited<ReturnType<typeof getScanById>>>;
 type ScanDetailState = {
   record: ScanRecord | null;
   loading: boolean;
+  crawling: boolean;
   error: string | null;
 };
 
@@ -32,6 +36,7 @@ export default function ScanDetailScreen() {
   const [detailState, setDetailState] = useState<ScanDetailState>({
     record: null,
     loading: true,
+    crawling: false,
     error: null
   });
   const [isSyncInfoOpen, setIsSyncInfoOpen] = useState(false);
@@ -42,20 +47,25 @@ export default function ScanDetailScreen() {
       let isMounted = true;
 
       if (!scanId) {
-        setDetailState({ record: null, loading: false, error: "This scan ID is invalid." });
+        setDetailState({ record: null, loading: false, crawling: false, error: "This scan ID is invalid." });
         return () => {
           isMounted = false;
         };
       };//if ends
 
-      setDetailState((currentState) => ({ ...currentState, loading: true, error: null }));
+      setDetailState((currentState) => ({ ...currentState, loading: true, crawling: false, error: null }));
 
-      void getScanById(scanId).then((record) => {
+      void loadScanDetail(scanId, () => {
+        if (!isMounted) return;
+
+        setDetailState((currentState) => ({ ...currentState, loading: true, crawling: true }));
+      }).then((record) => {
         if (!isMounted) return;
 
         setDetailState({
           record,
           loading: false,
+          crawling: false,
           error: record ? null : "This scan could not be found on this device."
         });
       });
@@ -75,13 +85,19 @@ export default function ScanDetailScreen() {
         <TopNav
           title="Collected data"
           showSyncStatus
+          isSyncComplete={record?.sync_status === "synced"}
           onSyncInfoPress={() => setIsSyncInfoOpen(true)}
         />
       )}
       contentContainerStyle={styles.layoutContent}
       bodyStyle={styles.layoutBody}
     >
-      {detailState.loading ? (
+      {detailState.loading && detailState.crawling ? (
+        <PxPageLoader
+          title="Collecting website details"
+          description="We’re checking this link and preparing the collected data."
+        />
+      ) : detailState.loading ? (
         <View style={styles.centerState}>
           <ActivityIndicator size="large" color={colors.secondary.main} />
           <Text style={styles.stateText}>Loading collected scan data…</Text>
@@ -111,9 +127,13 @@ export default function ScanDetailScreen() {
       <PxDialog
         open={isSyncInfoOpen}
         setOpen={setIsSyncInfoOpen}
-        title="Cloud sync is not active"
-        subtitle="This scan is saved only on this device because you are not logged in. Log in later to access your scans across devices."
-        color="warning"
+        title={record?.sync_status === "synced" ? "Saved to cloud" : "Cloud sync is not active"}
+        subtitle={record?.sync_status === "synced"
+          ? getScanCrawlError(record.crawl_status, record.metadata?.error)
+            ? "This scan is saved in the cloud, but link details could not be collected."
+            : "This scan is saved in the cloud."
+          : "This scan is saved only on this device because you are not logged in. Log in later to access your scans across devices."}
+        color={record?.sync_status === "synced" ? "success" : "warning"}
       />
     </GeneralLayout>
   );//return ends
@@ -121,9 +141,24 @@ export default function ScanDetailScreen() {
 
 /* ------------------ BREAK ------------------ */
 
+// Loads one scan and completes pending website metadata before returning its refreshed row.
+async function loadScanDetail(id: string, onCrawling: () => void): Promise<ScanRecord | null> {
+  let record = await getScanById(id);
+
+  if (record?.type === "url" && record.crawl_status === "pending") {
+    onCrawling();
+    await crawlPendingUrlById(id);
+    record = await getScanById(id);
+  };//if ends
+
+  return record;
+};//func ends
+
+/* ------------------ BREAK ------------------ */
+
 // Selects the dedicated scan detail component for the stored scan type.
 function ScanTypeContent({ record }: { record: ScanRecord }) {
-  if (record.type === "url") return <Website record={record} />;
+  if (record.type === "url" || record.type === "file") return <Website record={record} />;
   if (record.type === "text") return <PlainText record={record} />;
   if (record.type === "upi_payment" || /^upi:\/\//i.test(record.value)) {
     return <UpiPayment record={record} />;

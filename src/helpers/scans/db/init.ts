@@ -5,6 +5,7 @@ import { db, sqliteDB } from "@/utils/sqlite/db";
 /* ------------------ BREAK ------------------ */
 
 export type ScanSyncStatus = "pending" | "processing" | "synced" | "incomplete";
+export type ScanCrawlStatus = "not_needed" | "pending" | "processing" | "completed" | "failed";
 
 export type ScanLocation = {
   latitude: number | null;
@@ -66,6 +67,8 @@ export type ScanMetadata = {
   error?: unknown;
   payeeVpa?: string | null;
   payeeName?: string | null;
+  isMerchant?: boolean;
+  merchantCategoryCode?: string | null;
   transactionNote?: string | null;
   transactionRefId?: string | null;
   amount?: string | null;
@@ -87,6 +90,8 @@ export type InsertScanInput = {
   website_id?: string | null;
   install_id?: string | null;
   sync_status: ScanSyncStatus;
+  crawl_status: ScanCrawlStatus;
+  error?: string | null;
   metadata?: ScanMetadata | null;
 };
 
@@ -124,6 +129,8 @@ export const scansTable = sqliteTable("scans", {
   website_id: text("website_id"),
   install_id: text("install_id"),
   sync_status: text("sync_status").$type<ScanSyncStatus>().notNull().default("pending"),
+  crawl_status: text("crawl_status").$type<ScanCrawlStatus>().notNull().default("not_needed"),
+  error: text("error"),
   metadata: text("metadata", { mode: "json" }).$type<ScanMetadata | null>()
 });
 
@@ -150,6 +157,9 @@ export async function createScansTable() {
       install_id TEXT,
       sync_status TEXT NOT NULL DEFAULT 'pending'
         CHECK (sync_status IN ('pending', 'processing', 'synced', 'incomplete')),
+      crawl_status TEXT NOT NULL DEFAULT 'not_needed'
+        CHECK (crawl_status IN ('not_needed', 'pending', 'processing', 'completed', 'failed')),
+      error TEXT,
       metadata TEXT
     );
   `);
@@ -170,6 +180,8 @@ export async function removeLegacyScansTable() {
   const columns = sqliteDB.getAllSync<ScanColumn>("PRAGMA table_info(scans)");
   const columnNames = new Set(columns.map((column) => column.name));
   const isLegacySchema = !columnNames.has("sync_status")
+    || !columnNames.has("crawl_status")
+    || !columnNames.has("error")
     || !columnNames.has("metadata")
     || legacyScanColumns.some((columnName) => columnNames.has(columnName));
 

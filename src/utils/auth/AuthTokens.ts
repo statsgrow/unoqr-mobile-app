@@ -135,11 +135,10 @@ async function performTokenRefresh(): Promise<RefreshTokenResult> {
 
 /* ------------------ BREAK ------------------ */
 
-// Starts optional background token checks on both native and web runtimes.
+// Starts periodic background token checks after the initial session check.
 export function triggerTokenChecking(): () => void {
   if (tokenCheckIntervalId) clearInterval(tokenCheckIntervalId);
 
-  void refreshTokensSilently();
   tokenCheckIntervalId = setInterval(() => {
     void refreshTokensSilently();
   }, 60_000);

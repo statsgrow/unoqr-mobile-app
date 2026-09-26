@@ -1,11 +1,12 @@
-import { useEffect, useState } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { useState } from "react";
+import { StyleSheet, View } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import * as Linking from "expo-linking";
+import * as Clipboard from "expo-clipboard";
 import { Text } from "react-native-paper";
 
+import { PxButton } from "@/components/elements/PxButton";
+import { UpiPaymentIcon } from "@/helpers/scans/components/UpiPaymentIcon";
 import { getScanById } from "@/helpers/scans/db/getQueries";
-import type { StoredScanReference } from "@/helpers/scans/db/persistScan";
 import { colors, fontFamilies, fontSizes, radii, spacing } from "@/theme/tokens";
 
 /* ------------------ BREAK ------------------ */
@@ -27,12 +28,21 @@ type PaymentDetailProps = {
   value: string;
 };
 
-type UpiAppDefinition = {
-  name: string;
-  scheme: string;
-  icon: keyof typeof MaterialCommunityIcons.glyphMap;
-  iconColor: string;
-  iconBackground: string;
+type EmvTlvField = {
+  tag: string;
+  value: string;
+};
+
+export type UpiPaymentDetails = {
+  paymentUrl: string;
+  payeeVpa: string;
+  payeeName: string | null;
+  merchantCategoryCode: string | null;
+  transactionRefId: string | null;
+  transactionNote: string | null;
+  amount: string | null;
+  currency: string;
+  isMerchant: boolean;
 };
 
 /* ------------------ BREAK ------------------ */
@@ -93,102 +103,59 @@ const upiHandles: UpiHandle[] = [
   { identifier: "upi", bank: "NPCI Managed", app: "BHIM" }
 ];
 
-const upiAppDefinitions: UpiAppDefinition[] = [
-  {
-    name: "PhonePe",
-    scheme: "phonepe://",
-    icon: "cellphone-check",
-    iconColor: "#5F259F",
-    iconBackground: "#F0E8FA"
-  },
-  {
-    name: "Google Pay",
-    scheme: "tez://",
-    icon: "google",
-    iconColor: "#4285F4",
-    iconBackground: "#E8F0FE"
-  },
-  {
-    name: "Paytm",
-    scheme: "paytmmp://",
-    icon: "wallet-outline",
-    iconColor: "#00BAF2",
-    iconBackground: "#E5F8FD"
-  },
-  {
-    name: "BHIM",
-    scheme: "bhim://",
-    icon: "bank-outline",
-    iconColor: "#F36F21",
-    iconBackground: "#FFF0E7"
-  },
-  {
-    name: "Amazon Pay",
-    scheme: "amazonpay://",
-    icon: "shopping-outline",
-    iconColor: "#232F3E",
-    iconBackground: "#EEF0F2"
-  }
-];
+const bharatQrPayloadFormat = "01";
+const bharatQrStaticPointOfInitiation = "11";
+const bharatQrDynamicPointOfInitiation = "12";
+const indiaCountryCode = "IN";
+const inrNumericCurrencyCode = "356";
+const inrUpiCurrencyCode = "INR";
+const upiMerchantAccountAid = "A000000524";
+const maxUpiPaymentUrlLength = 4_096;
+const uniqueUpiParameters = ["pa", "pn", "mc", "tr", "tn", "am", "mam", "cu", "url"] as const;
 
 /* ------------------ BREAK ------------------ */
 
 // Shows a UPI payment summary with the provider inferred from the payee VPA.
 export function UpiPayment({ record }: UpiPaymentProps) {
-  const [installedUpiApps, setInstalledUpiApps] = useState<UpiAppDefinition[]>([]);
+  const [upiIdCopied, setUpiIdCopied] = useState(false);
   const metadata = record.metadata;
-  const payeeVpa = metadata?.payeeVpa || null;
-  const payeeName = metadata?.payeeName || null;
+  const paymentDetails = getUpiPaymentDetails(record.value);
+  const payeeVpa = metadata?.payeeVpa || paymentDetails?.payeeVpa || null;
+  const payeeName = metadata?.payeeName || paymentDetails?.payeeName || null;
   const provider = getUpiProvider(payeeVpa);
-  const amount = formatAmount(metadata?.amount, metadata?.currency);
-  const paymentUrl = getSafeUpiPaymentUrl(record.value);
-  const transactionNote = metadata?.transactionNote || null;
-  const transactionRefId = metadata?.transactionRefId || null;
+  const amount = formatAmount(metadata?.amount || paymentDetails?.amount, metadata?.currency || paymentDetails?.currency);
+  const transactionNote = metadata?.transactionNote || paymentDetails?.transactionNote || null;
+  const transactionRefId = metadata?.transactionRefId || paymentDetails?.transactionRefId || null;
+  const isMerchant = metadata?.isMerchant === true
+    || paymentDetails?.isMerchant === true
+    || hasMerchantUpiIndicator(record.value);
   const hasPayeeData = Boolean(payeeName || payeeVpa);
   const timestamp = formatScanTimestamp(record.created_at);
 
-  // Checks supported payment-app schemes and stores only confirmed installed apps.
-  useEffect(() => {
-    let isMounted = true;
+  // Copies the stored payee UPI ID for manual use in the user's preferred payment app.
+  const handleCopyUpiId = async () => {
+    if (!payeeVpa) return;
 
-    void findInstalledUpiApps().then((apps) => {
-      if (isMounted) setInstalledUpiApps(apps);
-    });
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
+    await Clipboard.setStringAsync(payeeVpa);
+    setUpiIdCopied(true);
+  };//func ends
 
   //Default Return
   return (
     <View style={styles.container}>
       <View style={styles.summaryCard}>
         <View style={styles.titleRow}>
-          <View style={styles.providerIcon}>
-            <MaterialCommunityIcons name="bank-transfer" size={22} color={colors.secondary.main} />
-          </View>
+          <UpiPaymentIcon />
           <View style={styles.titleContent}>
             <Text style={styles.providerName}>{provider.app}</Text>
             <Text numberOfLines={2} style={styles.providerBank}>{provider.bank}</Text>
+            {isMerchant ? (
+              <View style={styles.merchantChip}>
+                <MaterialCommunityIcons name="storefront-outline" size={14} color={colors.primary.contrast} />
+                <Text style={styles.merchantChipText}>Merchant</Text>
+              </View>
+            ) : null}
           </View>
-          <Pressable
-            accessibilityLabel={`Open ${provider.app}`}
-            accessibilityRole="link"
-            disabled={!paymentUrl}
-            onPress={() => void openUpiPayment(paymentUrl)}
-            style={({ pressed }) => [
-              styles.openPaymentButton,
-              !paymentUrl && styles.disabledOpenPaymentButton,
-              pressed && styles.pressedOpenPaymentButton
-            ]}
-          >
-            <MaterialCommunityIcons
-              name="arrow-top-right"
-              size={20}
-              color={paymentUrl ? colors.secondary.main : colors.mute.light}
-            />
-          </Pressable>
         </View>
 
         <View style={styles.timestampRow}>
@@ -205,49 +172,194 @@ export function UpiPayment({ record }: UpiPaymentProps) {
           <View style={styles.payeeCard}>
             {payeeName ? <Text style={styles.payeeName}>{payeeName}</Text> : null}
             {payeeVpa ? <Text selectable numberOfLines={1} style={styles.payeeVpa}>{payeeVpa}</Text> : null}
+            {payeeVpa ? (
+              <View style={styles.copyButtonContainer}>
+                <PxButton
+                  fullWidth
+                  size="sm"
+                  color="secondary"
+                  mode="outlined"
+                  startIcon={upiIdCopied ? "check" : "content-copy"}
+                  onPress={() => void handleCopyUpiId()}
+                >
+                  {upiIdCopied ? "UPI ID copied" : "Copy UPI ID"}
+                </PxButton>
+              </View>
+            ) : null}
           </View>
         </View>
       ) : null}
 
-      <View style={styles.detailSection}>
-        <Text style={styles.sectionLabel}>UPI App Installed</Text>
-        <View style={styles.upiAppsCard}>
-          {installedUpiApps.length > 0 ? installedUpiApps.map((app, index) => (
-            <View
-              key={app.name}
-              style={[
-                styles.upiAppRow,
-                index < installedUpiApps.length - 1 && styles.upiAppRowDivider
-              ]}
-            >
-              <View style={[styles.upiAppIcon, { backgroundColor: app.iconBackground }]}>
-                <MaterialCommunityIcons name={app.icon} size={20} color={app.iconColor} />
-              </View>
-              <Text style={styles.upiAppName}>{app.name}</Text>
-              <MaterialCommunityIcons name="check-circle" size={18} color={colors.success.main} />
-            </View>
-          )) : (
-            <View style={styles.noUpiAppsRow}>
-              <MaterialCommunityIcons name="cellphone-remove" size={20} color={colors.mute.light} />
-              <Text style={styles.noUpiAppsText}>No Apps Found</Text>
-            </View>
-          )}
-        </View>
-      </View>
-
       {amount ? <PaymentDetail label="Amount" value={amount} /> : null}
       {transactionNote ? <PaymentDetail label="Transaction note" value={transactionNote} /> : null}
       {transactionRefId ? <PaymentDetail label="Reference ID" value={transactionRefId} /> : null}
+
     </View>
   );//return ends
 };//export ends
 
 /* ------------------ BREAK ------------------ */
 
-// Opens an already stored UPI payment scan in its payment app chooser.
-export async function processUpiPaymentScan(scan: StoredScanReference): Promise<void> {
-  await Linking.openURL(scan.value);
+// Converts a valid BharatQR payload with complete merchant UPI credentials into a guarded payment URL.
+export function checkBharatQr(value: string): string | null {
+  const payload = value.trim();
+  if (!payload.startsWith("000201") || !isAsciiText(payload)) return null;
+
+  const fields = parseEmvTlv(payload);
+  if (!fields || !hasValidBharatQrCrc(payload, fields)) return null;
+  if (getEmvField(fields, "00") !== bharatQrPayloadFormat) return null;
+  const pointOfInitiation = getEmvField(fields, "01");
+  if (![bharatQrStaticPointOfInitiation, bharatQrDynamicPointOfInitiation].includes(pointOfInitiation || "")) {
+    return null;
+  };//if ends
+  if (getEmvField(fields, "53") !== inrNumericCurrencyCode) return null;
+  if (getEmvField(fields, "58")?.toUpperCase() !== indiaCountryCode) return null;
+
+  const payeeVpa = findBharatQrUpiVpa(fields);
+  const payeeName = getEmvField(fields, "59")?.trim() || "";
+  const merchantCategoryCode = getEmvField(fields, "52") || "";
+  const additionalData = parseOptionalEmvTemplate(fields, "62");
+  const transactionRefId = additionalData ? getEmvField(additionalData, "05")?.trim() || "" : "";
+  const transactionNote = additionalData ? getEmvField(additionalData, "08")?.trim() || "" : "";
+
+  if (!isValidUpiVpa(payeeVpa)) return null;
+  if (!payeeName || !isMerchantCategoryCode(merchantCategoryCode)) return null;
+  if (!isValidTransactionRef(transactionRefId)) return null;
+
+  const parameters: Array<[string, string]> = [
+    ["pa", payeeVpa],
+    ["pn", payeeName],
+    ["mc", merchantCategoryCode],
+    ["tr", transactionRefId],
+    ["cu", inrUpiCurrencyCode]
+  ];
+  const amount = getEmvField(fields, "54");
+
+  if (amount && isValidUpiAmount(amount)) parameters.push(["am", amount]);
+  if (transactionNote && isValidUpiText(transactionNote, 80)) parameters.push(["tn", transactionNote]);
+
+  const encodedParameters = parameters
+    .map(([key, parameterValue]) => `${key}=${encodeURIComponent(parameterValue)}`)
+    .join("&");
+
+  const paymentUrl = `upi://pay?${encodedParameters}`;
+  return getUpiPaymentDetails(paymentUrl)?.paymentUrl || null;
 };//export ends
+
+/* ------------------ BREAK ------------------ */
+
+// Parses one complete EMV QR value into its ordered tag-length-value fields.
+function parseEmvTlv(value: string): EmvTlvField[] | null {
+  const fields: EmvTlvField[] = [];
+  let offset = 0;
+
+  while (offset < value.length) {
+    if (offset + 4 > value.length) return null;
+
+    const tag = value.slice(offset, offset + 2);
+    const lengthText = value.slice(offset + 2, offset + 4);
+
+    if (!/^\d{2}$/.test(tag) || !/^\d{2}$/.test(lengthText)) return null;
+
+    const length = Number(lengthText);
+    const valueStart = offset + 4;
+    const valueEnd = valueStart + length;
+
+    if (valueEnd > value.length) return null;
+
+    fields.push({ tag, value: value.slice(valueStart, valueEnd) });
+    offset = valueEnd;
+  }
+
+  return offset === value.length ? fields : null;
+};//func ends
+
+// Returns one unique EMV field and rejects ambiguous duplicate tags.
+function getEmvField(fields: EmvTlvField[], tag: string): string | null {
+  const matches = fields.filter((field) => field.tag === tag);
+  return matches.length === 1 ? matches[0].value : null;
+};//func ends
+
+// Parses an optional nested EMV template while rejecting malformed or duplicate root fields.
+function parseOptionalEmvTemplate(fields: EmvTlvField[], tag: string): EmvTlvField[] | null {
+  const templateValue = getEmvField(fields, tag);
+  return templateValue ? parseEmvTlv(templateValue) : null;
+};//func ends
+
+// Finds the VPA inside the NPCI merchant-account template range.
+function findBharatQrUpiVpa(fields: EmvTlvField[]): string | null {
+  for (const field of fields) {
+    const numericTag = Number(field.tag);
+    if (numericTag < 26 || numericTag > 51) continue;
+
+    const merchantFields = parseEmvTlv(field.value);
+    if (!merchantFields || getEmvField(merchantFields, "00") !== upiMerchantAccountAid) continue;
+
+    const candidateVpa = getEmvField(merchantFields, "01");
+    if (isValidUpiVpa(candidateVpa)) return candidateVpa;
+  }
+
+  return null;
+};//func ends
+
+// Verifies the terminal EMV CRC field against CRC-16/CCITT-FALSE.
+function hasValidBharatQrCrc(payload: string, fields: EmvTlvField[]): boolean {
+  const crcField = fields.at(-1);
+
+  if (crcField?.tag !== "63" || !/^[0-9a-f]{4}$/i.test(crcField.value)) return false;
+
+  const crcInput = payload.slice(0, -crcField.value.length);
+  return calculateEmvCrc(crcInput) === crcField.value.toUpperCase();
+};//func ends
+
+// Calculates the uppercase four-character CRC-16/CCITT-FALSE checksum used by EMV QR.
+function calculateEmvCrc(value: string): string {
+  let crc = 0xFFFF;
+
+  for (let index = 0; index < value.length; index += 1) {
+    crc ^= value.charCodeAt(index) << 8;
+
+    for (let bit = 0; bit < 8; bit += 1) {
+      crc = (crc & 0x8000) !== 0
+        ? ((crc << 1) ^ 0x1021) & 0xFFFF
+        : (crc << 1) & 0xFFFF;
+    }
+  }
+
+  return crc.toString(16).toUpperCase().padStart(4, "0");
+};//func ends
+
+// Accepts only a single safe UPI virtual payment address.
+function isValidUpiVpa(value: string | null): value is string {
+  if (!value || value.length > 255) return false;
+  return /^[a-z0-9][a-z0-9._-]*@[a-z0-9][a-z0-9.-]*$/i.test(value);
+};//func ends
+
+// Accepts a positive UPI amount with no more than two decimal places.
+function isValidUpiAmount(value: string): boolean {
+  if (!/^(?:0|[1-9]\d*)(?:\.\d{1,2})?$/.test(value)) return false;
+  return Number(value) > 0;
+};//func ends
+
+// Recognizes an assigned-looking MCC while excluding the zero-only placeholder used by individual UPI links.
+function isMerchantCategoryCode(value: string | null): value is string {
+  return Boolean(value && /^\d{4}$/.test(value) && !/^0+$/.test(value));
+};//func ends
+
+// Accepts a merchant transaction reference that can be passed without changing its meaning.
+function isValidTransactionRef(value: string): boolean {
+  return /^[a-z0-9._-]{1,35}$/i.test(value);
+};//func ends
+
+// Accepts bounded printable text without control characters.
+function isValidUpiText(value: string, maxLength: number): boolean {
+  return value.length > 0 && value.length <= maxLength && !/[\u0000-\u001F\u007F]/.test(value);
+};//func ends
+
+// Limits EMV parsing to single-byte printable content so field lengths remain unambiguous.
+function isAsciiText(value: string): boolean {
+  return /^[\x20-\x7E]+$/.test(value);
+};//func ends
 
 /* ------------------ BREAK ------------------ */
 
@@ -264,22 +376,6 @@ function PaymentDetail({ label, value }: PaymentDetailProps) {
   );//return ends
 };//func ends
 
-// Finds recognized UPI apps through their registered deep-link schemes.
-async function findInstalledUpiApps(): Promise<UpiAppDefinition[]> {
-  const availability = await Promise.all(
-    upiAppDefinitions.map(async (app) => {
-      try {
-        return await Linking.canOpenURL(app.scheme) ? app : null;
-      } catch (error: unknown) {
-        console.warn(`Unable to check the ${app.name} payment intent:`, error);
-        return null;
-      };//try-catch ends
-    })
-  );
-
-  return availability.filter((app): app is UpiAppDefinition => app !== null);
-};//func ends
-
 // Resolves a payment app and partner bank from the exact handle after the VPA at-sign.
 function getUpiProvider(payeeVpa: string | null): Omit<UpiHandle, "identifier"> {
   const normalizedHandle = payeeVpa?.split("@").pop()?.trim().toLowerCase() || "";
@@ -290,20 +386,88 @@ function getUpiProvider(payeeVpa: string | null): Omit<UpiHandle, "identifier"> 
     : { app: "UPI Payment", bank: "Unknown partner bank" };
 };//func ends
 
-// Accepts only a complete UPI payment URL before handing it to the operating system.
-function getSafeUpiPaymentUrl(value: string): string | null {
+// Parses and validates critical UPI parameters while preserving the complete supplied payment URL.
+export function getUpiPaymentDetails(value: string): UpiPaymentDetails | null {
   const paymentUrl = value.trim();
-  return /^upi:\/\/pay(?:\?|$)/i.test(paymentUrl) ? paymentUrl : null;
-};//func ends
 
-// Reopens a stored UPI payment request without starting scan collection.
-async function openUpiPayment(paymentUrl: string | null): Promise<void> {
-  if (!paymentUrl) return;
+  if (!paymentUrl || paymentUrl.length > maxUpiPaymentUrlLength) return null;
+  if (/[\u0000-\u001F\u007F]/.test(paymentUrl) || /%(?![0-9a-f]{2})/i.test(paymentUrl)) return null;
 
   try {
-    await Linking.openURL(paymentUrl);
-  } catch (error: unknown) {
-    console.error("Unable to reopen UPI payment request:", error);
+    const parsedUrl = new URL(paymentUrl);
+    const hasExpectedDestination = parsedUrl.protocol.toLowerCase() === "upi:"
+      && parsedUrl.hostname.toLowerCase() === "pay"
+      && (parsedUrl.pathname === "" || parsedUrl.pathname === "/")
+      && !parsedUrl.username
+      && !parsedUrl.password
+      && !parsedUrl.hash;
+
+    if (!hasExpectedDestination || hasDuplicateUpiParameters(parsedUrl.searchParams)) return null;
+
+    const payeeVpa = parsedUrl.searchParams.get("pa")?.trim() || null;
+    const payeeName = parsedUrl.searchParams.get("pn")?.trim() || null;
+    const merchantCategoryCode = parsedUrl.searchParams.get("mc")?.trim() || null;
+    const transactionRefId = parsedUrl.searchParams.get("tr")?.trim() || null;
+    const transactionNote = parsedUrl.searchParams.get("tn")?.trim() || null;
+    const amount = parsedUrl.searchParams.get("am")?.trim() || null;
+    const minimumAmount = parsedUrl.searchParams.get("mam")?.trim() || null;
+    const currency = parsedUrl.searchParams.get("cu")?.trim().toUpperCase() || inrUpiCurrencyCode;
+    const referenceUrl = parsedUrl.searchParams.get("url")?.trim() || null;
+
+    if (!isValidUpiVpa(payeeVpa)) return null;
+    if (payeeName && !isValidUpiText(payeeName, 100)) return null;
+    if (merchantCategoryCode && !/^\d{4}$/.test(merchantCategoryCode)) return null;
+    if (transactionRefId && !isValidTransactionRef(transactionRefId)) return null;
+    if (transactionNote && !isValidUpiText(transactionNote, 80)) return null;
+    if (amount && !isValidUpiAmount(amount)) return null;
+    if (minimumAmount && !isValidUpiAmount(minimumAmount)) return null;
+    if (currency !== inrUpiCurrencyCode) return null;
+    if (referenceUrl && !isSafeUpiReferenceUrl(referenceUrl)) return null;
+
+    return {
+      paymentUrl,
+      payeeVpa,
+      payeeName,
+      merchantCategoryCode,
+      transactionRefId,
+      transactionNote,
+      amount,
+      currency,
+      isMerchant: isMerchantCategoryCode(merchantCategoryCode)
+    };
+  } catch {
+    return null;
+  };//try-catch ends
+};//export ends
+
+// Detects an MCC on legacy saved UPI rows so merchant labeling survives stricter validation.
+function hasMerchantUpiIndicator(value: string): boolean {
+  try {
+    const paymentUrl = new URL(value.trim());
+    const merchantCategoryCode = paymentUrl.searchParams.get("mc")?.trim() || "";
+    return paymentUrl.protocol.toLowerCase() === "upi:"
+      && paymentUrl.hostname.toLowerCase() === "pay"
+      && isMerchantCategoryCode(merchantCategoryCode);
+  } catch {
+    return false;
+  };//try-catch ends
+};//func ends
+
+// Rejects ambiguous repeated values for parameters used to authorize or describe a payment.
+function hasDuplicateUpiParameters(parameters: URLSearchParams): boolean {
+  return uniqueUpiParameters.some((parameter) => parameters.getAll(parameter).length > 1);
+};//func ends
+
+// Accepts only HTTP(S) transaction-reference URLs included in a UPI request.
+function isSafeUpiReferenceUrl(value: string): boolean {
+  try {
+    const referenceUrl = new URL(value);
+    return ["http:", "https:"].includes(referenceUrl.protocol.toLowerCase())
+      && Boolean(referenceUrl.hostname)
+      && !referenceUrl.username
+      && !referenceUrl.password;
+  } catch {
+    return false;
   };//try-catch ends
 };//func ends
 
@@ -344,14 +508,6 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
     gap: spacing.sm
   },
-  providerIcon: {
-    width: 40,
-    height: 40,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: radii.md,
-    backgroundColor: colors.secondary.light
-  },
   titleContent: {
     minWidth: 0,
     flex: 1
@@ -369,19 +525,21 @@ const styles = StyleSheet.create({
     fontSize: fontSizes.body2,
     lineHeight: 20
   },
-  openPaymentButton: {
-    width: 40,
-    height: 40,
+  merchantChip: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
+    gap: spacing.xxs,
+    marginTop: spacing.xs,
+    paddingVertical: spacing.xxs,
+    paddingHorizontal: spacing.sm,
     borderRadius: radii.pill,
-    backgroundColor: colors.secondary.light
+    backgroundColor: colors.primary.main
   },
-  disabledOpenPaymentButton: {
-    backgroundColor: colors.cream.dark
-  },
-  pressedOpenPaymentButton: {
-    opacity: 0.65
+  merchantChipText: {
+    color: colors.primary.contrast,
+    fontFamily: fontFamilies.primarySemiBold,
+    fontSize: fontSizes.caption
   },
   timestampRow: {
     flexDirection: "row",
@@ -434,49 +592,8 @@ const styles = StyleSheet.create({
     fontSize: fontSizes.caption,
     lineHeight: 18
   },
-  upiAppsCard: {
-    overflow: "hidden",
-    paddingHorizontal: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.border.main,
-    borderRadius: radii.xl,
-    backgroundColor: colors.white.main
-  },
-  upiAppRow: {
-    minHeight: 58,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm
-  },
-  upiAppRowDivider: {
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border.light
-  },
-  upiAppIcon: {
-    width: 34,
-    height: 34,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: radii.md
-  },
-  upiAppName: {
-    minWidth: 0,
-    flex: 1,
-    color: colors.primary.main,
-    fontFamily: fontFamilies.primaryMedium,
-    fontSize: fontSizes.body2
-  },
-  noUpiAppsRow: {
-    minHeight: 64,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.xs
-  },
-  noUpiAppsText: {
-    color: colors.mute.main,
-    fontFamily: fontFamilies.primaryRegular,
-    fontSize: fontSizes.body2
+  copyButtonContainer: {
+    marginTop: spacing.sm
   },
   detailCard: {
     minHeight: 64,

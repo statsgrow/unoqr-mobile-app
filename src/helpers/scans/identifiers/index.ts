@@ -3,6 +3,7 @@ import { getInit as contactCardInit } from "./ContactCard";
 import { getInit as customSchemeInit } from "./CustomScheme";
 import { getInit as deepLinkInit } from "./DeepLink";
 import { getInit as emailAddressInit } from "./EmailAddress";
+import { getInit as fileInit } from "./File";
 import { getInit as genericPaymentInit } from "./GenericPayment";
 import { getInit as geoLocationInit } from "./GeoLocation";
 import { getInit as otpAuthInit } from "./OtpAuth";
@@ -23,6 +24,7 @@ const scanTypeInitializers: ScanTypeInit[] = [
   customSchemeInit,
   deepLinkInit,
   emailAddressInit,
+  fileInit,
   genericPaymentInit,
   geoLocationInit,
   otpAuthInit,

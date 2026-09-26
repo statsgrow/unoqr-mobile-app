@@ -24,3 +24,14 @@ export function getScanStatusLabel(status: string | null | undefined): string {
     .replace(/\b\w/g, (character) => character.toUpperCase());
 };//export ends
 
+// Reads crawl failures, including older rows whose crawl status was saved incorrectly.
+export function getScanCrawlError(crawlStatus: string | null | undefined, metadataError: unknown): string | null {
+  if (crawlStatus !== "failed" && !metadataError) return null;
+  if (typeof metadataError === "string" && metadataError.trim()) return metadataError;
+  if (metadataError && typeof metadataError === "object" && "message" in metadataError) {
+    const message = metadataError.message;
+    if (typeof message === "string" && message.trim()) return message;
+  };//if ends
+
+  return "We could not collect details for this link.";
+};//export ends

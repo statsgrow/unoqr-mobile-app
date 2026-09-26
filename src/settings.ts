@@ -42,9 +42,11 @@ export const userTokenSettings = {
 
 //install settings
 export const installSettings = {
+  googleCloudProjectNumber: process.env.EXPO_PUBLIC_CLOUD_PROJECT_NUMBER || "",
   //local storage keys for install info
   storageKeys: {
     installInfo: { name: 'uq-install-info' },
+    appAttestKeyId: { name: 'uq-app-attest-key-id' },
   },
 };//json ends
 

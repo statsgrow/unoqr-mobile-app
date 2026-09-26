@@ -5,6 +5,7 @@ import { getLocales } from "expo-localization";
 import { Platform } from "react-native";
 
 import { apiSettings, installSettings } from "@/settings";
+import { observeAppIntegrity } from "@/utils/auth/AppIntegrity";
 import { Axios } from "@/utils/general/Axios";
 import { getExpoPushToken } from "@/utils/general/PushNotifications";
 import { getData, setData } from "@/utils/general/Storage";
@@ -16,6 +17,8 @@ import { isUUID } from "@/utils/general/Uid";
 export type AppInstallInfo = {
   id: string;
   user_id?: string | null;
+  integrity_status?: "not_checked" | "verified" | "unsupported" | "temporary_error" | "verification_failed";
+  integrity_checked_at?: string | null;
   [key: string]: unknown;
 };
 
@@ -51,6 +54,10 @@ type DeviceDetails = {
 
 /* ------------------ BREAK ------------------ */
 
+const INTEGRITY_RETRY_INTERVAL_MS = 24 * 60 * 60 * 1000;
+
+/* ------------------ BREAK ------------------ */
+
 // Fetches the current API copy of this locally stored app installation.
 export async function getAppInstallInfo(): Promise<AppInstallInfo | null> {
   try {
@@ -74,7 +81,10 @@ export async function getAppInstallInfo(): Promise<AppInstallInfo | null> {
 export async function insertAppInstall(): Promise<AppInstallInfo | null> {
   try {
     const existingInstallInfo = await getStoredAppInstall();
-    if (existingInstallInfo) return existingInstallInfo;
+    if (existingInstallInfo) {
+      startAppIntegrityObservation(existingInstallInfo);
+      return existingInstallInfo;
+    };//if ends
 
     const deviceDetails = await getDeviceDetails();
 
@@ -97,6 +107,7 @@ export async function insertAppInstall(): Promise<AppInstallInfo | null> {
         key: installSettings.storageKeys.installInfo.name,
         value: appInstallData
       });
+      startAppIntegrityObservation(appInstallData);
     };//if ends
 
     return appInstallData;
@@ -107,6 +118,39 @@ export async function insertAppInstall(): Promise<AppInstallInfo | null> {
     return null;
   };//try-catch ends
 };//export ends
+
+/* ------------------ BREAK ------------------ */
+
+// Starts a best-effort observation and caches the server-updated installation without blocking app startup.
+function startAppIntegrityObservation(appInstall: AppInstallInfo): void {
+  if (!shouldObserveAppIntegrity(appInstall)) return;
+
+  void observeAppIntegrity({ installId: appInstall.id }).then(async (observedInstall) => {
+    if (!observedInstall) return;
+
+    const currentInstall = await getStoredAppInstall();
+
+    await setData({
+      key: installSettings.storageKeys.installInfo.name,
+      value: { ...(currentInstall || appInstall), ...observedInstall }
+    });
+  }).catch((error: unknown) => {
+    console.error("Unable to observe app integrity:", error);
+  });
+};//func ends
+
+// Returns whether this installation still needs its initial or retryable integrity observation.
+function shouldObserveAppIntegrity(appInstall: AppInstallInfo): boolean {
+  if (!appInstall.integrity_status || appInstall.integrity_status === "not_checked") return true;
+  if (appInstall.integrity_status !== "temporary_error") return false;
+
+  const checkedAt = appInstall.integrity_checked_at
+    ? Date.parse(appInstall.integrity_checked_at)
+    : Number.NaN;
+
+  return !Number.isFinite(checkedAt)
+    || Date.now() - checkedAt >= INTEGRITY_RETRY_INTERVAL_MS;
+};//func ends
 
 /* ------------------ BREAK ------------------ */
 

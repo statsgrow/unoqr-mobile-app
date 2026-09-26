@@ -42,7 +42,7 @@ export function PlainText({ record }: PlainTextProps) {
       <View style={styles.summaryCard}>
         <View style={styles.titleRow}>
           <View style={styles.textIcon}>
-            <MaterialCommunityIcons name="text-box-outline" size={22} color={colors.secondary.main} />
+            <MaterialCommunityIcons name="text-box-outline" size={22} color={colors.primary.main} />
           </View>
           <View style={styles.titleContent}>
             <Text style={styles.summaryTitle}>Plain text</Text>
@@ -175,8 +175,10 @@ const styles = StyleSheet.create({
     height: 40,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: radii.md,
-    backgroundColor: colors.secondary.light
+    borderWidth: 1,
+    borderColor: colors.neutral.light,
+    borderRadius: radii.lg,
+    backgroundColor: colors.white.main
   },
   titleContent: {
     minWidth: 0,

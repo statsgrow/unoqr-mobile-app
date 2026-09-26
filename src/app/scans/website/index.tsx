@@ -4,26 +4,9 @@ import { router, useLocalSearchParams } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 
 import { PxPageLoader } from "@/components/elements/PxPageLoader";
-import { waitForInitialScanSync } from "@/helpers/scans/db/insertQueries";
-import type { ScanMetadata, ScanUrlMetadata } from "@/helpers/scans/db/init";
-import { syncCompletedScanToAPI, updateScan, type UpdateScanInput } from "@/helpers/scans/db/updateQueries";
-import { apiSettings } from "@/settings";
 import { colors } from "@/theme/tokens";
-import { Axios } from "@/utils/general/Axios";
 
 /* ------------------ BREAK ------------------ */
-
-type CrawlApiResponse = {
-  data?: CrawlData | null;
-  error?: unknown;
-  message?: string;
-};
-
-type CrawlData = ScanMetadata & {
-  status: "completed" | "blocked" | "pending";
-  inputUrl: ScanUrlMetadata;
-  finalUrl: ScanUrlMetadata | null;
-};
 
 type ReturnToScanner = () => void;
 
@@ -56,7 +39,7 @@ export default function WebsiteScanScreen() {
     };//if ends
 
     hasStartedRef.current = true;
-    void runWebsiteFlow(scanId, websiteUrl, returnToScanner);
+    void runWebsiteFlow(websiteUrl, returnToScanner);
   }, [returnToScanner, scanId, websiteUrl]);
 
   // Sends native hardware-back actions directly to the scanner route.
@@ -82,10 +65,9 @@ export default function WebsiteScanScreen() {
 
 /* ------------------ BREAK ------------------ */
 
-// Starts Crawl4AI first, opens Expo Web Browser immediately, and logs independent timings.
-async function runWebsiteFlow(scanId: string, url: string, returnToScanner: ReturnToScanner): Promise<void> {
+// Opens Expo Web Browser without coupling navigation to the recurring crawl process.
+async function runWebsiteFlow(url: string, returnToScanner: ReturnToScanner): Promise<void> {
   const flowStartedAt = performance.now();
-  const crawlPromise = requestWebsiteCrawl(scanId, url, flowStartedAt);
   const browserRequestedAt = performance.now();
   const browserPromise = WebBrowser.openBrowserAsync(url);
   const browserDispatchedAt = performance.now();
@@ -109,53 +91,6 @@ async function runWebsiteFlow(scanId: string, url: string, returnToScanner: Retu
     returnToScanner();
   };//try-catch ends
 
-  await crawlPromise;
-};//func ends
-
-// Crawls the URL, completes its existing SQLite row, and synchronizes that UUID.
-async function requestWebsiteCrawl(scanId: string, url: string, flowStartedAt: number): Promise<void> {
-  const crawlStartedAt = performance.now();
-
-  try {
-    const apiUrl = apiSettings.getApiUrl({ path: "/app/scans/crawl_url" });
-    const response = await Axios.post<CrawlApiResponse>(apiUrl.href, { url });
-    const crawlReceivedAt = performance.now();
-
-    console.log("Crawl4AI response received:", {
-      crawlDurationMs: getElapsedMilliseconds(crawlStartedAt, crawlReceivedAt),
-      totalElapsedMs: getElapsedMilliseconds(flowStartedAt, crawlReceivedAt),
-      response: response.data
-    });
-
-    if (!response.data?.data) return;
-
-    await waitForInitialScanSync(scanId);
-    const scanUpdate = createWebsiteScanUpdate(url, response.data.data);
-    await updateScan(scanId, scanUpdate);
-    const didSync = await syncCompletedScanToAPI(scanId);
-    console.log("Crawled website scan stored:", { id: scanId, syncStatus: didSync ? "synced" : "incomplete" });
-  } catch (error: unknown) {
-    console.error("Crawl4AI timing request failed:", {
-      crawlDurationMs: getElapsedMilliseconds(crawlStartedAt, performance.now()),
-      error
-    });
-  };//try-catch ends
-};//func ends
-
-// Builds the completion fields for the SQLite row created before website processing.
-function createWebsiteScanUpdate(scannedUrl: string, crawlData: CrawlData): UpdateScanInput {
-  const now = new Date().toISOString();
-
-  return {
-    updated_at: now,
-    value: scannedUrl,
-    input_url: crawlData.inputUrl.url || scannedUrl,
-    final_url: crawlData.finalUrl?.url || null,
-    type: "url",
-    status: crawlData.status === "completed" ? "completed" : "failed",
-    sync_status: "pending",
-    metadata: crawlData
-  };
 };//func ends
 
 // Returns one string when Expo Router supplies a scalar or array query value.

@@ -31,10 +31,11 @@ type LateLocationUpdateInput = {
 
 const initialSyncPromises = new Map<string, Promise<boolean>>();
 const initialLocationWaitMilliseconds = 3_000;
+const initialScanApiTimeoutMilliseconds = 10_000;
 
 /* ------------------ BREAK ------------------ */
 
-// Inserts a scan locally first and starts its initial API transfer without blocking navigation.
+// Inserts a scan locally first and waits for its initial API attempt before opening the destination.
 export async function insertScan(data: InsertScanInput) {
   if (!db) return null;
 
@@ -51,6 +52,7 @@ export async function insertScan(data: InsertScanInput) {
 
     initialSyncPromises.set(scanData.id, syncPromise);
     void syncPromise.finally(() => initialSyncPromises.delete(scanData.id));
+    await syncPromise;
 
     return result;
   } catch (error: unknown) {
@@ -67,9 +69,24 @@ export async function insertScan(data: InsertScanInput) {
 export async function insertScanToAPI(data: InsertScanInput): Promise<InsertScanInput | null> {
   try {
     const apiUrl = apiSettings.getApiUrl({ path: "/app/scans" });
-    const response = await Axios.post<ScanApiResponse>(apiUrl.href, data);
-    return response.data?.data ?? null;
+    const response = await Axios.post<ScanApiResponse>(apiUrl.href, data, {
+      timeout: initialScanApiTimeoutMilliseconds
+    });
+    const insertedScan = response.data?.data ?? null;
+
+    if (insertedScan?.id !== data.id) {
+      const errorMessage = `API returned scan ID ${insertedScan?.id || "none"} instead of ${data.id}.`;
+      console.error(errorMessage, {
+        expectedId: data.id,
+        receivedId: insertedScan?.id || null
+      });
+      await appendScanError(data.id, errorMessage);
+      return null;
+    };//if ends
+
+    return insertedScan;
   } catch (error: unknown) {
+    await appendScanError(data.id, getErrorMessage(error));
     console.error("Error inserting scan to API:", error);
     return null;
   };//try-catch ends
@@ -91,14 +108,15 @@ async function syncInitialScan(
   locationPromise: ReturnType<typeof collectAndStoreScanLocation>
 ): Promise<boolean> {
   if (!db || !data.install_id) {
-    await setLocalInitialSyncResult(data, null, "incomplete");
+    await appendScanError(data.id, "The scan could not be sent because no installation ID was available.");
+    await setLocalInitialSyncResult(data, null, "pending");
     return false;
   };//if ends
 
   const location = await getInitialScanLocation(locationPromise);
   const insertedScan = await insertScanToAPI({ ...data, location });
   const successfulStatus = data.type === "url" ? "processing" : "synced";
-  await setLocalInitialSyncResult(data, insertedScan, insertedScan ? successfulStatus : "incomplete");
+  await setLocalInitialSyncResult(data, insertedScan, insertedScan ? successfulStatus : "pending");
 
   if (insertedScan && data.type !== "url" && !location) {
     void syncLateNonWebScanLocation(data, locationPromise);
@@ -185,6 +203,26 @@ async function setLocalInitialSyncResult(
     })
     .where(eq(scansTable.id, localScan.id))
     .run();
+};//func ends
+
+// Appends one timestamped failure line without replacing earlier scan errors.
+export async function appendScanError(id: string, message: string): Promise<void> {
+  if (!db) return;
+
+  const currentScan = await getScanById(id);
+  const errorLine = `[${new Date().toISOString()}] ${message.trim() || "Unknown scan synchronization error."}`;
+  const nextError = currentScan?.error ? `${currentScan.error}\n${errorLine}` : errorLine;
+
+  await db
+    .update(scansTable)
+    .set({ error: nextError })
+    .where(eq(scansTable.id, id))
+    .run();
+};//func ends
+
+// Converts an unknown thrown value into a concise persisted error message.
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "Unknown scan synchronization error.";
 };//func ends
 
 /* ------------------ BREAK ------------------ */

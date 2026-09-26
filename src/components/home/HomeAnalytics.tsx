@@ -5,6 +5,7 @@ import { router, useFocusEffect } from "expo-router";
 import { ActivityIndicator, Text } from "react-native-paper";
 
 import { PxCard } from "@/components/elements/PxCard";
+import { UpiPaymentIcon } from "@/helpers/scans/components/UpiPaymentIcon";
 import { getAllScans } from "@/helpers/scans/db/getQueries";
 import { getScanTypeInit, normalizeScanType } from "@/helpers/scans/identifiers";
 import { colors, fontFamilies, fontSizes, radii, spacing } from "@/theme/tokens";
@@ -211,6 +212,7 @@ function ScanCardPattern() {
 function RecentScanCard({ record }: { record: ScanRecord }) {
   const typeInit = getScanTypeInit(record.type);
   const title = getRecentScanTitle(record, typeInit.label);
+  const isUpiPayment = record.type === "upi_payment" || /^upi:\/\/pay(?:\?|$)/i.test(record.value);
 
   //Default Return
   return (
@@ -220,9 +222,13 @@ function RecentScanCard({ record }: { record: ScanRecord }) {
       onPress={() => router.push(`/scans/${record.id}/view`)}
       style={({ pressed }) => [styles.recentCard, pressed && styles.recentCardPressed]}
     >
-      <View style={styles.recentIcon}>
-        <MaterialCommunityIcons name={typeInit.icon} size={21} color={colors.secondary.main} />
-      </View>
+      {isUpiPayment ? (
+        <UpiPaymentIcon size={42} />
+      ) : (
+        <View style={styles.recentIcon}>
+          <MaterialCommunityIcons name={typeInit.icon} size={21} color={colors.primary.main} />
+        </View>
+      )}
       <View style={styles.recentContent}>
         <Text numberOfLines={1} style={styles.recentTitle}>{title}</Text>
         <Text style={styles.recentTimestamp}>{formatRecentScanDate(record.created_at)}</Text>
@@ -620,8 +626,10 @@ const styles = StyleSheet.create({
     height: 42,
     alignItems: "center",
     justifyContent: "center",
+    borderWidth: 1,
+    borderColor: colors.neutral.light,
     borderRadius: radii.lg,
-    backgroundColor: colors.secondary.light
+    backgroundColor: colors.white.main
   },
   recentContent: {
     minWidth: 0,

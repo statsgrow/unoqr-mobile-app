@@ -14,14 +14,19 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { colors } from "@/theme/tokens";
 import { paperTheme } from "@/theme/paperTheme";
-import { checkPendingScans } from "@/helpers/scans/scanSync";
+import {
+  checkPendingScans,
+  checkUnCrawledUrls,
+  startUnCrawledUrlsTrigger
+} from "@/helpers/scans/scanSync";
 import { refreshTokensSilently, triggerTokenChecking } from "@/utils/auth/AuthTokens";
+import { SessionRefreshContext } from "@/utils/auth/SessionRefreshContext";
 
 /* ------------------ BREAK ------------------ */
 
 // Renders the app shell and shared providers.
 export default function RootLayout() {
-  const [isStoredSessionReady, setIsStoredSessionReady] = useState(false);
+  const [isSessionRefreshPending, setIsSessionRefreshPending] = useState(true);
   // Loads custom fonts for consistent typography across the app.
   const [fontsLoaded] = useFonts({
     BricolageGrotesque_400Regular,
@@ -30,7 +35,7 @@ export default function RootLayout() {
     BricolageGrotesque_700Bold
   });
 
-  // Refreshes a stored session before rendering while leaving anonymous startup unrestricted.
+  // Refreshes a stored session in the background while the home screen renders.
   useEffect(() => {
     let isMounted = true;
     let stopTokenChecking: () => void = () => undefined;
@@ -38,7 +43,7 @@ export default function RootLayout() {
     void refreshTokensSilently().finally(() => {
       if (!isMounted) return;
 
-      setIsStoredSessionReady(true);
+      setIsSessionRefreshPending(false);
       stopTokenChecking = triggerTokenChecking();
     });
 
@@ -70,27 +75,34 @@ export default function RootLayout() {
   // Initializes scan storage and retries pending rows at startup and on each app foreground.
   useEffect(() => {
     void checkPendingScans();
+    const stopUnCrawledUrlsTrigger = startUnCrawledUrlsTrigger();
 
     const subscription = AppState.addEventListener("change", (nextState) => {
       if (nextState === "active") {
         void checkPendingScans();
+        void checkUnCrawledUrls();
         void refreshTokensSilently();
       }
     });
 
-    return () => subscription.remove();
+    return () => {
+      subscription.remove();
+      stopUnCrawledUrlsTrigger();
+    };
   }, []);
 
   // Prevents rendering until fonts are loaded to avoid layout shifts.
-  if (!fontsLoaded || !isStoredSessionReady) {
+  if (!fontsLoaded) {
     return null;
   }
 
   //App content to be rendered inside the shared providers.
   const appContent = (
     <>
-      <Stack screenOptions={{ headerShown: false }} />
-      <StatusBar style="dark" />
+      <SessionRefreshContext.Provider value={isSessionRefreshPending}>
+        <Stack screenOptions={{ headerShown: false }} />
+        <StatusBar style="dark" />
+      </SessionRefreshContext.Provider>
     </>
   );
 

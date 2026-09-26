@@ -9,6 +9,8 @@ import { Chip, IconButton, Text } from "react-native-paper";
 import { getScanById } from "@/helpers/scans/db/getQueries";
 import type { ScanUrlMetadata } from "@/helpers/scans/db/init";
 import type { StoredScanReference } from "@/helpers/scans/db/persistScan";
+import { getFileTypeLabel } from "@/helpers/scans/identifiers/File";
+import { getScanCrawlError } from "@/helpers/scans/status";
 import { colors, fontFamilies, fontSizes, radii, spacing } from "@/theme/tokens";
 
 /* ------------------ BREAK ------------------ */
@@ -23,22 +25,26 @@ type UrlCardProps = {
   label: string;
   protocol: "http:" | "https:" | null | undefined;
   url: string | null | undefined;
+  verificationFailed?: boolean;
 };
 
 /* ------------------ BREAK ------------------ */
 
-// Renders website-specific scan metadata and secure start/final destination cards.
+// Renders URL or file metadata with the collected destination links.
 export function Website({ record }: WebsiteProps) {
   const [showFullTitle, setShowFullTitle] = useState(false);
   const [showFullDescription, setShowFullDescription] = useState(false);
   const metadata = record.metadata;
+  const isFile = record.type === "file";
+  const crawlError = getScanCrawlError(record.crawl_status, metadata?.error);
   const finalUrl = record.final_url || getMetadataUrl(metadata?.finalUrl);
   const startUrl = record.input_url || getMetadataUrl(metadata?.inputUrl) || record.value;
   const faviconUrl = getSafeWebUrl(
     getMetadataFavicons(metadata?.finalUrl)[0] || metadata?.favicons?.[0] || metadata?.logoUrl || null
   );
   const title = metadata?.title || getHostname(finalUrl || startUrl);
-  const description = metadata?.description || "No description was collected for this website.";
+  const description = metadata?.description || (isFile || crawlError ? null : "No description was collected for this website.");
+  const fileType = isFile ? getFileTypeLabel(metadata?.contentType, finalUrl || startUrl) : null;
   const timestamp = formatScanTimestamp(record.created_at);
   const showStartUrl = !areSameWebUrls(startUrl, finalUrl);
 
@@ -48,10 +54,10 @@ export function Website({ record }: WebsiteProps) {
       <View style={styles.websiteCard}>
         <View style={styles.titleRow}>
           <View style={styles.faviconShell}>
-            {faviconUrl ? (
+            {!isFile && faviconUrl ? (
               <Image resizeMode="contain" source={{ uri: faviconUrl }} style={styles.favicon} />
             ) : (
-              <MaterialCommunityIcons name="web" size={22} color={colors.secondary.main} />
+              <MaterialCommunityIcons name={isFile ? "file-outline" : "web"} size={22} color={colors.primary.main} />
             )}
           </View>
           <View style={styles.titleContent}>
@@ -64,14 +70,24 @@ export function Website({ record }: WebsiteProps) {
           </View>
         </View>
 
-        <View style={styles.descriptionBlock}>
-          <Text numberOfLines={showFullDescription ? undefined : 2} style={styles.description}>
-            {description}
-          </Text>
-          <Pressable onPress={() => setShowFullDescription((currentValue) => !currentValue)}>
-            <Text style={styles.moreText}>{showFullDescription ? "Less" : "More"}</Text>
-          </Pressable>
-        </View>
+        {isFile ? (
+          <View style={styles.fileDetails}>
+            <Text style={styles.fileDetailLabel}>File type</Text>
+            <Text style={styles.fileDetailValue}>{fileType}</Text>
+            {metadata?.contentType ? (
+              <Text selectable style={styles.fileMimeType}>{metadata.contentType}</Text>
+            ) : null}
+          </View>
+        ) : description ? (
+          <View style={styles.descriptionBlock}>
+            <Text numberOfLines={showFullDescription ? undefined : 2} style={styles.description}>
+              {description}
+            </Text>
+            <Pressable onPress={() => setShowFullDescription((currentValue) => !currentValue)}>
+              <Text style={styles.moreText}>{showFullDescription ? "Less" : "More"}</Text>
+            </Pressable>
+          </View>
+        ) : null}
 
         <View style={styles.timestampRow}>
           <MaterialCommunityIcons name="calendar-clock" size={16} color={colors.mute.main} />
@@ -81,17 +97,29 @@ export function Website({ record }: WebsiteProps) {
         </View>
       </View>
 
+      {crawlError ? (
+        <View style={styles.crawlErrorCard}>
+          <MaterialCommunityIcons name="alert-circle-outline" size={22} color={colors.error.main} />
+          <View style={styles.crawlErrorContent}>
+            <Text style={styles.crawlErrorTitle}>Could not collect link details</Text>
+            <Text selectable style={styles.crawlErrorMessage}>{crawlError}</Text>
+          </View>
+        </View>
+      ) : null}
+
       {showStartUrl ? (
         <UrlCard
           label="Start URL"
           protocol={getMetadataProtocol(metadata?.inputUrl) || metadata?.security?.inputProtocol}
           url={startUrl}
+          verificationFailed={Boolean(crawlError)}
         />
       ) : null}
       <UrlCard
-        label="Final URL"
+        label={crawlError ? "Scanned URL" : "Final URL"}
         protocol={getMetadataProtocol(metadata?.finalUrl) || metadata?.security?.finalProtocol}
         url={finalUrl}
+        verificationFailed={Boolean(crawlError)}
       />
     </View>
   );//return ends
@@ -111,7 +139,7 @@ export async function processWebsiteScan(scan: StoredScanReference): Promise<voi
 /* ------------------ BREAK ------------------ */
 
 // Renders one scanned URL with its own protocol security chip.
-function UrlCard({ label, protocol, url }: UrlCardProps) {
+function UrlCard({ label, protocol, url, verificationFailed = false }: UrlCardProps) {
   const isSecure = protocol === "https:" || getProtocol(url) === "https:";
   const safeUrl = getSafeWebUrl(url || null);
 
@@ -142,11 +170,11 @@ function UrlCard({ label, protocol, url }: UrlCardProps) {
         />
         <Chip
           compact
-          icon={isSecure ? "lock-outline" : "lock-open-alert-outline"}
-          style={[styles.securityChip, isSecure ? styles.secureChip : styles.insecureChip]}
-          textStyle={[styles.securityChipText, isSecure ? styles.secureText : styles.insecureText]}
+          icon={verificationFailed ? "alert-circle-outline" : isSecure ? "lock-outline" : "lock-open-alert-outline"}
+          style={[styles.securityChip, isSecure && !verificationFailed ? styles.secureChip : styles.insecureChip]}
+          textStyle={[styles.securityChipText, isSecure && !verificationFailed ? styles.secureText : styles.insecureText]}
         >
-          {isSecure ? "Secure" : "Not secure"}
+          {verificationFailed ? "Not verified" : isSecure ? "Secure" : "Not secure"}
         </Chip>
         <Pressable
           accessibilityLabel={`Open ${label}`}
@@ -281,8 +309,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
-    borderRadius: radii.md,
-    backgroundColor: colors.secondary.light
+    borderWidth: 1,
+    borderColor: colors.neutral.light,
+    borderRadius: radii.lg,
+    backgroundColor: colors.white.main
   },
   favicon: {
     width: 26,
@@ -300,6 +330,48 @@ const styles = StyleSheet.create({
   },
   descriptionBlock: {
     gap: spacing.xxs
+  },
+  crawlErrorCard: {
+    flexDirection: "row",
+    gap: spacing.sm,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.error.main,
+    borderRadius: radii.xl,
+    backgroundColor: colors.white.main
+  },
+  crawlErrorContent: {
+    minWidth: 0,
+    flex: 1,
+    gap: spacing.xxs
+  },
+  crawlErrorTitle: {
+    color: colors.error.main,
+    fontFamily: fontFamilies.primarySemiBold,
+    fontSize: fontSizes.body2
+  },
+  crawlErrorMessage: {
+    color: colors.primary.light,
+    fontFamily: fontFamilies.primaryRegular,
+    fontSize: fontSizes.body2
+  },
+  fileDetails: {
+    gap: spacing.xxs
+  },
+  fileDetailLabel: {
+    color: colors.mute.main,
+    fontFamily: fontFamilies.primaryMedium,
+    fontSize: fontSizes.caption
+  },
+  fileDetailValue: {
+    color: colors.primary.main,
+    fontFamily: fontFamilies.primarySemiBold,
+    fontSize: fontSizes.body2
+  },
+  fileMimeType: {
+    color: colors.mute.main,
+    fontFamily: fontFamilies.mono,
+    fontSize: fontSizes.caption
   },
   description: {
     color: colors.mute.main,

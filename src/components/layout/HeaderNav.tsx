@@ -1,8 +1,9 @@
-import { Pressable, StyleSheet, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
 import { router, type Href } from "expo-router";
 import { House, User } from "lucide-react-native";
 
 import { UnoQrLogo } from "@/components/brand/UnoQrLogo";
+import { useSessionRefreshPending } from "@/utils/auth/SessionRefreshContext";
 import { colors } from "@/theme/colors";
 import { spacing } from "@/theme/tokens";
 
@@ -10,6 +11,8 @@ import { spacing } from "@/theme/tokens";
 
 // Renders the branded app header with home and profile actions.
 export function HeaderNav() {
+  const isSessionRefreshPending = useSessionRefreshPending();
+
   // Opens the app home screen.
   const handleHomePress = () => {
     router.push("/" as Href);
@@ -39,13 +42,19 @@ export function HeaderNav() {
         </Pressable>
 
         <Pressable
-          accessibilityLabel="Open profile"
+          accessibilityLabel={isSessionRefreshPending ? "Checking account" : "Open profile"}
           accessibilityRole="button"
+          accessibilityState={{ disabled: isSessionRefreshPending, busy: isSessionRefreshPending }}
+          disabled={isSessionRefreshPending}
           hitSlop={spacing.xs}
           onPress={handleProfilePress}
           style={({ pressed }) => [styles.actionButton, pressed && styles.pressedButton]}
         >
-          <User color={colors.secondary.main} size={24} strokeWidth={1.25} />
+          {isSessionRefreshPending ? (
+            <ActivityIndicator color={colors.secondary.main} size="small" />
+          ) : (
+            <User color={colors.secondary.main} size={24} strokeWidth={1.25} />
+          )}
         </Pressable>
       </View>
     </View>

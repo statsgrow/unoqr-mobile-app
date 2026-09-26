@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  Alert,
   Animated,
   Platform,
   Pressable,
@@ -11,15 +10,27 @@ import {
 } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { CameraView, useCameraPermissions, type BarcodeScanningResult } from "expo-camera";
+import * as Device from "expo-device";
+import {
+  CameraView,
+  scanFromURLAsync,
+  useCameraPermissions,
+  type BarcodeScanningResult
+} from "expo-camera";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { Text } from "react-native-paper";
+import { IconButton, Text } from "react-native-paper";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Svg, { Defs, Mask, Rect } from "react-native-svg";
 
 import { UnoQrLogo } from "@/components/brand/UnoQrLogo";
 import { PxButton } from "@/components/elements/PxButton";
+import { PxDialog } from "@/components/elements/PxDialog";
 import { PxPageLoader } from "@/components/elements/PxPageLoader";
+import { selectImage, type ImagePickerFile } from "@/components/files/ImagePicker";
+import {
+  UpiPaymentDetailsDialog,
+  type UpiPaymentDialogDetails
+} from "@/helpers/scans/components/UpiPaymentDetailsDialog";
 import { prepareScanLocation } from "@/helpers/scans/location";
 import {
   prepareScannedValue,
@@ -27,6 +38,7 @@ import {
   type PreparedScan
 } from "@/helpers/scans/scanIdentifier";
 import { TextScanDialog } from "@/helpers/scans/scanTypes/Text";
+import { getUpiPaymentDetails } from "@/helpers/scans/scanTypes/UpiPayment";
 import { colors, fontFamilies, fontSizes, radii, spacing } from "@/theme/tokens";
 
 /* ------------------ BREAK ------------------ */
@@ -35,9 +47,12 @@ type ScannerOverlayProps = {
   targetSize: number;
   torchEnabled: boolean;
   scanComplete: boolean;
+  imageSelectionDisabled: boolean;
+  cameraDisabledForEmulator: boolean;
   showTestDestination: boolean;
-  testDestination: string;
+  hasTestDestination: boolean;
   onClose: () => void;
+  onSelectImage: () => void;
   onSubmitTestDestination: () => void;
   onTestDestinationChange: (value: string) => void;
   onToggleTorch: () => void;
@@ -49,9 +64,25 @@ type RoundedTargetMaskProps = {
   targetSize: number;
 };
 
+type ScannerAlertState = {
+  title: string;
+  message?: string;
+  guidance: string;
+  color: "danger" | "warning";
+  icon: keyof typeof MaterialCommunityIcons.glyphMap;
+  actionLabel: string;
+};
+
+type ScannerAlertDialogProps = {
+  alert: ScannerAlertState | null;
+  onClose: () => void;
+};
+
 /* ------------------ BREAK ------------------ */
 
 const scanTargetRadius = radii.xl + spacing.sm;
+const testDestinationHeight = 50;
+const instructionTopOffset = spacing.xxl + spacing.lg;
 
 /* ------------------ BREAK ------------------ */
 
@@ -61,19 +92,29 @@ export default function ScanScreen() {
   const [permission, requestPermission] = useCameraPermissions();
   const [torchEnabled, setTorchEnabled] = useState(false);
   const [scanResult, setScanResult] = useState<PreparedScan | null>(null);
-  const [testDestination, setTestDestination] = useState("");
+  const [isProcessingImage, setIsProcessingImage] = useState(false);
+  const [isSavingScan, setIsSavingScan] = useState(false);
+  const [hasTestDestination, setHasTestDestination] = useState(false);
   const [textDialogValue, setTextDialogValue] = useState<string | null>(null);
+  const [upiDialogDetails, setUpiDialogDetails] = useState<UpiPaymentDialogDetails | null>(null);
+  const [scannerAlert, setScannerAlert] = useState<ScannerAlertState | null>(null);
   const scanLockRef = useRef(false);
+  const testDestinationRef = useRef("");
   const targetSize = Math.min(340, Math.max(260, width - spacing.lg * 2));
   const showTestDestination = process.env.EXPO_PUBLIC_API_ENV === "development"
     && (Platform.OS === "android" || Platform.OS === "ios");
+  const cameraDisabledForEmulator = showTestDestination && !Device.isDevice;
 
   // Unlocks camera scanning whenever the user returns from the completed browser flow.
   useFocusEffect(
     useCallback(() => {
       scanLockRef.current = false;
       setScanResult(null);
+      setIsProcessingImage(false);
+      setIsSavingScan(false);
       setTextDialogValue(null);
+      setUpiDialogDetails(null);
+      setScannerAlert(null);
 
       if (Platform.OS === "android" || Platform.OS === "ios") {
         void prepareScanLocation();
@@ -103,18 +144,50 @@ export default function ScanScreen() {
     //Lock repeated camera callbacks and process the destination once.
     scanLockRef.current = true;
     setScanResult(preparedScan);
+    setIsSavingScan(true);
     void processPreparedScan(preparedScan)
-      .then(({ textValue }) => {
+      .then(({ scanId, textValue }) => {
+        setIsSavingScan(false);
+
+        if (!scanId) {
+          scanLockRef.current = false;
+          setScanResult(null);
+          setScannerAlert({
+            title: "Unable to save scan",
+            message: "The scan could not be saved on this device.",
+            guidance: "Check the app storage and try scanning again.",
+            color: "danger",
+            icon: "database-alert-outline",
+            actionLabel: "Try again"
+          });
+          return;
+        };//if ends
+
         if (textValue) setTextDialogValue(textValue);
+
+        if (preparedScan.type === "upi_payment") {
+          const paymentDetails = getUpiPaymentDetails(preparedScan.value);
+          if (paymentDetails) {
+            setUpiDialogDetails({
+              payeeName: paymentDetails.payeeName,
+              payeeVpa: paymentDetails.payeeVpa
+            });
+          };//if ends
+        };//if ends
       })
       .catch((error: unknown) => {
-        console.error("Unable to process scanned destination:", error);
+        console.info("Unable to process scanned destination:", error);
         scanLockRef.current = false;
         setScanResult(null);
-        Alert.alert(
-          "Unable to open scan",
-          "The scan was saved, but no compatible app could open this destination."
-        );
+        setIsSavingScan(false);
+        setScannerAlert({
+          title: "Unable to open scan",
+          message: "The scan was saved, but no compatible app could open this destination.",
+          guidance: "Check that an appropriate app is installed, then try again.",
+          color: "danger",
+          icon: "open-in-new",
+          actionLabel: "Close"
+        });
       });
   };//func ends
 
@@ -125,17 +198,45 @@ export default function ScanScreen() {
     scanLockRef.current = false;
   };//func ends
 
+  // Closes the UPI details dialog and unlocks the camera for another scan.
+  const handleUpiDialogClose = () => {
+    setUpiDialogDetails(null);
+    setScanResult(null);
+    scanLockRef.current = false;
+  };//func ends
+
   // Passes a detected camera barcode into the shared destination flow.
   const handleBarcodeScanned = ({ data }: BarcodeScanningResult) => {
     handleScannedValue(data);
   };//func ends
 
-  if (!permission) {
+  // Stores development test input without re-rendering the camera overlay for every character.
+  const handleTestDestinationChange = (value: string) => {
+    testDestinationRef.current = value;
+    const hasValue = Boolean(value.trim());
+    setHasTestDestination((currentValue) => currentValue === hasValue ? currentValue : hasValue);
+  };//func ends
+
+  // Selects a gallery image, reads its QR value, and passes it into the shared scan flow.
+  const handleImageSelection = async () => {
+    if (scanLockRef.current || isProcessingImage) return;
+
+    setIsProcessingImage(true);
+
+    try {
+      const value = await processQrFromImage(setScannerAlert);
+      if (value) handleScannedValue(value);
+    } finally {
+      setIsProcessingImage(false);
+    };//try-finally ends
+  };//func ends
+
+  if (!permission && !cameraDisabledForEmulator) {
     //Default Return
     return <View style={styles.loadingScreen} />;
   };//if ends
 
-  if (!permission.granted) {
+  if (!permission?.granted && !cameraDisabledForEmulator) {
     //Default Return
     return (
       <SafeAreaView style={styles.permissionScreen}>
@@ -161,35 +262,52 @@ export default function ScanScreen() {
   return (
     <View style={styles.screen}>
       <StatusBar style="light" />
-      <CameraView
-        style={styles.camera}
-        facing="back"
-        enableTorch={torchEnabled}
-        barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
-        onBarcodeScanned={scanResult ? undefined : handleBarcodeScanned}
-      />
+      {cameraDisabledForEmulator ? (
+        <View style={styles.emulatorCameraBackground} />
+      ) : (
+        <CameraView
+          style={styles.camera}
+          facing="back"
+          enableTorch={torchEnabled}
+          barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
+          onBarcodeScanned={scanResult ? undefined : handleBarcodeScanned}
+        />
+      )}
 
       <ScannerOverlay
         targetSize={targetSize}
         torchEnabled={torchEnabled}
         scanComplete={Boolean(scanResult)}
+        imageSelectionDisabled={Boolean(scanResult) || isProcessingImage}
+        cameraDisabledForEmulator={cameraDisabledForEmulator}
         showTestDestination={showTestDestination}
-        testDestination={testDestination}
+        hasTestDestination={hasTestDestination}
         onClose={handleClose}
-        onSubmitTestDestination={() => handleScannedValue(testDestination)}
-        onTestDestinationChange={setTestDestination}
+        onSelectImage={() => void handleImageSelection()}
+        onSubmitTestDestination={() => handleScannedValue(testDestinationRef.current)}
+        onTestDestinationChange={handleTestDestinationChange}
         onToggleTorch={() => setTorchEnabled((currentValue) => !currentValue)}
       />
 
       <PxPageLoader
-        visible={scanResult?.type === "url"}
-        title="Checking this link"
-        description="We’re checking the link while opening the website."
+        visible={isSavingScan}
+        title="Saving your scan"
+        description="We’re securely saving this scan to My Scans."
       />
 
       <TextScanDialog
         value={textDialogValue}
         onClose={handleTextDialogClose}
+      />
+
+      <UpiPaymentDetailsDialog
+        details={scanResult?.type === "upi_payment" ? upiDialogDetails : null}
+        onClose={handleUpiDialogClose}
+      />
+
+      <ScannerAlertDialog
+        alert={scannerAlert}
+        onClose={() => setScannerAlert(null)}
       />
 
     </View>
@@ -198,14 +316,100 @@ export default function ScanScreen() {
 
 /* ------------------ BREAK ------------------ */
 
+// Opens the native image gallery and returns the QR value found in the selected image.
+async function processQrFromImage(showAlert: (alert: ScannerAlertState) => void): Promise<string | null> {
+  try {
+    const selectedImage = await selectImage();
+    if (!selectedImage) return null;
+
+    const value = await getQrFromImage(selectedImage);
+
+    if (!value) {
+      showAlert({
+        title: "No QR code found",
+        message: "UnoQR could not detect a QR code in the selected image.",
+        guidance: "Choose a clear, uncropped image with the complete QR code visible.",
+        color: "warning",
+        icon: "qrcode-scan",
+        actionLabel: "Choose another"
+      });
+    };//if ends
+
+    return value;
+  } catch (error: unknown) {
+    console.info("Unable to scan QR code from image:", error);
+    showAlert({
+      title: "Unable to read image",
+      message: "The selected image could not be processed.",
+      guidance: "Try another JPG or PNG image containing a clear QR code.",
+      color: "danger",
+      icon: "image-broken-variant",
+      actionLabel: "Close"
+    });
+    return null;
+  };//try-catch ends
+};//func ends
+
+// Decodes the first QR value from a selected local image asset.
+async function getQrFromImage(imageData: ImagePickerFile): Promise<string | null> {
+  const qrCodes = await scanFromURLAsync(imageData.uri, ["qr"]);
+  return qrCodes[0]?.data?.trim() || null;
+};//func ends
+
+/* ------------------ BREAK ------------------ */
+
+// Presents scanner failures with the shared themed dialog and a clear recovery action.
+function ScannerAlertDialog({ alert, onClose }: ScannerAlertDialogProps) {
+  const isWarning = alert?.color === "warning";
+  const accentColor = isWarning ? colors.warning.main : colors.error.main;
+  const accentBackground = isWarning ? `${colors.warning.main}1A` : `${colors.error.main}1A`;
+
+  //Default Return
+  return (
+    <PxDialog
+      open={Boolean(alert)}
+      setOpen={(open) => {
+        if (!open) onClose();
+      }}
+      title={alert?.title}
+      subtitle={alert?.message}
+      color={alert?.color}
+    >
+      {alert ? (
+        <>
+          <View style={styles.alertGuidanceRow}>
+            <View style={[styles.alertIconShell, { backgroundColor: accentBackground }]}>
+              <MaterialCommunityIcons name={alert.icon} size={24} color={accentColor} />
+            </View>
+            <Text style={styles.alertGuidance}>{alert.guidance}</Text>
+          </View>
+          <PxButton
+            fullWidth
+            color={isWarning ? "warning" : "error"}
+            startIcon="check"
+            onPress={onClose}
+          >
+            {alert.actionLabel}
+          </PxButton>
+        </>
+      ) : null}
+    </PxDialog>
+  );//return ends
+};//func ends
+
+/* ------------------ BREAK ------------------ */
+
 // Draws the camera controls, dimmed mask, and animated QR targeting frame.
 function ScannerOverlay({
   targetSize,
   torchEnabled,
   scanComplete,
+  imageSelectionDisabled,
+  cameraDisabledForEmulator,
   showTestDestination,
-  testDestination,
+  hasTestDestination,
   onClose,
+  onSelectImage,
   onSubmitTestDestination,
   onTestDestinationChange,
   onToggleTorch
@@ -214,6 +418,7 @@ function ScannerOverlay({
   const scanLineProgress = useRef(new Animated.Value(0)).current;
   const screenWidth = overlaySize.width;
   const screenHeight = overlaySize.height;
+  const targetTop = screenHeight / 2 - targetSize / 2;
 
   // Animates the scan line continuously while the scanner is active.
   useEffect(() => {
@@ -283,12 +488,13 @@ function ScannerOverlay({
           <View
             style={[
               styles.testDestinationWrap,
-              { top: screenHeight / 2 - targetSize / 2 - 68 }
+              {
+                top: targetTop - instructionTopOffset - testDestinationHeight - spacing.sm
+              }
             ]}
           >
             <TextInput
               accessibilityLabel="Test destination URL"
-              value={testDestination}
               onChangeText={onTestDestinationChange}
               onSubmitEditing={onSubmitTestDestination}
               placeholder="Paste a test destination"
@@ -302,11 +508,11 @@ function ScannerOverlay({
             <Pressable
               accessibilityLabel="Use test destination"
               accessibilityRole="button"
-              disabled={!testDestination.trim()}
+              disabled={!hasTestDestination}
               onPress={onSubmitTestDestination}
               style={({ pressed }) => [
                 styles.testDestinationButton,
-                !testDestination.trim() && styles.testDestinationButtonDisabled,
+                !hasTestDestination && styles.testDestinationButtonDisabled,
                 pressed && styles.testDestinationButtonPressed
               ]}
             >
@@ -329,18 +535,35 @@ function ScannerOverlay({
         <View
           style={[
             styles.instructionWrap,
-            { top: screenHeight / 2 + targetSize / 2 + spacing.xl }
+            { top: targetTop - instructionTopOffset }
           ]}
         >
-          <Text style={styles.instruction}>Align the QR code inside the frame</Text>
-          <Text style={styles.instructionHint}>Scanning happens automatically</Text>
+          <Text style={styles.instruction}>
+            {cameraDisabledForEmulator ? "Emulator camera paused" : "Align the QR code inside the frame"}
+          </Text>
+          <Text style={styles.instructionHint}>
+            {cameraDisabledForEmulator
+              ? "Paste a test value or choose a QR image"
+              : "Scanning happens automatically"}
+          </Text>
         </View>
       </View>
 
-      <SafeAreaView pointerEvents="none" edges={["bottom"]} style={styles.poweredBySafeArea}>
+      <SafeAreaView pointerEvents="box-none" edges={["bottom"]} style={styles.poweredBySafeArea}>
         <View style={styles.poweredByWrap}>
-          <Text style={styles.poweredByText}>Powered by</Text>
-          <UnoQrLogo width={72} color={colors.white.main} />
+          <IconButton
+            accessibilityLabel="Scan QR code from image"
+            disabled={imageSelectionDisabled}
+            icon="image-outline"
+            iconColor={colors.white.main}
+            size={26}
+            onPress={onSelectImage}
+            style={styles.imagePickerButton}
+          />
+          <View pointerEvents="none" style={styles.poweredByBrand}>
+            <Text style={styles.poweredByText}>Powered by</Text>
+            <UnoQrLogo width={72} color={colors.white.main} />
+          </View>
         </View>
       </SafeAreaView>
     </View>
@@ -390,6 +613,35 @@ const styles = StyleSheet.create({
   },
   camera: {
     ...StyleSheet.absoluteFill
+  },
+  emulatorCameraBackground: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: colors.black.main
+  },
+  alertGuidanceRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    padding: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border.light,
+    borderRadius: radii.lg,
+    backgroundColor: colors.cream.main
+  },
+  alertIconShell: {
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: radii.pill
+  },
+  alertGuidance: {
+    minWidth: 0,
+    flex: 1,
+    color: colors.primary.light,
+    fontFamily: fontFamilies.primaryRegular,
+    fontSize: fontSizes.body2,
+    lineHeight: 20
   },
   loadingScreen: {
     flex: 1,
@@ -501,7 +753,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     right: spacing.lg,
     left: spacing.lg,
-    minHeight: 50,
+    minHeight: testDestinationHeight,
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.xs,
@@ -545,8 +797,22 @@ const styles = StyleSheet.create({
   poweredByWrap: {
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing.xxs,
+    gap: spacing.md,
     paddingBottom: spacing.xxl
+  },
+  imagePickerButton: {
+    width: 52,
+    height: 52,
+    margin: 0,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.28)",
+    borderRadius: radii.pill,
+    backgroundColor: "rgba(0,0,0,0.52)"
+  },
+  poweredByBrand: {
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.xxs
   },
   poweredByText: {
     color: "rgba(255,255,255,0.68)",

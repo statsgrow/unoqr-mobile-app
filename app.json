@@ -18,7 +18,10 @@
     "userInterfaceStyle": "light",
     "ios": {
       "bundleIdentifier": "com.statsgrow.unoqr",
-      "supportsTablet": true
+      "supportsTablet": true,
+      "entitlements": {
+        "com.apple.developer.devicecheck.appattest-environment": "development"
+      }
     },
     "android": {
       "package": "com.statsgrow.unoqr",

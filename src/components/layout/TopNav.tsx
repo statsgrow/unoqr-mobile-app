@@ -1,7 +1,7 @@
 import { Pressable, StyleSheet, View } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { router, usePathname } from "expo-router";
-import { CloudAlert } from "lucide-react-native";
+import { CloudAlert, CloudCheck } from "lucide-react-native";
 import { Text } from "react-native-paper";
 
 import { UnoQrLogo } from "@/components/brand/UnoQrLogo";
@@ -12,6 +12,7 @@ import { colors, fontFamilies, fontSizes, radii, spacing } from "@/theme/tokens"
 type TopNavProps = {
   title?: string;
   showSyncStatus?: boolean;
+  isSyncComplete?: boolean;
   onSyncInfoPress?: () => void;
 };
 
@@ -21,6 +22,7 @@ type TopNavProps = {
 export function TopNav({
   title,
   showSyncStatus = false,
+  isSyncComplete = false,
   onSyncInfoPress
 }: TopNavProps) {
   const pathname = usePathname();
@@ -65,7 +67,11 @@ export function TopNav({
             onPress={onSyncInfoPress}
             style={({ pressed }) => [styles.syncStatus, pressed && styles.actionButtonPressed]}
           >
-            <CloudAlert size={19} strokeWidth={1.25} color={colors.error.main} />
+            {isSyncComplete ? (
+              <CloudCheck size={19} strokeWidth={1.25} color={colors.primary.main} />
+            ) : (
+              <CloudAlert size={19} strokeWidth={1.25} color={colors.error.main} />
+            )}
           </Pressable>
         ) : null}
       </View>
