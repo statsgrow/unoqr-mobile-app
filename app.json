@@ -68,7 +68,8 @@
         }
       ],
       "expo-notifications",
-      "expo-secure-store"
+      "expo-secure-store",
+      "./app_helpers/android/withUnoqrDownloads"
     ],
     "extra": {
       "router": {

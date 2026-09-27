@@ -1,0 +1,6 @@
+{
+  "name": "unoqr-file-opener",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Opens downloaded UnoQR files with iOS Quick Look"
+}

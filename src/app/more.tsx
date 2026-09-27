@@ -140,6 +140,13 @@ export default function MoreScreen() {
 
         <View style={styles.groupedLinks}>
           <GroupedLink
+            icon="qrcode-plus"
+            label="Create Qr"
+            description="Make and download a static QR code"
+            onPress={() => router.push("/qrcodes/create")}
+            showDivider
+          />
+          <GroupedLink
             icon="account-circle-outline"
             label="My Account"
             description="Profile and account details"

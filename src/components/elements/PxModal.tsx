@@ -3,10 +3,13 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
 	Animated,
 	Easing,
+	KeyboardAvoidingView,
 	Modal,
+	Platform,
 	Pressable,
 	ScrollView,
 	StyleSheet,
+	Text,
 	useWindowDimensions,
 	View,
 	type LayoutChangeEvent,
@@ -14,9 +17,11 @@ import {
 	type NativeSyntheticEvent
 } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { X } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { colors, sizes } from "@/theme/themeSettings";
+import { colors as tokenColors, fontFamilies, fontSizes, spacing } from "@/theme/tokens";
 
 /* ------------------ TYPES ------------------ */
 
@@ -29,6 +34,12 @@ type PxModalProps = {
 	position?: "bottom" | "top" | "center";
 	showHandle?: boolean;
 	autoHeight?: boolean;
+	height?: "full" | "auto" | number;
+	maxHeight?: number;
+	footer?: ReactNode;
+	keyboardAvoiding?: boolean;
+	name?: string | null;
+	hideCloseButton?: boolean;
 	onBackdropClick?: () => void;
 	closeOnBackdropClick?: boolean;
 	testID?: string;
@@ -49,6 +60,12 @@ export function PxModal({
 	position = "bottom",
 	showHandle = true,
 	autoHeight = true,
+	height,
+	maxHeight,
+	footer,
+	keyboardAvoiding = false,
+	name,
+	hideCloseButton = false,
 	onBackdropClick,
 	closeOnBackdropClick = true,
 	testID
@@ -59,12 +76,31 @@ export function PxModal({
 	const handleRequestClose = onRequestClose ?? (setOpen ? () => setOpen(false) : undefined);
 	const insets = useSafeAreaInsets();
 	const { height: windowHeight } = useWindowDimensions();
-	const maxScrollableHeight = autoHeight ? Math.min(520, windowHeight * 0.72) : windowHeight * 0.7;
-	const modalHeightStyle = autoHeight ? null : { height: windowHeight * 0.7 };
-	const bottomInsetStyle = position === "bottom" ? { paddingBottom: Math.max(insets.bottom + 8, 20) } : null;
+	const hasHeader = name !== undefined;
+	const showSheetSurface = position === "bottom" && (showHandle || hasHeader);
+	const bottomSheetOffset = position === "bottom" && Platform.OS === "android"
+		? Math.max(insets.bottom, spacing.xl)
+		: 0;
+	const bottomPadding = Platform.OS === "android"
+		? spacing.md
+		: Math.max(insets.bottom + spacing.xs, 20);
+	const maxSheetHeight = Math.min(maxHeight ?? (typeof height === "number" ? height : 520), windowHeight - insets.top - bottomSheetOffset - spacing.md);
+	const maxScrollableHeight = height === "full"
+		? windowHeight - insets.top - bottomSheetOffset - bottomPadding - (hasHeader ? 90 : 34)
+		: height === "auto"
+			? Math.max(120, maxSheetHeight - bottomPadding - (hasHeader ? 76 : 20))
+			: autoHeight ? Math.min(520, windowHeight * 0.72) : windowHeight * 0.7;
+	const outerHeightStyle = height || autoHeight ? null : { height: windowHeight * 0.7 };
+	const surfaceHeightStyle = typeof height === "number"
+		? { height: Math.min(height, maxSheetHeight) }
+		: height === "full"
+		? { height: windowHeight - insets.top - bottomSheetOffset }
+		: height === "auto" ? { maxHeight: maxSheetHeight } : outerHeightStyle;
+	const bottomInsetStyle = position === "bottom" ? { paddingBottom: bottomPadding } : null;
 	const containerPositionStyle = position === "top" ? styles.top : position === "center" ? styles.center : styles.bottom;
-	const contentPositionStyle = position === "center" ? styles.centerContentHost : null;
-	const shouldShowDefaultBottomHandle = position === "bottom" && showHandle;
+	const contentPositionStyle = position === "center"
+		? styles.centerContentHost
+		: bottomSheetOffset ? { paddingBottom: bottomSheetOffset } : null;
 	const slideValue = useRef(new Animated.Value(position === "top" ? -24 : 24)).current;
 	const opacityValue = useRef(new Animated.Value(0)).current;
 	const [scrollViewportHeight, setScrollViewportHeight] = useState(0);
@@ -121,6 +157,8 @@ export function PxModal({
 
 
 	//Default Return
+	const Container = keyboardAvoiding ? KeyboardAvoidingView : View;
+
 	return (
 		<Modal
 			visible={isOpen}
@@ -128,26 +166,37 @@ export function PxModal({
 			animationType="fade"
 			onRequestClose={handleRequestClose}
 			statusBarTranslucent
+			navigationBarTranslucent={false}
 			testID={testID}
 		>
-			<View style={[styles.container, containerPositionStyle]}>
+			<Container behavior={keyboardAvoiding && Platform.OS === "ios" ? "padding" : undefined} style={[styles.container, containerPositionStyle]}>
 				<Pressable style={styles.backdrop} onPress={handleBackdropClick} />
 				<View style={[styles.contentHost, contentPositionStyle]} pointerEvents="box-none">
 					<Animated.View
 						pointerEvents="box-none"
 						style={[
 							styles.sheetWrap,
-							modalHeightStyle,
+							outerHeightStyle,
 							position === "bottom" && styles.sheetWrapBottom,
 							{ opacity: opacityValue, transform: [{ translateY: slideValue }] }
 						]}
 					>
-						{shouldShowDefaultBottomHandle ? (
-							<View style={[styles.handleContentSurface, modalHeightStyle, bottomInsetStyle]}>
-								<View style={styles.defaultHandle} />
-								<View style={[styles.scrollArea, { maxHeight: maxScrollableHeight }]}>
+						{showSheetSurface ? (
+							<View style={[styles.handleContentSurface, surfaceHeightStyle, bottomInsetStyle]}>
+								{showHandle ? <View style={styles.defaultHandle} /> : null}
+								{hasHeader ? (
+									<View style={styles.sheetHeader}>
+										<Text style={styles.sheetTitle}>{name}</Text>
+										{!hideCloseButton ? (
+											<Pressable accessibilityLabel="Close" accessibilityRole="button" hitSlop={spacing.sm} onPress={handleRequestClose} style={styles.closeButton}>
+												<X color={tokenColors.mute.main} size={24} strokeWidth={1.75} />
+											</Pressable>
+										) : null}
+									</View>
+								) : null}
+								<View style={[styles.scrollArea, typeof height === "number" ? styles.fixedScrollArea : { maxHeight: maxScrollableHeight }]}>
 									<ScrollView
-										style={styles.scrollView}
+										style={[styles.scrollView, typeof height === "number" && styles.fixedScrollView]}
 										contentContainerStyle={styles.scrollContent}
 										onLayout={handleScrollLayout}
 										onContentSizeChange={(_width, height) => setScrollContentHeight(height)}
@@ -165,11 +214,12 @@ export function PxModal({
 										</View>
 									) : null}
 								</View>
+								{footer ? <View style={styles.fixedFooter}>{footer}</View> : null}
 							</View>
 						) : children}
 					</Animated.View>
 				</View>
-			</View>
+			</Container>
 		</Modal>
 	);//return ends
 };//export ends
@@ -205,9 +255,12 @@ const styles = StyleSheet.create({
 		position: "relative",
 		width: "100%"
 	},
+	fixedScrollArea: { flex: 1 },
+	fixedFooter: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
 	scrollView: {
 		width: "100%"
 	},
+	fixedScrollView: { flex: 1 },
 	scrollContent: {
 		paddingBottom: sizes.spacing["2xl"]
 	},
@@ -236,6 +289,26 @@ const styles = StyleSheet.create({
 		borderRadius: sizes.borderRadius.full,
 		backgroundColor: colors.grey[200],
 		marginBottom: sizes.spacing.xs
+	},
+	sheetHeader: {
+		minHeight: 56,
+		flexDirection: "row",
+		alignItems: "center",
+		justifyContent: "space-between",
+		paddingHorizontal: spacing.lg,
+		paddingBottom: spacing.xs
+	},
+	sheetTitle: {
+		flex: 1,
+		color: tokenColors.primary.main,
+		fontFamily: fontFamilies.primaryBold,
+		fontSize: fontSizes.h6
+	},
+	closeButton: {
+		width: 36,
+		height: 36,
+		alignItems: "center",
+		justifyContent: "center"
 	},
 	top: {
 		justifyContent: "flex-start"
