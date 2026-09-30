@@ -1,9 +1,10 @@
 import { useCallback, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { router, useFocusEffect } from "expo-router";
+import { useFocusEffect } from "expo-router";
 import { ActivityIndicator, Text } from "react-native-paper";
 
+import { redirect } from "@/utils/general/Redirect";
 import { PxCard } from "@/components/elements/PxCard";
 import { UpiPaymentIcon } from "@/helpers/scans/components/UpiPaymentIcon";
 import { getAllScans } from "@/helpers/scans/db/getQueries";
@@ -158,7 +159,7 @@ export function HomeAnalytics() {
         <View style={styles.recentHeadingRow}>
           <Text style={styles.recentHeading}>Recent Scans</Text>
           {recentScans.length > 0 ? (
-            <Pressable onPress={() => router.push("/scans/list")}>
+            <Pressable onPress={() => redirect("push", "/scans/list")}>
               <Text style={styles.viewAllText}>View all</Text>
             </Pressable>
           ) : null}
@@ -219,7 +220,7 @@ function RecentScanCard({ record }: { record: ScanRecord }) {
     <Pressable
       accessibilityLabel={`Open recent scan ${title}`}
       accessibilityRole="button"
-      onPress={() => router.push(`/scans/${record.id}/view`)}
+      onPress={() => redirect("push", `/scans/${record.id}/view`)}
       style={({ pressed }) => [styles.recentCard, pressed && styles.recentCardPressed]}
     >
       {isUpiPayment ? (
@@ -294,7 +295,7 @@ function TypeCard({ summary }: TypeCardProps) {
     <PxCard
       padded={false}
       bordered
-      onPress={() => router.push({ pathname: "/scans/list", params: { type: summary.type } })}
+      onPress={() => redirect("push", { pathname: "/scans/list", params: { type: summary.type } })}
       style={styles.typeCard}
       contentStyle={styles.typeCardContent}
     >

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { Check } from "lucide-react-native";
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ArrowRight, Check, Plus } from "lucide-react-native";
+import { Keyboard, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import Svg, { Circle, Defs, LinearGradient, Stop } from "react-native-svg";
 
 import { colors, fontFamilies, fontSizes, radii, spacing } from "@/theme/tokens";
 
@@ -27,21 +28,49 @@ const HEX_COLOR = /^#[0-9A-Fa-f]{6}$/;
 
 /* ------------------ BREAK ------------------ */
 
-// Shows scrollable swatches, a visual color picker, and a custom hex field.
+// Opens a custom color editor from the first palette swatch and applies it with the arrow.
 export default function QrColorPicker({
   name, color, onChangeColor, hint = "Use a dark color for reliable scanning.",
   onReset, presets = PRESET_COLORS
 }: QrColorPickerProps) {
   const [hexValue, setHexValue] = useState(color);
+  const [draftColor, setDraftColor] = useState(color);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const validHex = HEX_COLOR.test(hexValue);
+  const customColor = !presets.some((preset) => preset.toUpperCase() === color.toUpperCase());
 
   useEffect(() => {
     setHexValue(color);
+    setDraftColor(color);
+    setPickerOpen(false);
   }, [color]);
 
-  // Applies a complete hex value while preserving partial input during editing.
-  function handleHexChange(value: string) {
+  // Keeps partial hex input editable and updates the draft when it is complete.
+  function handleHexChange(value: string): void {
+    const hex = value.startsWith("#") ? value : `#${value}`;
+    setHexValue(hex);
+    if (HEX_COLOR.test(hex)) setDraftColor(hex.toUpperCase());
+  };//func ends
+
+  // Opens the editor with the currently selected color.
+  function openPicker(): void {
+    setDraftColor(color);
+    setHexValue(color);
+    setPickerOpen(true);
+  };//func ends
+
+  // Synchronizes the draft swatch and hex field when the visual picker changes.
+  function handleDraftChange(value: string): void {
+    setDraftColor(value);
     setHexValue(value);
-    if (HEX_COLOR.test(value)) onChangeColor(value.toUpperCase());
+  };//func ends
+
+  // Applies the completed custom color and returns to the palette.
+  function applyCustomColor(): void {
+    if (!validHex) return;
+    onChangeColor(hexValue.toUpperCase());
+    Keyboard.dismiss();
+    setPickerOpen(false);
   };//func ends
 
   const swatches = presets.map((preset) => {
@@ -67,25 +96,62 @@ export default function QrColorPicker({
   return (
     <View style={styles.content}>
       <Text style={styles.sectionTitle}>{name} color</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.colorsHorizontal}>{swatches}</ScrollView>
-
-      <QrVisualColorPicker color={color} onChangeColor={onChangeColor} />
-
-      <View style={styles.hexRow}>
-        <Text style={styles.hexLabel}>Custom color</Text>
-        <TextInput
-          accessibilityLabel={`Custom ${name.toLowerCase()} hex color`}
-          autoCapitalize="characters"
-          autoCorrect={false}
-          maxLength={7}
-          onBlur={() => setHexValue(color)}
-          onChangeText={handleHexChange}
-          placeholder="#191414"
-          selectionColor={colors.secondary.main}
-          style={styles.hexInput}
-          value={hexValue}
-        />
-      </View>
+      {pickerOpen ? (
+        <View style={styles.customEditor}>
+          <QrVisualColorPicker color={draftColor} onChangeColor={handleDraftChange} />
+          <View style={styles.hexRow}>
+            <View style={styles.hexField}>
+              <View style={[styles.inputSwatch, { backgroundColor: draftColor }]} />
+              <TextInput
+                accessibilityLabel={`Custom ${name.toLowerCase()} hex color`}
+                autoCapitalize="characters"
+                autoCorrect={false}
+                maxLength={7}
+                onChangeText={handleHexChange}
+                onSubmitEditing={applyCustomColor}
+                placeholder="#191414"
+                returnKeyType="done"
+                selectionColor={colors.secondary.main}
+                style={styles.hexInput}
+                value={hexValue}
+              />
+            </View>
+            <Pressable
+              accessibilityLabel={`Apply custom ${name.toLowerCase()} color`}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: !validHex }}
+              disabled={!validHex}
+              onPress={applyCustomColor}
+              style={[styles.applyButton, !validHex && styles.disabledButton]}
+            >
+              <ArrowRight color={colors.white.main} size={24} />
+            </Pressable>
+          </View>
+          {!validHex ? <Text style={styles.colorHint}>Enter a six-digit hex color, such as #FF5528.</Text> : null}
+        </View>
+      ) : (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.colorsHorizontal}>
+          <Pressable accessibilityLabel={`Custom ${name.toLowerCase()} color`} accessibilityRole="button" onPress={openPicker} style={styles.colorOption}>
+            <Svg width={42} height={42} viewBox="0 0 42 42" style={styles.rainbowRing}>
+              <Defs>
+                <LinearGradient id="customColorRainbow" x1="0%" y1="0%" x2="100%" y2="100%">
+                  {["#FF0000", "#FF00FF", "#0000FF", "#00FFFF", "#00FF00", "#FFFF00", "#FF0000"].map((stopColor, index) => (
+                    <Stop key={`${stopColor}-${index}`} offset={`${index * 100 / 6}%`} stopColor={stopColor} />
+                  ))}
+                </LinearGradient>
+              </Defs>
+              <Circle cx={21} cy={21} r={17} stroke="url(#customColorRainbow)" strokeWidth={8} fill={colors.white.main} />
+            </Svg>
+            <Plus color={colors.primary.main} size={24} strokeWidth={2} />
+          </Pressable>
+          {customColor ? (
+            <Pressable accessibilityLabel={`Selected custom ${name.toLowerCase()} color ${color}`} accessibilityRole="button" accessibilityState={{ selected: true }} onPress={openPicker} style={[styles.colorOption, styles.selectedColorOption]}>
+              <View style={[styles.colorSwatch, { backgroundColor: color }]} />
+            </Pressable>
+          ) : null}
+          {swatches}
+        </ScrollView>
+      )}
       {onReset ? (
         <Pressable accessibilityLabel={`Reset ${name.toLowerCase()} color`} accessibilityRole="button" onPress={onReset} style={styles.resetButton}>
           <Text style={styles.resetText}>Reset</Text>
@@ -105,19 +171,19 @@ const styles = StyleSheet.create({
   colorOption: { width: 46, height: 46, alignItems: "center", justifyContent: "center", borderRadius: radii.pill },
   selectedColorOption: { borderWidth: 2, borderColor: colors.secondary.main },
   colorSwatch: { width: 38, height: 38, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.border.main, borderRadius: radii.pill },
-  hexRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md },
-  hexLabel: { color: colors.primary.main, fontFamily: fontFamilies.primaryRegular, fontSize: fontSizes.body2 },
+  rainbowRing: { position: "absolute" },
+  customEditor: { gap: spacing.md },
+  hexRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  hexField: { flex: 1, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.sm, borderWidth: 1, borderColor: colors.border.main, borderRadius: radii.xl },
+  inputSwatch: { width: 30, height: 30, borderRadius: radii.pill, borderWidth: 1, borderColor: colors.border.main },
+  applyButton: { width: 48, height: 48, alignItems: "center", justifyContent: "center", borderRadius: radii.xl, backgroundColor: colors.secondary.main },
+  disabledButton: { opacity: 0.4 },
   hexInput: {
-    width: 116,
-    height: 42,
-    paddingHorizontal: spacing.sm,
-    borderWidth: 1,
-    borderColor: colors.border.main,
-    borderRadius: radii.md,
+    flex: 1,
+    height: 48,
     color: colors.primary.main,
     fontFamily: fontFamilies.mono,
-    fontSize: fontSizes.body2,
-    textAlign: "center"
+    fontSize: fontSizes.body1
   },
   colorHint: { color: colors.mute.main, fontFamily: fontFamilies.primaryRegular, fontSize: fontSizes.caption },
   resetButton: {

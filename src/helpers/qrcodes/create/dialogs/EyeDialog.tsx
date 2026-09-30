@@ -47,7 +47,7 @@ const EYE_OPTIONS: EyeOption[] = [
 export default function EyeDialog({ visible, onClose, eyeStyle, eyeColor, onChangeStyle, onChangeColor }: EyeDialogProps) {
   //Default Return
   return (
-    <PxModal visible={visible} onRequestClose={onClose} name="Eye" height="auto" maxHeight={760}>
+    <PxModal visible={visible} onRequestClose={onClose} name="Eye" height="auto" maxHeight={760} keyboardAvoiding>
       <View style={styles.content}>
         <Text style={styles.sectionTitle}>Eye shape</Text>
         <ScrollView key={eyeStyle} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.options}>

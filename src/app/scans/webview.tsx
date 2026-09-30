@@ -8,6 +8,7 @@ import { Text } from "react-native-paper";
 import { SafeAreaView } from "react-native-safe-area-context";
 import WebView, { type WebViewMessageEvent, type WebViewNavigation } from "react-native-webview";
 
+import { redirect } from "@/utils/general/Redirect";
 import { LinkCheckOverlay } from "@/helpers/scans/components/LinkCheckOverlay";
 import { getScanById } from "@/helpers/scans/db/getQueries";
 import { syncCompletedScanToAPI, updateScan } from "@/helpers/scans/db/updateQueries";
@@ -132,7 +133,7 @@ export default function ScanWebViewScreen() {
       return;
     };//if ends
 
-    router.replace("/scans/scanner");
+    redirect("replace", "/scans/scanner");
   };//func ends
 
   // Opens the latest top-level destination using the retained Expo Web Browser flow.

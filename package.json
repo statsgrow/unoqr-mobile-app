@@ -31,6 +31,7 @@
     "expo-router": "~57.0.17",
     "expo-secure-store": "~57.0.2",
     "expo-sharing": "~57.0.22",
+    "expo-splash-screen": "~57.0.9",
     "expo-sqlite": "~57.0.2",
     "expo-status-bar": "~57.0.1",
     "expo-system-ui": "~57.0.3",
@@ -63,7 +64,7 @@
     "typescript": "~6.0.3"
   },
   "scripts": {
-    "start": "expo start",
+    "start": "expo start --dev-client",
     "android": "JAVA_HOME=$(/usr/libexec/java_home -v 17 -a arm64) expo run:android",
     "android:start": "expo start --dev-client --android",
     "ios": "expo run:ios",

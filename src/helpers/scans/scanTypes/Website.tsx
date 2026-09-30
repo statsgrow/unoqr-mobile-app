@@ -2,10 +2,11 @@ import { useState } from "react";
 import { Image, Pressable, StyleSheet, View } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
-import { router } from "expo-router";
+
 import * as WebBrowser from "expo-web-browser";
 import { Chip, IconButton, Text } from "react-native-paper";
 
+import { redirect } from "@/utils/general/Redirect";
 import { getScanById } from "@/helpers/scans/db/getQueries";
 import type { ScanUrlMetadata } from "@/helpers/scans/db/init";
 import type { StoredScanReference } from "@/helpers/scans/db/persistScan";
@@ -130,7 +131,7 @@ export function Website({ record }: WebsiteProps) {
 // Routes an already stored website scan to the crawl-and-browser page with its UUID.
 export async function processWebsiteScan(scan: StoredScanReference): Promise<void> {
   await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-  router.push({
+  redirect("push", {
     pathname: "/scans/website",
     params: { id: scan.id, u: scan.value }
   });

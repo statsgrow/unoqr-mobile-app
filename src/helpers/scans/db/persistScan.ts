@@ -1,3 +1,5 @@
+import type { BarcodeType } from "expo-camera";
+
 import { getUUIDv4 } from "@/utils/general/Uid";
 
 import type { ScanType } from "../scanIdentifier";
@@ -15,7 +17,7 @@ export type StoredScanReference = {
 /* ------------------ BREAK ------------------ */
 
 // Creates the shared SQLite row before any type-specific scan processing begins.
-export async function persistScan(value: string, scanType: ScanType): Promise<StoredScanReference | null> {
+export async function persistScan(value: string, scanType: ScanType, kind: string = scanType, format: BarcodeType | null = null): Promise<StoredScanReference | null> {
   const now = new Date().toISOString();
   const isWebsiteScan = scanType === "url";
   const scanData: InsertScanInput = {
@@ -26,6 +28,7 @@ export async function persistScan(value: string, scanType: ScanType): Promise<St
     input_url: isWebsiteScan ? value : null,
     final_url: null,
     type: scanType,
+    kind,
     status: isWebsiteScan ? "pending" : "completed",
     user_ip: null,
     location: null,
@@ -34,7 +37,7 @@ export async function persistScan(value: string, scanType: ScanType): Promise<St
     sync_status: "pending",
     crawl_status: isWebsiteScan ? "pending" : "not_needed",
     error: null,
-    metadata: null
+    metadata: scanType === "barcode" ? { barcode: value, format } : null
   };
 
   const insertResult = await insertScan(scanData);

@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { Image, StyleSheet, View } from "react-native";
-import { router } from "expo-router";
+
 import { ActivityIndicator, Text } from "react-native-paper";
 
+import { redirect } from "@/utils/general/Redirect";
 import { GeneralLayout } from "@/components/layout/GeneralLayout";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { colors, fontFamilies, fontSizes, radii, spacing } from "@/theme/tokens";
@@ -31,7 +32,7 @@ export default function MyAccountScreen() {
       if (!isMounted) return;
 
       if (!storedUser) {
-        router.replace({ pathname: "/auth/login", params: { next: "/auth/myaccount" } });
+        redirect("replace", { pathname: "/auth/login", params: { next: "/auth/myaccount" } });
         return;
       };//if ends
 

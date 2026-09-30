@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
 	Animated,
 	Easing,
+	Keyboard,
 	KeyboardAvoidingView,
 	Modal,
 	Platform,
@@ -28,6 +29,7 @@ import { colors as tokenColors, fontFamilies, fontSizes, spacing } from "@/theme
 type PxModalProps = {
 	visible?: boolean;
 	onRequestClose?: () => void;
+	onDismiss?: () => void;
 	open?: boolean;
 	setOpen?: (open: boolean) => void;
 	children: ReactNode;
@@ -51,9 +53,11 @@ const MOBILE_FRAME_MAX_WIDTH = 430;
 
 /* ------------------ BREAK ------------------ */
 
+// Shows a scrollable sheet with safe-area spacing and optional keyboard avoidance.
 export function PxModal({
 	visible,
 	onRequestClose,
+	onDismiss,
 	open,
 	setOpen,
 	children,
@@ -76,9 +80,10 @@ export function PxModal({
 	const handleRequestClose = onRequestClose ?? (setOpen ? () => setOpen(false) : undefined);
 	const insets = useSafeAreaInsets();
 	const { height: windowHeight } = useWindowDimensions();
+	const [keyboardVisible, setKeyboardVisible] = useState(Keyboard.isVisible());
 	const hasHeader = name !== undefined;
 	const showSheetSurface = position === "bottom" && (showHandle || hasHeader);
-	const bottomSheetOffset = position === "bottom" && Platform.OS === "android"
+	const bottomSheetOffset = position === "bottom" && Platform.OS === "android" && !keyboardVisible
 		? Math.max(insets.bottom, spacing.xl)
 		: 0;
 	const bottomPadding = Platform.OS === "android"
@@ -108,6 +113,19 @@ export function PxModal({
 	const [isAtScrollBottom, setIsAtScrollBottom] = useState(false);
 	const hasMoreContentBelow = scrollContentHeight > scrollViewportHeight + 2
 		&& !isAtScrollBottom;
+
+	// Removes the Android navigation-area offset while the keyboard occupies that area.
+	useEffect(() => {
+		if (!isOpen) return;
+		setKeyboardVisible(Keyboard.isVisible());
+		const showSubscription = Keyboard.addListener("keyboardDidShow", () => setKeyboardVisible(true));
+		const hideSubscription = Keyboard.addListener("keyboardDidHide", () => setKeyboardVisible(false));
+
+		return () => {
+			showSubscription.remove();
+			hideSubscription.remove();
+		};//return ends
+	}, [isOpen]);
 
 	useEffect(() => {
 		if (!isOpen) return;
@@ -165,11 +183,15 @@ export function PxModal({
 			transparent
 			animationType="fade"
 			onRequestClose={handleRequestClose}
+			onDismiss={onDismiss}
 			statusBarTranslucent
 			navigationBarTranslucent={false}
 			testID={testID}
 		>
-			<Container behavior={keyboardAvoiding && Platform.OS === "ios" ? "padding" : undefined} style={[styles.container, containerPositionStyle]}>
+			<Container
+				behavior={keyboardAvoiding ? (Platform.OS === "ios" ? "padding" : "height") : undefined}
+				style={[styles.container, containerPositionStyle, position === "bottom" && { paddingTop: insets.top + spacing.lg }]}
+			>
 				<Pressable style={styles.backdrop} onPress={handleBackdropClick} />
 				<View style={[styles.contentHost, contentPositionStyle]} pointerEvents="box-none">
 					<Animated.View
@@ -204,6 +226,7 @@ export function PxModal({
 										scrollEventThrottle={16}
 										showsVerticalScrollIndicator
 										nestedScrollEnabled
+										keyboardShouldPersistTaps="handled"
 									>
 										{children}
 									</ScrollView>
@@ -245,6 +268,7 @@ const styles = StyleSheet.create({
 	},
 	handleContentSurface: {
 		width: "100%",
+		flexShrink: 1,
 		backgroundColor: colors.white,
 		borderTopLeftRadius: sizes.borderRadius["2xl"],
 		borderTopRightRadius: sizes.borderRadius["2xl"],
@@ -253,10 +277,11 @@ const styles = StyleSheet.create({
 	},
 	scrollArea: {
 		position: "relative",
-		width: "100%"
+		width: "100%",
+		flexShrink: 1
 	},
 	fixedScrollArea: { flex: 1 },
-	fixedFooter: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
+	fixedFooter: { flexShrink: 0, paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
 	scrollView: {
 		width: "100%"
 	},
@@ -291,6 +316,7 @@ const styles = StyleSheet.create({
 		marginBottom: sizes.spacing.xs
 	},
 	sheetHeader: {
+		flexShrink: 0,
 		minHeight: 56,
 		flexDirection: "row",
 		alignItems: "center",

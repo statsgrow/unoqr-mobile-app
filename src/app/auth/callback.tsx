@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef } from "react";
 import * as Linking from "expo-linking";
-import { router, useLocalSearchParams, type Href } from "expo-router";
+import { useLocalSearchParams, type Href } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 
+import { redirect } from "@/utils/general/Redirect";
 import { PxPageLoader } from "@/components/elements/PxPageLoader";
 import { addUserData } from "@/utils/auth/AuthUser";
 import { Toast } from "@/utils/general/Toast";
@@ -57,7 +58,7 @@ export default function LoginCallbackScreen() {
       hasProcessed.current = true;
       Toast.error({ message: "Google authentication could not be completed." });
       const redirectTimeout = setTimeout(() => {
-        router.replace({ pathname: "/auth/login", params: { next: nextRoute } });
+        redirect("replace", { pathname: "/auth/login", params: { next: nextRoute } });
       }, 1200);
       return () => clearTimeout(redirectTimeout);
     };//if ends
@@ -72,13 +73,13 @@ export default function LoginCallbackScreen() {
           refreshToken: tokens.refreshToken as string
         });
         Toast.success({ message: "You are now logged in." });
-        router.replace(nextRoute as Href);
+        redirect("replace", nextRoute as Href);
       } catch (error: unknown) {
         const message = error instanceof Error
           ? error.message
           : "Google authentication could not be completed.";
         Toast.error({ message });
-        router.replace({ pathname: "/auth/login", params: { next: nextRoute } });
+        redirect("replace", { pathname: "/auth/login", params: { next: nextRoute } });
       };//try-catch ends
     };//func ends
 

@@ -17,6 +17,7 @@
     },
     "userInterfaceStyle": "light",
     "ios": {
+      "version": "1.0.0",
       "bundleIdentifier": "com.statsgrow.unoqr",
       "supportsTablet": true,
       "entitlements": {
@@ -24,6 +25,7 @@
       }
     },
     "android": {
+      "version": "1.0.0",
       "package": "com.statsgrow.unoqr",
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
@@ -69,7 +71,8 @@
       ],
       "expo-notifications",
       "expo-secure-store",
-      "./app_helpers/android/withUnoqrDownloads"
+      "./app_helpers/android/withUnoqrDownloads",
+      "expo-splash-screen"
     ],
     "extra": {
       "router": {

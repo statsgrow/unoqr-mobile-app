@@ -2,9 +2,10 @@ import { useEffect, useState } from "react";
 import { Image, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
-import { router } from "expo-router";
+
 import { Text } from "react-native-paper";
 
+import { redirect } from "@/utils/general/Redirect";
 import { PxButton } from "@/components/elements/PxButton";
 import { GeneralLayout } from "@/components/layout/GeneralLayout";
 import { installSettings } from "@/settings";
@@ -119,7 +120,7 @@ export default function MoreScreen() {
                   mode="contained"
                   color="primary"
                   fullWidth
-                  onPress={() => router.push({ pathname: "/auth/login", params: { next: "/more" } })}
+                  onPress={() => redirect("push", { pathname: "/auth/login", params: { next: "/more" } })}
                 >
                   Log in
                 </PxButton>
@@ -127,7 +128,7 @@ export default function MoreScreen() {
               <PxButton
                 mode="text"
                 color="primary"
-                onPress={() => router.push({
+                onPress={() => redirect("push", {
                   pathname: "/auth/login",
                   params: { mode: "signup", next: "/more" }
                 })}
@@ -143,16 +144,25 @@ export default function MoreScreen() {
             icon="qrcode-plus"
             label="Create Qr"
             description="Make and download a static QR code"
-            onPress={() => router.push("/qrcodes/create")}
+            onPress={() => redirect("push", "/qrcodes/create")}
             showDivider
           />
+          <GroupedLink
+            icon="qrcode"
+            label="Qr Codes"
+            description="View and edit your saved QR codes"
+            onPress={() => redirect("push", "/qrcodes/list")}
+          />
+        </View>
+
+        <View style={styles.groupedLinks}>
           <GroupedLink
             icon="account-circle-outline"
             label="My Account"
             description="Profile and account details"
             onPress={() => authUser
-              ? router.push("/auth/myaccount")
-              : router.push({ pathname: "/auth/login", params: { next: "/auth/myaccount" } })}
+              ? redirect("push", "/auth/myaccount")
+              : redirect("push", { pathname: "/auth/login", params: { next: "/auth/myaccount" } })}
             showDivider
           />
           <GroupedLink

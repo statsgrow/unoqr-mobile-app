@@ -3,6 +3,7 @@ import { ImagePlus, Trash2 } from "lucide-react-native";
 import { Alert, Image, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { PxModal } from "@/components/elements/PxModal";
+import { getFile } from "@/components/files/FileStorage";
 import { pickQrLogo } from "@/helpers/qrcodes/create/PickLogo";
 import type { QrUserLogo } from "@/helpers/qrcodes/modify/logo";
 import { colors, fontFamilies, fontSizes, radii, spacing } from "@/theme/tokens";
@@ -41,7 +42,7 @@ export default function LogoDialog({ visible, onClose, logo, onChangeLogo }: Log
     <PxModal visible={visible} onRequestClose={onClose} name="Logo" height="auto" maxHeight={500}>
       <View style={styles.content}>
         <View style={styles.preview}>
-          {logo ? <Image accessibilityLabel="Selected QR logo" source={{ uri: logo.dataUrl }} resizeMode="contain" style={styles.image} />
+          {logo ? <Image accessibilityLabel="Selected QR logo" source={{ uri: logo.dataUrl ?? getFile(logo.uri).uri }} resizeMode="contain" style={styles.image} />
             : <ImagePlus color={colors.mute.main} size={48} strokeWidth={1.5} />}
         </View>
         <Text style={styles.description}>Add an image to the center of your QR code.</Text>

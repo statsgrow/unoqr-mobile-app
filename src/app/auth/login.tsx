@@ -2,12 +2,13 @@ import { useState } from "react";
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import * as Linking from "expo-linking";
-import { router, useLocalSearchParams, type Href } from "expo-router";
+import { useLocalSearchParams, type Href } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import { useForm, type SubmitHandler } from "react-hook-form";
 import { Text } from "react-native-paper";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { redirect } from "@/utils/general/Redirect";
 import { UnoQrLogo } from "@/components/brand/UnoQrLogo";
 import { PxButton } from "@/components/elements/PxButton";
 import { PxTextInput } from "@/components/form/PxTextInput";
@@ -153,7 +154,7 @@ export default function LoginScreen() {
       const result = await WebBrowser.openAuthSessionAsync(loginUrl.href, callbackUrl.href);
 
       if (result.type === "success") {
-        router.replace({
+        redirect("replace", {
           pathname: "/auth/callback",
           params: { callback_url: result.url, next: nextRoute }
         });
@@ -352,7 +353,7 @@ async function completeAuthenticatedLogin(
     refreshToken: session.refresh_token
   });
   Toast.success({ message: "You are now logged in." });
-  router.replace(nextRoute as Href);
+  redirect("replace", nextRoute as Href);
 };//func ends
 
 // Converts an unknown request failure into readable login feedback.

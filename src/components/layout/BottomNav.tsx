@@ -1,8 +1,9 @@
 import { Pressable, StyleSheet, View } from "react-native";
-import { router, usePathname, type Href } from "expo-router";
+import { usePathname, type Href } from "expo-router";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Text } from "react-native-paper";
 
+import { redirect } from "@/utils/general/Redirect";
 import { colors, fontFamilies, fontSizes, radii, spacing } from "@/theme/tokens";
 
 /* ------------------ BREAK ------------------ */
@@ -55,7 +56,7 @@ export function BottomNav() {
           <Pressable
             accessibilityLabel="Scan QR code"
             accessibilityRole="button"
-            onPress={() => router.push("/scans/scanner")}
+            onPress={() => redirect("push", "/scans/scanner")}
             style={({ pressed }) => [styles.scanButton, pressed && styles.pressedButton]}
           >
             <MaterialCommunityIcons name="qrcode-scan" size={36} color={colors.white.main} />
@@ -80,7 +81,7 @@ function NavItem({ item, isActive }: { item: StandardNavItem; isActive: boolean 
     <Pressable
       accessibilityRole="button"
       accessibilityState={{ selected: isActive }}
-      onPress={() => router.push(item.href)}
+      onPress={() => redirect("push", item.href)}
       style={({ pressed }) => [styles.itemButton, pressed && styles.pressedButton]}
     >
       <MaterialCommunityIcons

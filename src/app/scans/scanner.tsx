@@ -22,6 +22,9 @@ import { IconButton, Text } from "react-native-paper";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Svg, { Defs, Mask, Rect } from "react-native-svg";
 
+import { scannerBarcodeTypes } from "@/helpers/scans/Barcode";
+import { BarcodeScanDialog, type BarcodeScanDetails } from "@/helpers/scans/dialogs/BarcodeScanDialog";
+import { redirect } from "@/utils/general/Redirect";
 import { UnoQrLogo } from "@/components/brand/UnoQrLogo";
 import { PxButton } from "@/components/elements/PxButton";
 import { PxDialog } from "@/components/elements/PxDialog";
@@ -96,6 +99,7 @@ export default function ScanScreen() {
   const [isSavingScan, setIsSavingScan] = useState(false);
   const [hasTestDestination, setHasTestDestination] = useState(false);
   const [textDialogValue, setTextDialogValue] = useState<string | null>(null);
+  const [barcodeDialogDetails, setBarcodeDialogDetails] = useState<BarcodeScanDetails | null>(null);
   const [upiDialogDetails, setUpiDialogDetails] = useState<UpiPaymentDialogDetails | null>(null);
   const [scannerAlert, setScannerAlert] = useState<ScannerAlertState | null>(null);
   const scanLockRef = useRef(false);
@@ -113,6 +117,7 @@ export default function ScanScreen() {
       setIsProcessingImage(false);
       setIsSavingScan(false);
       setTextDialogValue(null);
+      setBarcodeDialogDetails(null);
       setUpiDialogDetails(null);
       setScannerAlert(null);
 
@@ -129,12 +134,12 @@ export default function ScanScreen() {
       return;
     };//if ends
 
-    router.replace("/");
+    redirect("replace", "/");
   };//func ends
 
   // Locks the scanner after receiving the first valid destination value.
-  const handleScannedValue = (value: string) => {
-    const preparedScan = prepareScannedValue(value);
+  const handleScannedValue = (value: string, format?: string | number) => {
+    const preparedScan = prepareScannedValue(value, format);
 
     //If scan is set or the scanned value is empty, return
     if (scanLockRef.current || !preparedScan) return;
@@ -164,6 +169,11 @@ export default function ScanScreen() {
         };//if ends
 
         if (textValue) setTextDialogValue(textValue);
+
+        // Show the barcode result only after its local scan row has been saved.
+        if (preparedScan.type === "barcode") {
+          setBarcodeDialogDetails({ id: scanId, kind: preparedScan.kind, value: preparedScan.value });
+        };//if ends
 
         if (preparedScan.type === "upi_payment") {
           const paymentDetails = getUpiPaymentDetails(preparedScan.value);
@@ -205,9 +215,16 @@ export default function ScanScreen() {
     scanLockRef.current = false;
   };//func ends
 
+  // Close the barcode result and unlock scanning for the next code.
+  const handleBarcodeDialogClose = (): void => {
+    setBarcodeDialogDetails(null);
+    setScanResult(null);
+    scanLockRef.current = false;
+  };//func ends
+
   // Passes a detected camera barcode into the shared destination flow.
-  const handleBarcodeScanned = ({ data }: BarcodeScanningResult) => {
-    handleScannedValue(data);
+  const handleBarcodeScanned = ({ data, type }: BarcodeScanningResult) => {
+    handleScannedValue(data, type);
   };//func ends
 
   // Stores development test input without re-rendering the camera overlay for every character.
@@ -217,15 +234,15 @@ export default function ScanScreen() {
     setHasTestDestination((currentValue) => currentValue === hasValue ? currentValue : hasValue);
   };//func ends
 
-  // Selects a gallery image, reads its QR value, and passes it into the shared scan flow.
+  // Reads the detected value and format from a gallery image into the scan flow.
   const handleImageSelection = async () => {
     if (scanLockRef.current || isProcessingImage) return;
 
     setIsProcessingImage(true);
 
     try {
-      const value = await processQrFromImage(setScannerAlert);
-      if (value) handleScannedValue(value);
+      const value = await processBarcodeFromImage(setScannerAlert);
+      if (value) handleScannedValue(value.data, value.type);
     } finally {
       setIsProcessingImage(false);
     };//try-finally ends
@@ -246,7 +263,7 @@ export default function ScanScreen() {
         </View>
         <Text style={styles.permissionTitle}>Camera access needed</Text>
         <Text style={styles.permissionBody}>
-          Uno QR uses your camera only while this screen is open to detect QR codes.
+          Uno QR uses your camera only while this screen is open to detect QR codes and barcodes.
         </Text>
         <PxButton color="secondary" size="lg" fullWidth onPress={requestPermission}>
           Allow camera access
@@ -269,7 +286,7 @@ export default function ScanScreen() {
           style={styles.camera}
           facing="back"
           enableTorch={torchEnabled}
-          barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
+          barcodeScannerSettings={{ barcodeTypes: scannerBarcodeTypes }}
           onBarcodeScanned={scanResult ? undefined : handleBarcodeScanned}
         />
       )}
@@ -310,25 +327,27 @@ export default function ScanScreen() {
         onClose={() => setScannerAlert(null)}
       />
 
+      <BarcodeScanDialog details={barcodeDialogDetails} onClose={handleBarcodeDialogClose} />
+
     </View>
   );//return ends
 };//export ends
 
 /* ------------------ BREAK ------------------ */
 
-// Opens the native image gallery and returns the QR value found in the selected image.
-async function processQrFromImage(showAlert: (alert: ScannerAlertState) => void): Promise<string | null> {
+// Opens the gallery and returns a decoded QR code or barcode.
+async function processBarcodeFromImage(showAlert: (alert: ScannerAlertState) => void): Promise<BarcodeScanningResult | null> {
   try {
     const selectedImage = await selectImage();
     if (!selectedImage) return null;
 
-    const value = await getQrFromImage(selectedImage);
+    const value = await getBarcodeFromImage(selectedImage);
 
     if (!value) {
       showAlert({
-        title: "No QR code found",
-        message: "UnoQR could not detect a QR code in the selected image.",
-        guidance: "Choose a clear, uncropped image with the complete QR code visible.",
+        title: Platform.OS === "ios" ? "No QR code found" : "No code found",
+        message: Platform.OS === "ios" ? "UnoQR could not detect a QR code in the selected image." : "UnoQR could not detect a QR code or barcode in the selected image.",
+        guidance: Platform.OS === "ios" ? "Choose a clear image with the complete QR code visible. Use the camera for barcodes." : "Choose a clear, uncropped image with the complete code visible.",
         color: "warning",
         icon: "qrcode-scan",
         actionLabel: "Choose another"
@@ -350,10 +369,10 @@ async function processQrFromImage(showAlert: (alert: ScannerAlertState) => void)
   };//try-catch ends
 };//func ends
 
-// Decodes the first QR value from a selected local image asset.
-async function getQrFromImage(imageData: ImagePickerFile): Promise<string | null> {
-  const qrCodes = await scanFromURLAsync(imageData.uri, ["qr"]);
-  return qrCodes[0]?.data?.trim() || null;
+// Decodes an image barcode while respecting the native iOS QR-only image decoder.
+async function getBarcodeFromImage(imageData: ImagePickerFile): Promise<BarcodeScanningResult | null> {
+  const codes = await scanFromURLAsync(imageData.uri, Platform.OS === "ios" ? ["qr"] : scannerBarcodeTypes);
+  return codes.find((code) => code.data.trim()) ?? null;
 };//func ends
 
 /* ------------------ BREAK ------------------ */

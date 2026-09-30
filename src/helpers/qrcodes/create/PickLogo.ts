@@ -1,24 +1,24 @@
 import { manipulateAsync, SaveFormat } from "expo-image-manipulator";
 
 import { selectImage } from "@/components/files/ImagePicker";
+import { saveFile } from "@/components/files/FileStorage";
 import type { QrUserLogo } from "@/helpers/qrcodes/modify/logo";
+import { getUUIDv4 } from "@/utils/general/Uid";
 
 /* ------------------ BREAK ------------------ */
 
-// Selects a photo and converts it into an embedded PNG for every QR export format.
+// Selects a photo and saves a resized PNG in persistent QR file storage.
 export async function pickQrLogo(): Promise<QrUserLogo | null> {
   const selected = await selectImage();
   if (!selected) return null;
 
   const image = await manipulateAsync(selected.uri, [{ resize: { width: 512 } }], {
-    format: SaveFormat.PNG,
-    base64: true
+    format: SaveFormat.PNG
   });
-  if (!image.base64) throw new Error("Could not prepare the selected logo.");
+  const path = await saveFile({ uri: image.uri, name: `${getUUIDv4()}.png`, folder: "qrcodes" });
 
   return {
-    uri: selected.uri,
-    name: selected.name,
-    dataUrl: `data:image/png;base64,${image.base64}`
+    uri: path,
+    name: selected.name
   };
 };//export ends

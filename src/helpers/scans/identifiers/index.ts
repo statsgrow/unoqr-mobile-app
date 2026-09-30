@@ -31,6 +31,7 @@ const scanTypeInitializers: ScanTypeInit[] = [
   phoneNumberInit,
   plainTextInit,
   productBarcodeInit,
+  { ...productBarcodeInit, label: "Barcode", type: "barcode" },
   smsMessageInit,
   upiPaymentInit,
   webUrlInit,

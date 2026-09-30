@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { ContactRound, Globe2, Phone, Type } from "lucide-react-native";
-import { Keyboard, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View, type KeyboardTypeOptions } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View, type KeyboardTypeOptions } from "react-native";
 
 import { PxModal } from "@/components/elements/PxModal";
 import { EMPTY_CONTENT_DATA, encodeQrContent, type QrContentData, type QrContentSelection, type QrContentType } from "@/helpers/qrcodes/create/QrContent";
@@ -26,6 +26,8 @@ type FieldProps = {
   maxLength?: number;
 };
 
+type ContentValidation = { encoded: string; error: null } | { encoded: null; error: string };
+
 /* ------------------ BREAK ------------------ */
 
 const CONTENT_TYPES = [
@@ -42,9 +44,8 @@ export default function ContentDialog({ visible, onClose, selection, onSave }: C
   const [type, setType] = useState<QrContentType>(selection?.type || "website");
   const [data, setData] = useState<QrContentData>(selection?.data || EMPTY_CONTENT_DATA);
   const [error, setError] = useState("");
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
-  const { height: windowHeight } = useWindowDimensions();
-  const availableHeight = windowHeight - (Platform.OS === "ios" ? keyboardHeight : 0) - 24;
+  const validation = validateContent({ type, data });
+  const canSaveContent = validation.encoded !== null;
 
   useEffect(() => {
     if (!visible) return;
@@ -52,13 +53,6 @@ export default function ContentDialog({ visible, onClose, selection, onSave }: C
     setData({ ...(selection?.data || EMPTY_CONTENT_DATA) });
     setError("");
   }, [visible]);
-
-  // Resizes the iOS sheet while its keyboard is open.
-  useEffect(() => {
-    const show = Keyboard.addListener("keyboardDidShow", (event) => setKeyboardHeight(event.endCoordinates.height));
-    const hide = Keyboard.addListener("keyboardDidHide", () => setKeyboardHeight(0));
-    return () => { show.remove(); hide.remove(); };
-  }, []);
 
   // Updates one field while keeping drafts for other content types.
   function updateField(field: keyof QrContentData, value: string) {
@@ -69,12 +63,13 @@ export default function ContentDialog({ visible, onClose, selection, onSave }: C
   // Encodes the selected fields and enforces the QR's actual character limit.
   function handleSave() {
     const next: QrContentSelection = { type, data };
+    // Keep the saved QR unchanged when its dialog draft is empty or invalid.
+    if (validation.encoded === null) {
+      setError(validation.error);
+      return;
+    };//if ends
     try {
-      const encoded = encodeQrContent(next);
-      if (Array.from(encoded).length > MAX_QR_CHARACTERS) {
-        throw new Error(`Content must be ${MAX_QR_CHARACTERS} characters or fewer after formatting.`);
-      };//if ends
-      onSave(next, encoded);
+      onSave(next, validation.encoded);
       onClose();
     } catch (cause: unknown) {
       setError(cause instanceof Error ? cause.message : "Please check the content.");
@@ -87,11 +82,17 @@ export default function ContentDialog({ visible, onClose, selection, onSave }: C
       visible={visible}
       onRequestClose={onClose}
       name="Content"
-      height={Math.max(300, Math.min(680, availableHeight))}
+      height={680}
       keyboardAvoiding
       footer={
-        <Pressable accessibilityRole="button" onPress={handleSave} style={styles.saveButton}>
-          <Text style={styles.saveText}>Save content</Text>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={{ disabled: !canSaveContent }}
+          disabled={!canSaveContent}
+          onPress={handleSave}
+          style={[styles.saveButton, !canSaveContent && styles.disabledSaveButton]}
+        >
+          <Text style={[styles.saveText, !canSaveContent && styles.disabledSaveText]}>Save content</Text>
         </Pressable>
       }
     >
@@ -138,6 +139,20 @@ export default function ContentDialog({ visible, onClose, selection, onSave }: C
 };//export ends
 
 /* ------------------ BREAK ------------------ */
+
+// Checks the selected content and its encoded length before enabling Save content.
+function validateContent(selection: QrContentSelection): ContentValidation {
+  try {
+    const encoded = encodeQrContent(selection);
+    if (!encoded.trim()) throw new Error("Add content to your QR code.");
+    if (Array.from(encoded).length > MAX_QR_CHARACTERS) {
+      throw new Error(`Content must be ${MAX_QR_CHARACTERS} characters or fewer after formatting.`);
+    };//if ends
+    return { encoded, error: null };
+  } catch (error: unknown) {
+    return { encoded: null, error: error instanceof Error ? error.message : "Please check the content." };
+  };//try-catch ends
+};//func ends
 
 // Shows one labeled input in the content sheet.
 function Field({ label, value, onChangeText, placeholder, keyboardType, multiline = false, maxLength }: FieldProps) {
@@ -201,5 +216,7 @@ const styles = StyleSheet.create({
   multilineInput: { minHeight: 112, textAlignVertical: "top" },
   error: { color: colors.secondary.main, fontFamily: fontFamilies.primaryRegular, fontSize: fontSizes.body2 },
   saveButton: { minHeight: 52, alignItems: "center", justifyContent: "center", borderRadius: radii.lg, backgroundColor: colors.secondary.main },
-  saveText: { color: colors.white.main, fontFamily: fontFamilies.primarySemiBold, fontSize: fontSizes.body1 }
+  saveText: { color: colors.white.main, fontFamily: fontFamilies.primarySemiBold, fontSize: fontSizes.body1 },
+  disabledSaveButton: { backgroundColor: colors.neutral.light },
+  disabledSaveText: { color: colors.mute.main }
 });

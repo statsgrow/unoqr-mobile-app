@@ -17,6 +17,7 @@ import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { ActivityIndicator, Text } from "react-native-paper";
 import Svg, { Defs, LinearGradient as SvgLinearGradient, Rect, Stop } from "react-native-svg";
 
+import { redirect } from "@/utils/general/Redirect";
 import { GeneralLayout } from "@/components/layout/GeneralLayout";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { UpiPaymentIcon } from "@/helpers/scans/components/UpiPaymentIcon";
@@ -325,7 +326,7 @@ function TypeFilterChip({ filter, selected }: { filter: ScanTypeFilter; selected
   // Applies or clears the selected type through the list route query.
   const handlePress = () => {
     if (selected) {
-      router.replace("/scans/list");
+      redirect("replace", "/scans/list");
       return;
     };//if ends
 
@@ -422,7 +423,7 @@ function renderScanItem({ item }: ListRenderItemInfo<ScanRecord>) {
       accessibilityHint="Shows all metadata collected for this scan"
       accessibilityLabel={`Open scan ${displayTitle}`}
       accessibilityRole="button"
-      onPress={() => router.push(`/scans/${item.id}/view`)}
+      onPress={() => redirect("push", `/scans/${item.id}/view`)}
       style={({ pressed }) => [styles.scanCard, pressed && styles.scanCardPressed]}
     >
       {isUpiPayment ? (

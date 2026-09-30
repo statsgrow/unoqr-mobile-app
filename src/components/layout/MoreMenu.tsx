@@ -1,8 +1,9 @@
 import { Pressable, StyleSheet, View } from "react-native";
-import { router, type Href } from "expo-router";
+import { type Href } from "expo-router";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Text } from "react-native-paper";
 
+import { redirect } from "@/utils/general/Redirect";
 import { PxModal } from "@/components/elements/PxModal";
 import { colors, fontFamilies, fonts, sizes } from "@/theme/themeSettings";
 
@@ -52,7 +53,7 @@ export function MoreMenu({ visible, onClose, onItemPress }: MoreMenuProps) {
                   onItemPress?.(item);
                   onClose();
                   if (item.href) {
-                    router.push(item.href as Href);
+                    redirect("push", item.href as Href);
                   };//if ends
                 }}
               >

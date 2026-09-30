@@ -47,7 +47,7 @@ const DOT_OPTIONS: DotOption[] = [
 export default function DotDialog({ visible, onClose, dotStyle, dotColor, onChangeStyle, onChangeColor }: DotDialogProps) {
   //Default Return
   return (
-    <PxModal visible={visible} onRequestClose={onClose} name="Dot" height="auto" maxHeight={760}>
+    <PxModal visible={visible} onRequestClose={onClose} name="Dot" height="auto" maxHeight={760} keyboardAvoiding>
       <View style={styles.content}>
         <Text style={styles.sectionTitle}>Dot shape</Text>
         <ScrollView key={dotStyle} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.options}>

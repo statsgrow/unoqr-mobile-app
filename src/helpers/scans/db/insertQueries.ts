@@ -189,6 +189,7 @@ async function setLocalInitialSyncResult(
     .set({
       value: insertedScan?.value ?? localScan.value,
       type: insertedScan?.type ?? localScan.type ?? null,
+      kind: insertedScan?.kind ?? localScan.kind ?? localScan.type ?? null,
       status: insertedScan?.status ?? localScan.status ?? null,
       input_url: insertedScan?.input_url ?? localScan.input_url ?? null,
       final_url: insertedScan?.final_url ?? localScan.final_url ?? null,

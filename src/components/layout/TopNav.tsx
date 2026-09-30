@@ -4,6 +4,7 @@ import { router, usePathname } from "expo-router";
 import { CloudAlert, CloudCheck } from "lucide-react-native";
 import { Text } from "react-native-paper";
 
+import { redirect } from "@/utils/general/Redirect";
 import { UnoQrLogo } from "@/components/brand/UnoQrLogo";
 import { colors, fontFamilies, fontSizes, radii, spacing } from "@/theme/tokens";
 
@@ -35,13 +36,13 @@ export function TopNav({
       return;
     };//if ends
 
-    router.replace("/");
+    redirect("replace", "/");
   };//func ends
 
   // Opens the app home route without adding another history entry.
   const handleHomePress = () => {
     if (!isHome) {
-      router.replace("/");
+      redirect("replace", "/");
     };//if ends
   };//func ends
 

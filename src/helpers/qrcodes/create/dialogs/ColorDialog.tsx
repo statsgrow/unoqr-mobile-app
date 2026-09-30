@@ -28,7 +28,7 @@ const BACKGROUND_COLORS = [
 export default function ColorDialog({ visible, onClose, foregroundColor, backgroundColor, onChangeForeground, onChangeBackground }: ColorDialogProps) {
   //Default Return
   return (
-    <PxModal visible={visible} onRequestClose={onClose} name="Color" height="auto" maxHeight={820}>
+    <PxModal visible={visible} onRequestClose={onClose} name="Color" height="auto" maxHeight={820} keyboardAvoiding>
       <View style={styles.content}>
         <QrColorPicker
           name="Foreground"

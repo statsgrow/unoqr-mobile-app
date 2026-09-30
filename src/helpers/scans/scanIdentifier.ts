@@ -1,3 +1,6 @@
+import type { BarcodeType } from "expo-camera";
+
+import { getBarcodeFormat, getBarcodeKind } from "./Barcode";
 import { persistScan } from "./db/persistScan";
 import { processDeepLinkScan } from "./scanTypes/DeepLink";
 import { processTextScan } from "./scanTypes/Text";
@@ -22,12 +25,15 @@ export type ScanType =
   | "upi_payment"
   | "payment"
   | "product"
+  | "barcode"
   | "auth"
   | "deep_link"
   | "custom";
 
 export type PreparedScan = {
   type: ScanType;
+  kind: string;
+  format: BarcodeType | null;
   value: string;
 };
 
@@ -39,7 +45,19 @@ export type ProcessedScanResult = {
 /* ---------------------- BREAK ---------------------- */
 
 // Normalizes actionable destinations while preserving text QR content byte-for-byte.
-export function prepareScannedValue(rawValue: string): PreparedScan | null {
+export function prepareScannedValue(rawValue: string, rawFormat?: string | number): PreparedScan | null {
+  const format = rawFormat === undefined ? null : getBarcodeFormat(rawFormat);
+  if (rawFormat !== undefined && !format) return null;
+
+  // Preserve barcode data before QR URL normalization or content identification.
+  if (format && format !== "qr") {
+    const value = rawValue.trim();
+    if (!value) return null;
+    // Expo on iOS reports UPC-A as ean13 after removing its leading zero.
+    const barcodeFormat = format === "ean13" && /^\d{12}$/.test(value) ? "upc_a" : format;
+    return { type: "barcode", kind: getBarcodeKind(barcodeFormat)!, format: barcodeFormat, value };
+  };//if ends
+
   const normalizedValue = normalizeScannedValue(rawValue);
 
   if (!normalizedValue) return null;
@@ -47,13 +65,15 @@ export function prepareScannedValue(rawValue: string): PreparedScan | null {
   const scanType = identifyScanType(normalizedValue);
   return {
     type: scanType,
+    kind: scanType,
+    format: format ?? null,
     value: scanType === "text" ? rawValue : normalizedValue
   };
 };//export ends
 
 // Creates one SQLite row and dispatches it to the handler owned by its scan type.
 export async function processPreparedScan(scan: PreparedScan): Promise<ProcessedScanResult> {
-  const storedScan = await persistScan(scan.value, scan.type);
+  const storedScan = await persistScan(scan.value, scan.type, scan.kind, scan.format);
 
   if (!storedScan) return { scanId: null, textValue: null };
 

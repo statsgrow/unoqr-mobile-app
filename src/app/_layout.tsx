@@ -21,6 +21,7 @@ import {
 } from "@/helpers/scans/scanSync";
 import { refreshTokensSilently, triggerTokenChecking } from "@/utils/auth/AuthTokens";
 import { SessionRefreshContext } from "@/utils/auth/SessionRefreshContext";
+import { checkPendingQrCodes } from "@/helpers/qrcodes/QrSync";
 
 /* ------------------ BREAK ------------------ */
 
@@ -90,6 +91,18 @@ export default function RootLayout() {
       stopUnCrawledUrlsTrigger();
     };
   }, []);
+
+  // Retries persisted QR work after session refresh and whenever the app returns to the foreground.
+  useEffect(() => {
+    if (isSessionRefreshPending) return;
+    void checkPendingQrCodes().catch((error: unknown) => console.error("Unable to retry pending QRs:", error));
+    const subscription = AppState.addEventListener("change", (nextState) => {
+      if (nextState === "active") {
+        void refreshTokensSilently().then(() => checkPendingQrCodes()).catch((error: unknown) => console.error("Unable to retry pending QRs:", error));
+      };//if ends
+    });
+    return () => subscription.remove();
+  }, [isSessionRefreshPending]);
 
   // Prevents rendering until fonts are loaded to avoid layout shifts.
   if (!fontsLoaded) {

@@ -2,6 +2,7 @@ import { File, Paths } from "expo-file-system";
 import { manipulateAsync, SaveFormat } from "expo-image-manipulator";
 import * as Print from "expo-print";
 import QRCode from "qrcode";
+import { Platform } from "react-native";
 import type Svg from "react-native-svg";
 
 import { buildDots, type DotStyle } from "@/helpers/qrcodes/modify/dot";
@@ -35,6 +36,8 @@ export type QrDotOptions = {
 export type QrFrameOptions = FrameOptions;
 
 export type QrCreateFormValues = {
+  name: string;
+  hide_logo: boolean;
   content: string;
   content_type: QrContentType | null;
   content_data: QrContentData | null;
@@ -44,8 +47,7 @@ export type QrCreateFormValues = {
   eye: { type: EyeStyle; color: string };
   frame: { type: FrameOptions["style"]; color: string };
   logo: QrUserLogo | null;
-  bg_color: string;
-  fg_color: string;
+  styles: { bg_color: string; fg_color: string };
 };
 
 /* ------------------ BREAK ------------------ */
@@ -54,9 +56,9 @@ export type QrCreateFormValues = {
 export async function createQrSvg(settings: QrCreateFormValues): Promise<string> {
   const value = settings.content.trim();
   if (!checkContentLength(value).canCreate) throw new Error("QR content must contain 1 to 500 characters.");
-  const eye: QrEyeOptions = { style: settings.eye.type, color: settings.eye.color || settings.fg_color };
-  const dot: QrDotOptions = { style: settings.dot.type, color: settings.dot.color || settings.fg_color };
-  const frame: QrFrameOptions = { style: settings.frame.type, color: settings.frame.color || settings.fg_color };
+  const eye: QrEyeOptions = { style: settings.eye.type, color: settings.eye.color || settings.styles.fg_color };
+  const dot: QrDotOptions = { style: settings.dot.type, color: settings.dot.color || settings.styles.fg_color };
+  const frame: QrFrameOptions = { style: settings.frame.type, color: settings.frame.color || settings.styles.fg_color };
   const errorCorrectionLevel = settings.logo ? "H" : "M";
   const isFramed = frame.style !== "none";
   const useDefaultStyles = eye.style === "square" && dot.style === "square"
@@ -66,12 +68,12 @@ export async function createQrSvg(settings: QrCreateFormValues): Promise<string>
       type: "svg",
       errorCorrectionLevel,
       margin: 1,
-      color: { dark: dot.color, light: settings.bg_color }
+      color: { dark: dot.color, light: settings.styles.bg_color }
     })
-    : buildStyledQrSvg(value, eye, dot, 1, settings.bg_color, !isFramed, errorCorrectionLevel);
+    : buildStyledQrSvg(value, eye, dot, 1, settings.styles.bg_color, !isFramed, errorCorrectionLevel);
 
-  const qrWithLogo = addQrLogos(svg, dot.color, settings.bg_color, settings.logo);
-  return buildFrame(qrWithLogo, value, frame, dot.style, dot.color, settings.bg_color);
+  const qrWithLogo = await addQrLogos(svg, dot.color, settings.styles.bg_color, settings.logo, settings.hide_logo);
+  return buildFrame(qrWithLogo, value, frame, dot.style, dot.color, settings.styles.bg_color);
 };//export ends
 
 // Prepares a local QR file in the requested format for a separate sharing step.
@@ -96,6 +98,14 @@ export async function createQrFile(svg: string, format: QrExportFormat, preview:
   pngFile.create({ overwrite: true });
   pngFile.write(base64, { encoding: "base64" });
 
+  // Resize the correctly rendered iOS image rather than enlarging its SVG canvas.
+  if (Platform.OS === "ios") {
+    const resized = await manipulateAsync(pngFile.uri, [{ resize: { width: 1200, height: 1200 } }], {
+      format: SaveFormat.PNG
+    });
+    await new File(resized.uri).copy(pngFile, { overwrite: true });
+  };//if ends
+
   if (format === "png") return { uri: pngFile.uri, mimeType: "image/png" };
 
   const jpegResult = await manipulateAsync(pngFile.uri, [], {
@@ -110,13 +120,13 @@ export async function createQrFile(svg: string, format: QrExportFormat, preview:
 /* ------------------ BREAK ------------------ */
 
 // Adds the optional center image and UnoQR wordmark before any frame is applied.
-function addQrLogos(svg: string, dotColor: string, backgroundColor: string, userLogo: QrUserLogo | null): string {
+async function addQrLogos(svg: string, dotColor: string, backgroundColor: string, userLogo: QrUserLogo | null, hideUnoqrLogo: boolean): Promise<string> {
   const sizeMatch = svg.match(/viewBox="0 0 (\d+) \1"/);
   if (!sizeMatch) throw new Error("QR SVG is missing its square viewBox.");
 
   const qrSize = Number(sizeMatch[1]);
-  const centerLogo = userLogo ? buildUserLogo(qrSize, userLogo, backgroundColor) : "";
-  const unoqrLogo = buildQrLogo(qrSize, dotColor, backgroundColor);
+  const centerLogo = userLogo ? await buildUserLogo(qrSize, userLogo, backgroundColor) : "";
+  const unoqrLogo = hideUnoqrLogo ? "" : buildQrLogo(qrSize, dotColor, backgroundColor);
   return svg.replace(/<\/svg>\s*$/, `${centerLogo}${unoqrLogo}</svg>`);
 };//func ends
 
@@ -141,7 +151,8 @@ function renderPng(preview: Svg): Promise<string> {
     preview.toDataURL((base64) => {
       if (base64) resolve(base64);
       else reject(new Error("Could not render the QR image."));
-    }, { width: 1200, height: 1200 });
+    // iOS draws at the mounted view's bounds even when larger output bounds are supplied.
+    }, Platform.OS === "ios" ? undefined : { width: 1200, height: 1200 });
   });
 };//func ends
 

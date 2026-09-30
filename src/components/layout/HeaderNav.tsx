@@ -1,7 +1,8 @@
 import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
-import { router, type Href } from "expo-router";
+import { type Href } from "expo-router";
 import { House, User } from "lucide-react-native";
 
+import { redirect } from "@/utils/general/Redirect";
 import { UnoQrLogo } from "@/components/brand/UnoQrLogo";
 import { useSessionRefreshPending } from "@/utils/auth/SessionRefreshContext";
 import { colors } from "@/theme/colors";
@@ -15,12 +16,12 @@ export function HeaderNav() {
 
   // Opens the app home screen.
   const handleHomePress = () => {
-    router.push("/" as Href);
+    redirect("push", "/" as Href);
   };//func ends
 
   // Opens the authenticated UNOQR account page.
   const handleProfilePress = () => {
-    router.push("/auth/myaccount" as Href);
+    redirect("push", "/auth/myaccount" as Href);
   };//func ends
 
   //Default Return

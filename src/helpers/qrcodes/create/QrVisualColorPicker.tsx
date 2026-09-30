@@ -15,7 +15,7 @@ type HsvColor = { hue: number; saturation: number; value: number };
 
 /* ------------------ BREAK ------------------ */
 
-const PICKER_HEIGHT = 128;
+const PICKER_HEIGHT = 180;
 const HUE_HEIGHT = 22;
 
 /* ------------------ BREAK ------------------ */
@@ -87,7 +87,7 @@ export default function QrVisualColorPicker({ color, onChangeColor }: QrVisualCo
           </Defs>
           <Rect width="100%" height="100%" fill="url(#hues)" />
         </Svg>
-        <View pointerEvents="none" style={[styles.hueMarker, { left: selected.hue / 360 * width - 5 }]} />
+        <View pointerEvents="none" style={[styles.hueMarker, { left: selected.hue / 360 * (width - HUE_HEIGHT), backgroundColor: hueColor }]} />
       </View>
     </View>
   );//return ends
@@ -140,5 +140,5 @@ const styles = StyleSheet.create({
   hue: { height: HUE_HEIGHT, borderRadius: radii.pill, overflow: "hidden" },
   gradient: { width: "100%", height: "100%" },
   shadeMarker: { position: "absolute", width: 18, height: 18, borderRadius: radii.pill, borderWidth: 2, borderColor: colors.white.main },
-  hueMarker: { position: "absolute", top: 0, width: 10, height: HUE_HEIGHT, borderRadius: radii.pill, borderWidth: 2, borderColor: colors.white.main, backgroundColor: "transparent" }
+  hueMarker: { position: "absolute", top: 0, width: HUE_HEIGHT, height: HUE_HEIGHT, borderRadius: radii.pill, borderWidth: 3, borderColor: colors.white.main }
 });

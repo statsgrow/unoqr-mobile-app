@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { Stack, router } from "expo-router";
+import { Stack, usePathname } from "expo-router";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { redirect } from "@/utils/general/Redirect";
 import { colors, fontFamilies, fontSizes, radii, spacing } from "@/theme/tokens";
 import { insertAppInstall } from "@/utils/auth/AppInstall";
 import { refreshTokensSilently } from "@/utils/auth/AuthTokens";
@@ -18,6 +19,7 @@ type AuthRouteState = "checking" | "ready" | "install-error";
 export default function AuthLayout() {
   const [routeState, setRouteState] = useState<AuthRouteState>("checking");
   const [checkKey, setCheckKey] = useState(0);
+  const pathname = usePathname();
 
   // Resolves the install and silently refreshes an existing session before rendering.
   useEffect(() => {
@@ -40,7 +42,7 @@ export default function AuthLayout() {
         if (!isMounted) return;
 
         if (!user) {
-          router.replace({ pathname: "/auth/login", params: { next: "/qrcodes/create" } });
+          redirect("replace", { pathname: "/auth/login", params: { next: pathname } });
           return;
         };//if ends
 
@@ -57,11 +59,11 @@ export default function AuthLayout() {
     return () => {
       isMounted = false;
     };
-  }, [checkKey]);
+  }, [checkKey, pathname]);
 
   //Default Return
   return (
-    <SafeAreaView style={styles.root}>
+    <SafeAreaView style={styles.root} edges={["top", "left", "right"]}>
       {routeState === "ready" ? (
         <Stack screenOptions={{ headerShown: false }} />
       ) : routeState === "install-error" ? (

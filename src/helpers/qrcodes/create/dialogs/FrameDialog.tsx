@@ -39,7 +39,7 @@ const FRAME_OPTIONS: FrameOption[] = [
 export default function FrameDialog({ visible, onClose, frameStyle, frameColor, onChangeStyle, onChangeColor }: FrameDialogProps) {
   //Default Return
   return (
-    <PxModal visible={visible} onRequestClose={onClose} name="Frame" height="auto" maxHeight={760}>
+    <PxModal visible={visible} onRequestClose={onClose} name="Frame" height="auto" maxHeight={760} keyboardAvoiding>
       <View style={styles.content}>
         <Text style={styles.sectionTitle}>Frame shape</Text>
         <ScrollView key={frameStyle} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.options}>

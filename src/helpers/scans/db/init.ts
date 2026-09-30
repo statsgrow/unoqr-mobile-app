@@ -2,6 +2,8 @@ import { sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 import { db, sqliteDB } from "@/utils/sqlite/db";
 
+import { getBarcodeFormat, getBarcodeKind } from "../Barcode";
+
 /* ------------------ BREAK ------------------ */
 
 export type ScanSyncStatus = "pending" | "processing" | "synced" | "incomplete";
@@ -83,6 +85,7 @@ export type InsertScanInput = {
   input_url?: string | null;
   final_url?: string | null;
   type?: string | null;
+  kind?: string | null;
   status?: string | null;
   user_ip?: string | null;
   location?: ScanLocation | null;
@@ -122,6 +125,7 @@ export const scansTable = sqliteTable("scans", {
   input_url: text("input_url"),
   final_url: text("final_url"),
   type: text("type"),
+  kind: text("kind"),
   status: text("status").default("pending"),
   user_ip: text("user_ip"),
   location: text("location", { mode: "json" }).$type<ScanLocation | null>(),
@@ -149,6 +153,7 @@ export async function createScansTable() {
       input_url TEXT,
       final_url TEXT,
       type TEXT,
+      kind TEXT,
       status TEXT DEFAULT 'pending',
       user_ip TEXT,
       location TEXT,
@@ -210,6 +215,38 @@ export async function migrateScanUrlColumns() {
 
 /* ------------------ BREAK ------------------ */
 
+// Adds scan kinds and preserves the existing QR categories for saved rows.
+async function migrateScanKindColumn(): Promise<void> {
+  if (!sqliteDB) return;
+
+  const columns = sqliteDB.getAllSync<ScanColumn>("PRAGMA table_info(scans)");
+  if (!columns.some((column) => column.name === "kind")) {
+    sqliteDB.execSync("ALTER TABLE scans ADD COLUMN kind TEXT;");
+  };//if ends
+
+  sqliteDB.execSync("UPDATE scans SET kind = type WHERE kind IS NULL;");
+
+  // Repair scans saved with Android's numeric image format before retrying API sync.
+  const numericBarcodes = sqliteDB.getAllSync<{ id: string; kind: string }>(
+    "SELECT id, kind FROM scans WHERE type = 'barcode' AND kind GLOB '[0-9]*'"
+  );
+  for (const row of numericBarcodes) {
+    const format = getBarcodeFormat(Number(row.kind));
+    const kind = format ? getBarcodeKind(format) : null;
+    if (!kind || !format) continue;
+
+    sqliteDB.runSync(
+      `UPDATE scans SET kind = ?, metadata = CASE WHEN metadata IS NULL
+         THEN json_object('barcode', value, 'format', ?)
+         ELSE json_set(metadata, '$.format', ?) END,
+       sync_status = 'pending', updated_at = ? WHERE id = ?`,
+      kind, format, format, new Date().toISOString(), row.id
+    );
+  };//for ends
+};//func ends
+
+/* ------------------ BREAK ------------------ */
+
 // Replaces the legacy table once and shares initialization across all scan queries.
 export function initScansTable(): Promise<void> {
   initializationPromise ??= initializeScansTable();
@@ -221,6 +258,7 @@ async function initializeScansTable() {
   await removeLegacyScansTable();
   await createScansTable();
   await migrateScanUrlColumns();
+  await migrateScanKindColumn();
 };//func ends
 
 /* ------------------ BREAK ------------------ */
