@@ -1,35 +1,47 @@
 import { Pressable, StyleSheet, View } from "react-native";
 import { usePathname, type Href } from "expo-router";
-import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { Grip, House, QrCode, ScanText, type LucideIcon } from "lucide-react-native";
 import { Text } from "react-native-paper";
 
 import { redirect } from "@/utils/general/Redirect";
+import { UnoQrLogo } from "@/components/brand/UnoQrLogo";
 import { colors, fontFamilies, fontSizes, radii, spacing } from "@/theme/tokens";
 
 /* ------------------ BREAK ------------------ */
 
 type StandardNavItem = {
   label: string;
-  icon: keyof typeof MaterialCommunityIcons.glyphMap;
-  activeIcon: keyof typeof MaterialCommunityIcons.glyphMap;
+  icon: LucideIcon;
   href: Href;
   matchingPath: string;
 };
 
 /* ------------------ BREAK ------------------ */
 
+const homeItem: StandardNavItem = {
+  label: "Home",
+  icon: House,
+  href: "/" as Href,
+  matchingPath: "/"
+};
+
 const scansItem: StandardNavItem = {
   label: "My Scans",
-  icon: "history",
-  activeIcon: "history",
+  icon: ScanText,
   href: "/scans/list" as Href,
   matchingPath: "/scans"
 };
 
+const qrCodesItem: StandardNavItem = {
+  label: "My QRs",
+  icon: QrCode,
+  href: "/qrcodes/list" as Href,
+  matchingPath: "/qrcodes"
+};
+
 const moreItem: StandardNavItem = {
   label: "More",
-  icon: "apps",
-  activeIcon: "apps",
+  icon: Grip,
   href: "/more" as Href,
   matchingPath: "/more"
 };
@@ -44,6 +56,7 @@ export function BottomNav() {
   return (
     <View style={styles.root}>
       <View style={styles.container}>
+        <NavItem item={homeItem} isActive={pathname === homeItem.matchingPath} />
         <NavItem
           item={scansItem}
           isActive={
@@ -59,10 +72,14 @@ export function BottomNav() {
             onPress={() => redirect("push", "/scans/scanner")}
             style={({ pressed }) => [styles.scanButton, pressed && styles.pressedButton]}
           >
-            <MaterialCommunityIcons name="qrcode-scan" size={36} color={colors.white.main} />
+            <UnoQrLogo variant="icon" width={32} color={colors.white.main} />
           </Pressable>
         </View>
 
+        <NavItem
+          item={qrCodesItem}
+          isActive={pathname === qrCodesItem.matchingPath || pathname.startsWith(`${qrCodesItem.matchingPath}/`)}
+        />
         <NavItem
           item={moreItem}
           isActive={pathname === moreItem.matchingPath}
@@ -76,6 +93,7 @@ export function BottomNav() {
 
 // Renders a standard supporting destination in the bottom navigation.
 function NavItem({ item, isActive }: { item: StandardNavItem; isActive: boolean }) {
+  const Icon = item.icon;
   //Default Return
   return (
     <Pressable
@@ -84,12 +102,8 @@ function NavItem({ item, isActive }: { item: StandardNavItem; isActive: boolean 
       onPress={() => redirect("push", item.href)}
       style={({ pressed }) => [styles.itemButton, pressed && styles.pressedButton]}
     >
-      <MaterialCommunityIcons
-        name={isActive ? item.activeIcon : item.icon}
-        size={25}
-        color={isActive ? colors.secondary.main : colors.mute.main}
-      />
-      <Text style={[styles.label, isActive ? styles.activeLabel : styles.inactiveLabel]}>
+      <Icon size={25} strokeWidth={1.25} color={isActive ? colors.secondary.main : colors.mute.main} />
+      <Text numberOfLines={1} style={[styles.label, isActive ? styles.activeLabel : styles.inactiveLabel]}>
         {item.label}
       </Text>
     </Pressable>
@@ -100,6 +114,7 @@ function NavItem({ item, isActive }: { item: StandardNavItem; isActive: boolean 
 
 const styles = StyleSheet.create({
   root: {
+    width: "100%",
     paddingTop: spacing.xs,
     paddingBottom: spacing.xxs,
     overflow: "visible",
@@ -111,12 +126,12 @@ const styles = StyleSheet.create({
     height: 50,
     flexDirection: "row",
     alignItems: "flex-end",
-    justifyContent: "space-around",
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing.xs,
     overflow: "visible"
   },
   itemButton: {
-    width: 96,
+    width: "20%",
+    minWidth: 0,
     height: 46,
     alignItems: "center",
     justifyContent: "center",
@@ -124,7 +139,8 @@ const styles = StyleSheet.create({
     borderRadius: radii.lg
   },
   scanSlot: {
-    width: 96,
+    width: "20%",
+    minWidth: 0,
     height: 46,
     alignItems: "center",
     justifyContent: "flex-end",
@@ -132,12 +148,14 @@ const styles = StyleSheet.create({
   },
   scanButton: {
     position: "absolute",
+    left: "50%",
+    marginLeft: -32,
     bottom: 0,
-    width: 72,
-    height: 72,
+    width: 64,
+    height: 64,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 5,
+    borderWidth: 4,
     borderColor: colors.cream.main,
     borderRadius: radii.pill,
     backgroundColor: colors.secondary.main,

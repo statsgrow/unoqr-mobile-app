@@ -100,13 +100,16 @@ export default function QrCodesListScreen() {
 
 // Shows one QR name, content summary, and creation date as an editable saved entry.
 function renderQrItem({ item }: ListRenderItemInfo<QrCode>) {
+  const vcardVersion = item.content_type === "vcard" ? item.content.match(/^VERSION:([^\r\n]+)/im)?.[1].trim() : undefined;
+  const contentPreview = item.content_type === "vcard" && item.content ? vcardVersion ? `Version ${vcardVersion}` : "vCard" : item.content || "Add content to finish this QR code";
+
   //Default Return
   return (
     <Pressable accessibilityLabel={`Edit ${item.name || "My Qr"}`} accessibilityRole="button" onPress={() => redirect("push", { pathname: "/qrcodes/create", params: { id: item.id } })} style={({ pressed }) => [styles.card, pressed && styles.pressed]}>
       <View style={styles.qrIcon}><QrCodeIcon size={28} strokeWidth={1.5} color={colors.neutral.main} /></View>
       <View style={styles.cardCopy}>
         <Text numberOfLines={1} style={styles.cardName}>{item.name || "My Qr"}</Text>
-        <Text numberOfLines={2} style={styles.cardContent}>{item.content || "Add content to finish this QR code"}</Text>
+        <Text numberOfLines={2} style={styles.cardContent}>{contentPreview}</Text>
         <View style={styles.metadata}>
           <Text style={styles.type}>{item.content ? item.content_type === "vcard" ? "vCard" : item.content_type || "Static QR" : "Draft"}</Text>
           <Text style={styles.date}>{new Date(item.created_at).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}</Text>

@@ -20,6 +20,13 @@ export async function getExpoPushToken(): Promise<ExpoPushTokenInfo | null> {
   };//if ends
 
   const Notifications = await import("expo-notifications");
+  if (Platform.OS === "android") {
+    await Notifications.setNotificationChannelAsync("default", {
+      name: "Default",
+      importance: Notifications.AndroidImportance.MAX
+    });
+  };//if ends
+
   const { status: existingStatus } = await Notifications.getPermissionsAsync();
   let finalStatus = existingStatus;
 
@@ -37,13 +44,6 @@ export async function getExpoPushToken(): Promise<ExpoPushTokenInfo | null> {
 
   if (!projectId) {
     return null;
-  };//if ends
-
-  if (Platform.OS === "android") {
-    await Notifications.setNotificationChannelAsync("default", {
-      name: "Default",
-      importance: Notifications.AndroidImportance.MAX
-    });
   };//if ends
 
   const tokenResponse = await Notifications.getExpoPushTokenAsync({ projectId });

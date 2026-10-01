@@ -1,13 +1,19 @@
-import { apiSettings, userTokenSettings } from "@/settings";
-import { connectUserAppScans } from "@/helpers/scans/scanSync";
-import { connectUserAppInstall } from "@/utils/auth/AppInstall";
+import { apiSettings, installSettings, userTokenSettings } from "@/settings";
+import { connectUserAppScans, pauseScanSync, resumeScanSync } from "@/helpers/scans/scanSync";
+import { connectUserAppInstall, insertAppInstall } from "@/utils/auth/AppInstall";
 import {
   getUserTokens,
   isTokenExpired,
   refreshTokensSilently,
   removeUserTokens,
+  pauseTokenRefresh,
+  resumeTokenRefresh,
   setUserTokens
 } from "@/utils/auth/AuthTokens";
+import { pauseQrCodeSync, resumeQrCodeSync } from "@/helpers/qrcodes/QrSync";
+import { initQrCodes } from "@/helpers/qrcodes/db/initQrCodes";
+import { initScansTable } from "@/helpers/scans/db/init";
+import { sqliteDB } from "@/utils/sqlite/db";
 import type { UserType } from "@/utils/auth/UserTypes";
 import { getData, removeData, setData } from "@/utils/general/Storage";
 
@@ -81,6 +87,8 @@ export async function addUserData({
   accessToken,
   refreshToken
 }: AddUserDataInput): Promise<UserType> {
+  // Begin every login without another account's local rows, tokens or installation link.
+  await resetLocalUserSession();
   await setUserTokens({
     access_token: accessToken,
     refresh_token: refreshToken
@@ -93,6 +101,7 @@ export async function addUserData({
     key: userTokenSettings.storageTokens.userData.name,
     value: user
   });
+  await insertAppInstall();
   const connectedInstall = await connectUserAppInstall();
   if (connectedInstall) await connectUserAppScans();
 
@@ -121,10 +130,34 @@ export async function getStorageUser(): Promise<UserType | null> {
 
 /* ------------------ BREAK ------------------ */
 
-// Clears local user and token data without affecting the anonymous app installation.
+// Clears local account rows, authentication and the installation link on logout.
 export async function processUserLogout(): Promise<void> {
-  await clearStoredUserSession();
+  await resetLocalUserSession();
 };//export ends
+
+// Resets account tables while retaining their schema and the shared SQLite connection.
+async function resetLocalUserSession(): Promise<void> {
+  await pauseTokenRefresh();
+  try {
+    await clearStoredUserSession();
+    // Finish old requests before new credentials can be used by background synchronization.
+    await Promise.all([pauseQrCodeSync(), pauseScanSync()]);
+    await removeData({ key: installSettings.storageKeys.installInfo.name });
+    await removeData({ key: installSettings.storageKeys.appAttestKeyId.name });
+    const connection = sqliteDB;
+    if (!connection) return;
+    await initScansTable();
+    await initQrCodes();
+    // Clear all account records together so the next login starts with empty tables.
+    connection.withTransactionSync(() => {
+      connection.execSync("DELETE FROM scans; DELETE FROM static_qrcodes; DELETE FROM static_qrcode_deletions;");
+    });
+  } finally {
+    resumeQrCodeSync();
+    resumeScanSync();
+    resumeTokenRefresh();
+  };//try-catch ends
+};//func ends
 
 // Stores any rotated tokens emitted by the UnoQR API auth-user response.
 async function persistResponseTokens(response: Response): Promise<void> {

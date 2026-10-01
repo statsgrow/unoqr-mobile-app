@@ -57,7 +57,7 @@ export function encodeQrContent({ type, data }: QrContentSelection): string {
 // Gives the saved content a short description for the page card.
 export function describeQrContent({ type, data }: QrContentSelection): string {
   if (type === "website") return data.website.trim();
-  if (type === "phone") return data.phone.trim();
+  if (type === "phone") return `tel:${data.phone.trim().replace(/^tel:/i, "")}`;
   if (type === "text") return data.text.trim();
   return data.fullName.trim();
 };//export ends
@@ -81,7 +81,7 @@ function normalizeWebsite(value: string): string {
 
 // Converts a phone number into a scanner-friendly tel value.
 function normalizePhone(value: string): string {
-  const number = value.trim().replace(/[\s().-]/g, "");
+  const number = value.trim().replace(/^tel:/i, "").replace(/[\s().-]/g, "");
   if (!/^\+?\d{3,15}$/.test(number)) throw new Error("Enter a valid phone number.");
   return number;
 };//func ends

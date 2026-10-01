@@ -13,12 +13,14 @@ import { db } from "@/utils/sqlite/db";
 
 const syncTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const syncQueues = new Map<string, Promise<void>>();
+let isSyncPaused = false;
 let pendingCheckPromise: Promise<void> | null = null;
 
 /* ------------------ BREAK ------------------ */
 
 // Restarts a QR's API synchronization delay after each successful local write.
 export function scheduleQrCodeSync(id: string): void {
+  if (isSyncPaused) return;
   clearTimeout(syncTimers.get(id));
   syncTimers.set(id, setTimeout(() => {
     syncTimers.delete(id);
@@ -26,8 +28,27 @@ export function scheduleQrCodeSync(id: string): void {
   }, 2_000));
 };//export ends
 
+// Cancels delayed QR writes when the current account's local data is cleared.
+export function cancelScheduledQrCodeSync(): void {
+  syncTimers.forEach((timer) => clearTimeout(timer));
+  syncTimers.clear();
+};//export ends
+
+// Waits for existing QR requests before another account can supply authentication.
+export async function pauseQrCodeSync(): Promise<void> {
+  isSyncPaused = true;
+  cancelScheduledQrCodeSync();
+  await Promise.allSettled([...syncQueues.values(), ...(pendingCheckPromise ? [pendingCheckPromise] : [])]);
+};//export ends
+
+// Enables QR synchronization after the account reset finishes.
+export function resumeQrCodeSync(): void {
+  isSyncPaused = false;
+};//export ends
+
 // Flushes a QR immediately and serializes its requests to prevent stale remote writes.
 export function syncQrCode(id: string): Promise<void> {
+  if (isSyncPaused) return Promise.resolve();
   clearTimeout(syncTimers.get(id));
   syncTimers.delete(id);
   const operation = (syncQueues.get(id) ?? Promise.resolve()).catch(() => undefined).then(() => synchronizeQrCode(id));
@@ -40,6 +61,7 @@ export function syncQrCode(id: string): Promise<void> {
 
 // Retries this user's persisted pending QR writes and deletions without a recurring timer.
 export function checkPendingQrCodes(): Promise<void> {
+  if (isSyncPaused) return Promise.resolve();
   pendingCheckPromise ??= synchronizePendingQrCodes().finally(() => { pendingCheckPromise = null; });
   return pendingCheckPromise;
 };//export ends

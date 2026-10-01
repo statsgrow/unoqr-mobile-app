@@ -2,7 +2,7 @@
   "expo": {
     "name": "Uno QR",
     "slug": "unoqr-app",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "runtimeVersion": {
       "policy": "appVersion"
     },
@@ -17,7 +17,9 @@
     },
     "userInterfaceStyle": "light",
     "ios": {
-      "version": "1.0.0",
+      "version": "1.0.1",
+      "buildNumber": "2",
+      "appleTeamId": "5XXAGD7YYF",
       "bundleIdentifier": "com.statsgrow.unoqr",
       "supportsTablet": true,
       "entitlements": {
@@ -25,7 +27,7 @@
       }
     },
     "android": {
-      "version": "1.0.0",
+      "version": "1.0.1",
       "package": "com.statsgrow.unoqr",
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
@@ -37,12 +39,18 @@
       "predictiveBackGestureEnabled": false,
       "permissions": [
         "android.permission.CAMERA"
-      ]
+      ],
+      "blockedPermissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.SYSTEM_ALERT_WINDOW"
+      ],
+      "versionCode": 2
     },
     "web": {
       "favicon": "./src/assets/images/favicon.png"
     },
     "plugins": [
+      "./app_helpers/ios/withIOSBundling",
       [
         "expo-router",
         {
@@ -72,7 +80,19 @@
       "expo-notifications",
       "expo-secure-store",
       "./app_helpers/android/withUnoqrDownloads",
-      "expo-splash-screen"
+      "expo-splash-screen",
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "enableSceneSupport": true
+          },
+          "android": {
+            "enableMinifyInReleaseBuilds": true,
+            "enableShrinkResourcesInReleaseBuilds": true
+          }
+        }
+      ]
     ],
     "extra": {
       "router": {

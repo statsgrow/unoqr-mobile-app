@@ -11,10 +11,13 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { TopNav } from "@/components/layout/TopNav";
 import { getScanById } from "@/helpers/scans/db/getQueries";
 import { getScanTypeInit } from "@/helpers/scans/identifiers";
+import { getPhoneNumber } from "@/helpers/scans/identifiers/PhoneNumber";
 import { crawlPendingUrlById } from "@/helpers/scans/scanSync";
 import { BarcodeScan } from "@/helpers/scans/scanTypes/Barcode";
+import { PhoneScan } from "@/helpers/scans/scanTypes/Phone";
 import { PlainText } from "@/helpers/scans/scanTypes/Text";
 import { UpiPayment } from "@/helpers/scans/scanTypes/UpiPayment";
+import { VCardScan } from "@/helpers/scans/scanTypes/VCard";
 import { Website } from "@/helpers/scans/scanTypes/Website";
 import { getScanCrawlError } from "@/helpers/scans/status";
 import { colors, fontFamilies, fontSizes, radii, spacing } from "@/theme/tokens";
@@ -159,6 +162,8 @@ async function loadScanDetail(id: string, onCrawling: () => void): Promise<ScanR
 
 // Selects the dedicated scan detail component for the stored scan type.
 function ScanTypeContent({ record }: { record: ScanRecord }) {
+  if (record.type !== "barcode" && getPhoneNumber(record.value)) return <PhoneScan key={record.id} value={record.value} createdAt={record.created_at} />;
+  if (/^BEGIN:VCARD(?:\r?\n|\r)/i.test(record.value)) return <VCardScan key={record.id} value={record.value} createdAt={record.created_at} />;
   if (record.type === "barcode") return <BarcodeScan key={record.id} record={record} />;
   if (record.type === "url" || record.type === "file") return <Website record={record} />;
   if (record.type === "text") return <PlainText record={record} />;
@@ -178,12 +183,16 @@ function ScanTypeContent({ record }: { record: ScanRecord }) {
 
 // Resolves the page heading from the stored type while recognizing legacy UPI rows.
 function getScanTypeLabel(record: ScanRecord): string {
+  if (record.type !== "barcode" && getPhoneNumber(record.value)) return "Phone Number";
+  if (/^BEGIN:VCARD(?:\r?\n|\r)/i.test(record.value)) return "vCard";
   const scanType = /^upi:\/\//i.test(record.value) ? "upi_payment" : record.type;
   return getScanTypeInit(scanType).label;
 };//func ends
 
 // Provides supporting page copy for scan types that benefit from added context.
 function getScanTypeDescription(record: ScanRecord): string | undefined {
+  if (record.type !== "barcode" && getPhoneNumber(record.value)) return "Call the phone number saved from your scan.";
+  if (/^BEGIN:VCARD(?:\r?\n|\r)/i.test(record.value)) return "View or download the contact saved from your scan.";
   if (record.type === "barcode") return "Copy or search the barcode saved from your scan.";
   if (record.type === "text") return "The exact text collected from this QR code.";
 

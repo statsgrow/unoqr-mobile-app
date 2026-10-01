@@ -102,6 +102,11 @@ export async function waitForInitialScanSync(id: string): Promise<boolean | null
 
 /* ------------------ BREAK ------------------ */
 
+// Waits for initial scan requests already running when the account is reset.
+export async function waitForInitialScanSyncs(): Promise<void> {
+  await Promise.allSettled([...initialSyncPromises.values()]);
+};//export ends
+
 // Updates local sync state after attempting the initial API POST.
 async function syncInitialScan(
   data: InsertScanInput,

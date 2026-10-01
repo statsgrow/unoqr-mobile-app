@@ -48,7 +48,7 @@ type DeviceDetails = {
     version: string | null;
     installation_id: Date | null;
   };
-  expo_token?: string;
+  expo_token?: string | null;
   expo_token_updated_at?: string | null;
 };
 
@@ -89,13 +89,10 @@ export async function insertAppInstall(): Promise<AppInstallInfo | null> {
     const deviceDetails = await getDeviceDetails();
 
     if (Platform.OS === "android" && deviceDetails.is_real_device) {
-      const expoPushTokenInfo = await getExpoPushToken();
-      if (!expoPushTokenInfo?.token) {
-        throw new Error("A push notification token is required to register this Android app.");
-      };//if ends
-
-      deviceDetails.expo_token = expoPushTokenInfo.token;
-      deviceDetails.expo_token_updated_at = expoPushTokenInfo.updated_at;
+      // Keep device registration available when notifications are denied or unavailable.
+      const expoPushTokenInfo = await getExpoPushToken().catch(() => null);
+      deviceDetails.expo_token = expoPushTokenInfo?.token ?? null;
+      deviceDetails.expo_token_updated_at = expoPushTokenInfo?.updated_at ?? null;
     };//if ends
 
     const apiUrl = apiSettings.getApiUrl({ path: "/app/install" });
@@ -129,6 +126,8 @@ function startAppIntegrityObservation(appInstall: AppInstallInfo): void {
     if (!observedInstall) return;
 
     const currentInstall = await getStoredAppInstall();
+    // Ignore an observation belonging to a session that has already been cleared.
+    if (currentInstall?.id !== appInstall.id) return;
 
     await setData({
       key: installSettings.storageKeys.installInfo.name,

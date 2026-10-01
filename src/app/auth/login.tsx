@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
-import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { isAxiosError } from "axios";
 import * as Linking from "expo-linking";
 import { useLocalSearchParams, type Href } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
@@ -9,8 +9,9 @@ import { Text } from "react-native-paper";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { redirect } from "@/utils/general/Redirect";
-import { UnoQrLogo } from "@/components/brand/UnoQrLogo";
+import { HeaderNav } from "@/components/layout/HeaderNav";
 import { PxButton } from "@/components/elements/PxButton";
+import { PxAlert } from "@/components/elements/PxAlert";
 import { PxTextInput } from "@/components/form/PxTextInput";
 import { apiSettings } from "@/settings";
 import { colors, fontFamilies, fontSizes, radii, spacing } from "@/theme/tokens";
@@ -27,7 +28,6 @@ type LoginFormValues = {
 };
 
 type LoginParams = {
-  mode?: string | string[];
   next?: string | string[];
 };
 
@@ -40,7 +40,7 @@ type AuthApiResponse<T> = {
 
 WebBrowser.maybeCompleteAuthSession();
 
-const TEST_USER_EMAIL = "unoqr.one@gmail.com";
+const TEST_USER_EMAILS = ["unoqr.one@gmail.com", "patelpratik1988@yahoo.com"];
 
 /* ------------------ BREAK ------------------ */
 
@@ -48,22 +48,24 @@ const TEST_USER_EMAIL = "unoqr.one@gmail.com";
 export default function LoginScreen() {
   const params = useLocalSearchParams<LoginParams>();
   const [isOtpSent, setIsOtpSent] = useState(false);
+  const [loginError, setLoginError] = useState<string | null>(null);
   const [isRequestingOtp, setIsRequestingOtp] = useState(false);
   const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
   const [isLoggingInTestUser, setIsLoggingInTestUser] = useState(false);
   const [isOpeningGoogle, setIsOpeningGoogle] = useState(false);
-  const isSignup = getFirstParam(params.mode) === "signup";
   const nextRoute = getSafeNextRoute(getFirstParam(params.next));
   const RHF = useForm<LoginFormValues>({
     defaultValues: { email: "", otp: "", password: "" },
+    shouldUnregister: true,
     mode: "onChange"
   });
   const isTestUser = isTestUserEmail(RHF.watch("email"));
+  const isOtpStep = isOtpSent && !isTestUser;
 
   // Requests an eight-digit OTP for the validated email address.
   const handleRequestOtp: SubmitHandler<LoginFormValues> = async ({ email }) => {
     setIsRequestingOtp(true);
-    RHF.clearErrors("root");
+    setLoginError(null);
 
     try {
       const apiUrl = apiSettings.getApiUrl({ path: "/auth/app/login/email" });
@@ -79,8 +81,7 @@ export default function LoginScreen() {
       Toast.success({ message: responseBody?.message || "An 8-digit OTP was sent to your email." });
     } catch (error: unknown) {
       const message = getErrorMessage(error, "Unable to send the OTP.");
-      RHF.setError("root", { type: "server", message });
-      Toast.error({ message });
+      showLoginError(message);
     } finally {
       setIsRequestingOtp(false);
     };//try-catch ends
@@ -89,7 +90,7 @@ export default function LoginScreen() {
   // Verifies the OTP, stores the session, connects the install, and follows the next route.
   const handleVerifyOtp: SubmitHandler<LoginFormValues> = async ({ email, otp }) => {
     setIsVerifyingOtp(true);
-    RHF.clearErrors("root");
+    setLoginError(null);
 
     try {
       const apiUrl = apiSettings.getApiUrl({ path: "/auth/app/login/email" });
@@ -107,20 +108,19 @@ export default function LoginScreen() {
       await completeAuthenticatedLogin(responseBody?.data, nextRoute);
     } catch (error: unknown) {
       const message = getErrorMessage(error, "Unable to verify the OTP.");
-      RHF.setError("root", { type: "server", message });
-      Toast.error({ message });
+      showLoginError(message);
     } finally {
       setIsVerifyingOtp(false);
     };//try-catch ends
   };//func ends
 
-  // Signs the dedicated Google Play review user in with its reusable password.
+  // Signs a dedicated review account in with its password instead of email OTP.
   const handleTestUserLogin: SubmitHandler<LoginFormValues> = async ({ email, password }) => {
     setIsLoggingInTestUser(true);
-    RHF.clearErrors("root");
+    setLoginError(null);
 
     try {
-      const apiUrl = apiSettings.getApiUrl({ path: "/auth/app/login/test" });
+      const apiUrl = apiSettings.getApiUrl({ path: "/auth/login" });
       const response = await fetch(apiUrl.href, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -135,8 +135,7 @@ export default function LoginScreen() {
       await completeAuthenticatedLogin(responseBody?.data, nextRoute);
     } catch (error: unknown) {
       const message = getErrorMessage(error, "Unable to log in the test user.");
-      RHF.setError("root", { type: "server", message });
-      Toast.error({ message });
+      showLoginError(message);
     } finally {
       setIsLoggingInTestUser(false);
     };//try-catch ends
@@ -145,6 +144,7 @@ export default function LoginScreen() {
   // Starts Google OAuth through the isolated mobile API route and hands success to the callback page.
   const handleGoogleLogin = async () => {
     setIsOpeningGoogle(true);
+    setLoginError(null);
 
     try {
       const callbackUrl = new URL(Linking.createURL("/auth/callback"));
@@ -160,15 +160,21 @@ export default function LoginScreen() {
         });
       };//if ends
     } catch (error: unknown) {
-      Toast.error({ message: getErrorMessage(error, "Unable to start Google login.") });
+      showLoginError(getErrorMessage(error, "Unable to start Google login."));
     } finally {
       setIsOpeningGoogle(false);
     };//try-catch ends
   };//func ends
 
+  // Shows non-validation login failures in the inline error card.
+  const showLoginError = (message: string): void => {
+    setLoginError(message);
+  };//func ends
+
   // Returns to email entry so the user can correct the destination address.
   const handleChangeEmail = () => {
     setIsOtpSent(false);
+    setLoginError(null);
     RHF.setValue("otp", "");
     RHF.clearErrors();
   };//func ends
@@ -176,6 +182,7 @@ export default function LoginScreen() {
   //Default Return
   return (
     <SafeAreaView style={styles.safeArea}>
+      <HeaderNav showProfile={false} showBack />
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={styles.screen}
@@ -185,14 +192,12 @@ export default function LoginScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <UnoQrLogo variant="icon" width={36} style={styles.logo} />
-
           <View style={styles.hero}>
             <Text style={styles.title}>
-              {isOtpSent ? "Enter your OTP" : isSignup ? "Create your account" : "Welcome to UNOQR"}
+              {isOtpStep ? "Enter your OTP" : "Welcome"}
             </Text>
             <Text style={styles.subtitle}>
-              {isOtpSent
+              {isOtpStep
                 ? `We sent an 8-digit code to ${RHF.getValues("email")}.`
                 : "Log in to sync your scans and access them across devices."}
             </Text>
@@ -202,7 +207,7 @@ export default function LoginScreen() {
             <View style={styles.fieldGroup}>
               <View style={styles.fieldLabelRow}>
                 <Text style={styles.fieldLabel}>EMAIL</Text>
-                {isOtpSent ? (
+                {isOtpStep ? (
                   <Pressable accessibilityRole="button" hitSlop={spacing.xs} onPress={handleChangeEmail}>
                     <Text style={styles.changeEmailText}>Change</Text>
                   </Pressable>
@@ -215,7 +220,7 @@ export default function LoginScreen() {
                 size="large"
                 leftAdornment={{ icon: "email-outline" }}
                 placeholder="you@example.com"
-                disabled={isOtpSent}
+                disabled={isOtpStep}
                 rules={{
                   required: "Email address is required",
                   pattern: {
@@ -226,7 +231,7 @@ export default function LoginScreen() {
               />
             </View>
 
-            {isOtpSent ? (
+            {isOtpStep ? (
               <View style={styles.fieldGroup}>
                 <Text style={styles.fieldLabel}>8-DIGIT OTP</Text>
                 <PxTextInput
@@ -248,7 +253,7 @@ export default function LoginScreen() {
               </View>
             ) : null}
 
-            {isTestUser && !isOtpSent ? (
+            {isTestUser && !isOtpStep ? (
               <View style={styles.fieldGroup}>
                 <Text style={styles.fieldLabel}>PASSWORD</Text>
                 <PxTextInput
@@ -257,16 +262,14 @@ export default function LoginScreen() {
                   type="password"
                   size="large"
                   leftAdornment={{ icon: "lock-outline" }}
-                  placeholder="Enter test password"
+                  placeholder="Enter your password"
                   autoFocus
                   rules={{ required: "Password is required" }}
                 />
               </View>
             ) : null}
 
-            {RHF.formState.errors.root?.message ? (
-              <Text style={styles.serverError}>{RHF.formState.errors.root.message}</Text>
-            ) : null}
+            {loginError ? <PxAlert messages={[loginError]} color="error" /> : null}
 
             <PxButton
               mode="contained"
@@ -276,16 +279,16 @@ export default function LoginScreen() {
               fullWidth
               loading={isTestUser
                 ? isLoggingInTestUser
-                : isOtpSent
+                : isOtpStep
                   ? isVerifyingOtp
                   : isRequestingOtp}
               onPress={RHF.handleSubmit(isTestUser
                 ? handleTestUserLogin
-                : isOtpSent
+                : isOtpStep
                   ? handleVerifyOtp
                   : handleRequestOtp)}
             >
-              {isTestUser ? "Log in" : isOtpSent ? "Verify OTP" : "Continue with email"}
+              {isTestUser ? "Log in" : isOtpStep ? "Verify OTP" : "Continue with email"}
             </PxButton>
 
             <View style={styles.dividerRow}>
@@ -304,7 +307,7 @@ export default function LoginScreen() {
                 (pressed || isOpeningGoogle) && styles.socialButtonPressed
               ]}
             >
-              <MaterialCommunityIcons name="google" size={23} color={colors.info.main} />
+              <Image source={require("@/assets/images/google-icon.png")} style={styles.googleIcon} resizeMode="contain" />
               <Text style={styles.socialButtonText}>
                 {isOpeningGoogle ? "Opening Google…" : "Continue with Google"}
               </Text>
@@ -312,7 +315,10 @@ export default function LoginScreen() {
           </View>
 
           <Text style={styles.privacyText}>
-            By continuing, you agree to securely authenticate with UNOQR.
+            Read how UnoQR handles your information in our{" "}
+            <Text onPress={() => void WebBrowser.openBrowserAsync("https://www.unoqr.com/policies/privacy")} accessibilityRole="link" style={styles.privacyLink}>
+              Privacy Policy
+            </Text>.
           </Text>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -333,9 +339,9 @@ function getSafeNextRoute(value: string | null): string {
   return value;
 };//func ends
 
-// Returns whether the entered email belongs to the dedicated Play review account.
+// Returns whether the entered email uses password login for app review.
 function isTestUserEmail(email: string): boolean {
-  return email.trim().toLowerCase() === TEST_USER_EMAIL;
+  return TEST_USER_EMAILS.includes((email || "").trim().toLowerCase());
 };//func ends
 
 // Stores a returned Supabase session and completes the shared post-login flow.
@@ -358,6 +364,9 @@ async function completeAuthenticatedLogin(
 
 // Converts an unknown request failure into readable login feedback.
 function getErrorMessage(error: unknown, fallback: string): string {
+  if (isAxiosError<{ message?: string }>(error)) {
+    return error.response?.data?.message || error.message || fallback;
+  };//if ends
   return error instanceof Error && error.message ? error.message : fallback;
 };//func ends
 
@@ -366,19 +375,17 @@ function getErrorMessage(error: unknown, fallback: string): string {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: colors.cream.main
+    backgroundColor: colors.white.main
   },
   screen: {
-    flex: 1
+    flex: 1,
+    backgroundColor: colors.cream.main
   },
   scrollContent: {
     flexGrow: 1,
     paddingHorizontal: spacing.xl,
     paddingTop: spacing.xl,
     paddingBottom: spacing.lg
-  },
-  logo: {
-    marginBottom: spacing.xxl
   },
   hero: {
     gap: spacing.xs,
@@ -419,12 +426,6 @@ const styles = StyleSheet.create({
     fontFamily: fontFamilies.primarySemiBold,
     fontSize: fontSizes.caption
   },
-  serverError: {
-    color: colors.error.main,
-    fontFamily: fontFamilies.primaryRegular,
-    fontSize: fontSizes.body2,
-    lineHeight: 20
-  },
   dividerRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -439,6 +440,10 @@ const styles = StyleSheet.create({
     color: colors.mute.main,
     fontFamily: fontFamilies.mono,
     fontSize: fontSizes.caption
+  },
+  googleIcon: {
+    width: 23,
+    height: 23
   },
   socialButton: {
     width: "100%",
@@ -460,6 +465,7 @@ const styles = StyleSheet.create({
     fontFamily: fontFamilies.primarySemiBold,
     fontSize: fontSizes.body1
   },
+  privacyLink: { color: colors.secondary.main },
   privacyText: {
     marginTop: "auto",
     paddingTop: spacing.xxl,

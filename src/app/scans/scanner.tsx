@@ -24,6 +24,8 @@ import Svg, { Defs, Mask, Rect } from "react-native-svg";
 
 import { scannerBarcodeTypes } from "@/helpers/scans/Barcode";
 import { BarcodeScanDialog, type BarcodeScanDetails } from "@/helpers/scans/dialogs/BarcodeScanDialog";
+import { PhoneScanDialog } from "@/helpers/scans/dialogs/PhoneScanDialog";
+import { VCardScanDialog } from "@/helpers/scans/dialogs/VCardScanDialog";
 import { redirect } from "@/utils/general/Redirect";
 import { UnoQrLogo } from "@/components/brand/UnoQrLogo";
 import { PxButton } from "@/components/elements/PxButton";
@@ -100,6 +102,8 @@ export default function ScanScreen() {
   const [hasTestDestination, setHasTestDestination] = useState(false);
   const [textDialogValue, setTextDialogValue] = useState<string | null>(null);
   const [barcodeDialogDetails, setBarcodeDialogDetails] = useState<BarcodeScanDetails | null>(null);
+  const [vcardDialogValue, setVcardDialogValue] = useState<string | null>(null);
+  const [phoneDialogValue, setPhoneDialogValue] = useState<string | null>(null);
   const [upiDialogDetails, setUpiDialogDetails] = useState<UpiPaymentDialogDetails | null>(null);
   const [scannerAlert, setScannerAlert] = useState<ScannerAlertState | null>(null);
   const scanLockRef = useRef(false);
@@ -118,6 +122,8 @@ export default function ScanScreen() {
       setIsSavingScan(false);
       setTextDialogValue(null);
       setBarcodeDialogDetails(null);
+      setVcardDialogValue(null);
+      setPhoneDialogValue(null);
       setUpiDialogDetails(null);
       setScannerAlert(null);
 
@@ -170,6 +176,14 @@ export default function ScanScreen() {
 
         if (textValue) setTextDialogValue(textValue);
 
+        // Offer calling only after the phone scan is stored on this device.
+        if (preparedScan.type === "phone") setPhoneDialogValue(preparedScan.value);
+
+        // Show vCard contacts after saving, while leaving MeCard scans in their existing flow.
+        if (preparedScan.type === "contact" && /^BEGIN:VCARD(?:\r?\n|\r)/i.test(preparedScan.value)) {
+          setVcardDialogValue(preparedScan.value);
+        };//if ends
+
         // Show the barcode result only after its local scan row has been saved.
         if (preparedScan.type === "barcode") {
           setBarcodeDialogDetails({ id: scanId, kind: preparedScan.kind, value: preparedScan.value });
@@ -218,6 +232,20 @@ export default function ScanScreen() {
   // Close the barcode result and unlock scanning for the next code.
   const handleBarcodeDialogClose = (): void => {
     setBarcodeDialogDetails(null);
+    setScanResult(null);
+    scanLockRef.current = false;
+  };//func ends
+
+  // Closes the vCard result and unlocks the camera for another scan.
+  const handleVcardDialogClose = (): void => {
+    setVcardDialogValue(null);
+    setScanResult(null);
+    scanLockRef.current = false;
+  };//func ends
+
+  // Closes the phone result and unlocks scanning for the next QR.
+  const handlePhoneDialogClose = (): void => {
+    setPhoneDialogValue(null);
     setScanResult(null);
     scanLockRef.current = false;
   };//func ends
@@ -328,6 +356,8 @@ export default function ScanScreen() {
       />
 
       <BarcodeScanDialog details={barcodeDialogDetails} onClose={handleBarcodeDialogClose} />
+      <VCardScanDialog value={vcardDialogValue} onClose={handleVcardDialogClose} />
+      <PhoneScanDialog value={phoneDialogValue} onClose={handlePhoneDialogClose} />
 
     </View>
   );//return ends

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Image, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
+import * as WebBrowser from "expo-web-browser";
 
 import { Text } from "react-native-paper";
 
@@ -125,16 +126,6 @@ export default function MoreScreen() {
                   Log in
                 </PxButton>
               </View>
-              <PxButton
-                mode="text"
-                color="primary"
-                onPress={() => redirect("push", {
-                  pathname: "/auth/login",
-                  params: { mode: "signup", next: "/more" }
-                })}
-              >
-                Sign up
-              </PxButton>
             </View>
           </View>
         ) : null}
@@ -166,10 +157,10 @@ export default function MoreScreen() {
             showDivider
           />
           <GroupedLink
-            icon="bell-outline"
-            label="Notifications"
-            description="Alerts and notification preferences"
-            onPress={() => undefined}
+            icon="shield-account-outline"
+            label="Privacy Policy"
+            description="How the app handles your information"
+            onPress={() => void WebBrowser.openBrowserAsync("https://www.unoqr.com/policies/privacy")}
           />
         </View>
 

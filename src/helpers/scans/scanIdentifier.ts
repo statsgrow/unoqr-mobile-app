@@ -1,5 +1,7 @@
 import type { BarcodeType } from "expo-camera";
 
+import { getPhoneNumber } from "./identifiers/PhoneNumber";
+
 import { getBarcodeFormat, getBarcodeKind } from "./Barcode";
 import { persistScan } from "./db/persistScan";
 import { processDeepLinkScan } from "./scanTypes/DeepLink";
@@ -208,8 +210,7 @@ export function isEmailScan(value: string): boolean {
 
 // Returns whether the payload explicitly contains a phone URI.
 export function isPhoneScan(value: string): boolean {
-  const text = (value || "").trim();
-  return /^tel:\+?[0-9]/i.test(text);
+  return Boolean(getPhoneNumber(value));
 };//export ends
 
 /* ---------------------- BREAK ---------------------- */

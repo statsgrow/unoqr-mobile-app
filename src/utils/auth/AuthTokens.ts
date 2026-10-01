@@ -30,6 +30,7 @@ type SupabaseJwtClaims = {
 /* ------------------ BREAK ------------------ */
 
 let tokenCheckIntervalId: ReturnType<typeof setInterval> | null = null;
+let isSessionResetting = false;
 let tokenRefreshPromise: Promise<RefreshTokenResult> | null = null;
 const tokenRefreshTimeoutMilliseconds = 5_000;
 
@@ -67,6 +68,7 @@ export async function getUserTokens(): Promise<StoredUserTokens> {
 
 // Refreshes an existing expired session while allowing anonymous users to continue untouched.
 export function refreshTokensSilently(): Promise<RefreshTokenResult> {
+  if (isSessionResetting) return Promise.resolve("missing");
   if (tokenRefreshPromise) return tokenRefreshPromise;
 
   tokenRefreshPromise = performTokenRefresh().finally(() => {
@@ -77,6 +79,17 @@ export function refreshTokensSilently(): Promise<RefreshTokenResult> {
 };//export ends
 
 /* ------------------ BREAK ------------------ */
+
+// Pauses new token checks and lets an existing refresh finish before session deletion.
+export async function pauseTokenRefresh(): Promise<void> {
+  isSessionResetting = true;
+  await tokenRefreshPromise;
+};//export ends
+
+// Restores periodic token checks after the local session has been reset.
+export function resumeTokenRefresh(): void {
+  isSessionResetting = false;
+};//export ends
 
 // Performs one guarded refresh through the UnoQR auth-user endpoint.
 async function performTokenRefresh(): Promise<RefreshTokenResult> {

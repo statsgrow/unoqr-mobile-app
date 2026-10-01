@@ -113,7 +113,7 @@ export default function RootLayout() {
   const appContent = (
     <>
       <SessionRefreshContext.Provider value={isSessionRefreshPending}>
-        <Stack screenOptions={{ headerShown: false }} />
+        <Stack screenOptions={{ headerShown: false, animation: Platform.OS === "ios" ? "none" : "default", ...(Platform.OS === "ios" ? { animationTypeForReplace: "pop" as const } : {}) }} />
         <StatusBar style="dark" />
       </SessionRefreshContext.Provider>
     </>

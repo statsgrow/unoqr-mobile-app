@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Stack, usePathname } from "expo-router";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { redirect } from "@/utils/general/Redirect";
@@ -65,7 +65,7 @@ export default function AuthLayout() {
   return (
     <SafeAreaView style={styles.root} edges={["top", "left", "right"]}>
       {routeState === "ready" ? (
-        <Stack screenOptions={{ headerShown: false }} />
+        <Stack screenOptions={{ headerShown: false, animation: Platform.OS === "ios" ? "none" : "default", ...(Platform.OS === "ios" ? { animationTypeForReplace: "pop" as const } : {}) }} />
       ) : routeState === "install-error" ? (
         <View style={styles.message}>
           <Text style={styles.messageTitle}>Could not prepare this device</Text>
@@ -96,10 +96,11 @@ export default function AuthLayout() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: colors.cream.main
+    backgroundColor: colors.white.main
   },
   message: {
     flex: 1,
+    backgroundColor: colors.cream.main,
     alignItems: "center",
     justifyContent: "center",
     gap: spacing.md,

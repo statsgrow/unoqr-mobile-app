@@ -7,7 +7,7 @@ import { getData } from "@/utils/general/Storage";
 import { db } from "@/utils/sqlite/db";
 
 import { getScanById } from "./db/getQueries";
-import { appendScanError, waitForInitialScanSync } from "./db/insertQueries";
+import { appendScanError, waitForInitialScanSync, waitForInitialScanSyncs } from "./db/insertQueries";
 import {
   initScansTable,
   type InsertScanInput,
@@ -37,6 +37,7 @@ type CrawlApiResponse = {
 
 /* ------------------ BREAK ------------------ */
 
+let isSyncPaused = false;
 let pendingScanCheckPromise: Promise<void> | null = null;
 let uncrawledUrlCheckPromise: Promise<void> | null = null;
 let uncrawledUrlTrigger: ReturnType<typeof setInterval> | null = null;
@@ -47,6 +48,7 @@ const uncrawledUrlCheckIntervalMilliseconds = 5_000;
 
 // Finds pending local scans and retries their idempotent API synchronization once at a time.
 export function checkPendingScans(): Promise<void> {
+  if (isSyncPaused) return Promise.resolve();
   if (pendingScanCheckPromise) return pendingScanCheckPromise;
 
   pendingScanCheckPromise = synchronizePendingScans().finally(() => {
@@ -54,6 +56,20 @@ export function checkPendingScans(): Promise<void> {
   });
 
   return pendingScanCheckPromise;
+};//export ends
+
+// Pauses background scan work and waits for requests from the previous account.
+export async function pauseScanSync(): Promise<void> {
+  isSyncPaused = true;
+  await Promise.allSettled([
+    pendingScanCheckPromise, uncrawledUrlCheckPromise,
+    ...crawlingScanPromises.values(), waitForInitialScanSyncs()
+  ]);
+};//export ends
+
+// Restores background scan work after the account reset finishes.
+export function resumeScanSync(): void {
+  isSyncPaused = false;
 };//export ends
 
 // Starts one recurring five-second check and returns a cleanup function for the root layout.
@@ -76,6 +92,7 @@ export function startUnCrawledUrlsTrigger(): () => void {
 
 // Finds pending URL rows and crawls them sequentially without duplicating active requests.
 export function checkUnCrawledUrls(): Promise<void> {
+  if (isSyncPaused) return Promise.resolve();
   if (uncrawledUrlCheckPromise) return uncrawledUrlCheckPromise;
 
   uncrawledUrlCheckPromise = crawlPendingUrls().finally(() => {
@@ -130,6 +147,7 @@ async function synchronizePendingScans(): Promise<void> {
       .where(eq(scansTable.sync_status, "pending"));
 
     for (const pendingScan of pendingScans) {
+      if (isSyncPaused) return;
       await synchronizePendingScan(pendingScan);
     }
   } catch (error: unknown) {
@@ -152,6 +170,7 @@ async function crawlPendingUrls(): Promise<void> {
       ));
 
     for (const pendingUrl of pendingUrls) {
+      if (isSyncPaused) return;
       await crawlPendingUrl(pendingUrl);
     }
   } catch (error: unknown) {
@@ -177,6 +196,7 @@ async function requestPendingUrlCrawl(scan: InsertScanInput): Promise<void> {
     await waitForInitialScanSync(scan.id);
     const apiUrl = apiSettings.getApiUrl({ path: `/app/scans/${scan.id}/crawl_url` });
     const response = await Axios.get<CrawlApiResponse>(apiUrl.href, {
+      timeout: 15_000,
       params: {
         install_id: scan.install_id
       }
@@ -208,7 +228,7 @@ async function synchronizePendingScan(scan: InsertScanInput): Promise<void> {
     if (!preparedScan?.install_id) return;
 
     const apiUrl = apiSettings.getApiUrl({ path: `/app/scans/${preparedScan.id}` });
-    const response = await Axios.put<ScanApiResponse>(apiUrl.href, preparedScan);
+    const response = await Axios.put<ScanApiResponse>(apiUrl.href, preparedScan, { timeout: 15_000 });
     const synchronizedScan = response.data?.data;
 
     if (!isCompleteScanObject(synchronizedScan, preparedScan.id)) return;

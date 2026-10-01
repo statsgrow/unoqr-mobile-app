@@ -3,7 +3,6 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
 	Animated,
 	Easing,
-	Keyboard,
 	KeyboardAvoidingView,
 	Modal,
 	Platform,
@@ -80,18 +79,15 @@ export function PxModal({
 	const handleRequestClose = onRequestClose ?? (setOpen ? () => setOpen(false) : undefined);
 	const insets = useSafeAreaInsets();
 	const { height: windowHeight } = useWindowDimensions();
-	const [keyboardVisible, setKeyboardVisible] = useState(Keyboard.isVisible());
 	const hasHeader = name !== undefined;
 	const showSheetSurface = position === "bottom" && (showHandle || hasHeader);
-	const bottomSheetOffset = position === "bottom" && Platform.OS === "android" && !keyboardVisible
-		? Math.max(insets.bottom, spacing.xl)
-		: 0;
+	// Android reserves its navigation area; keep button spacing inside the sheet.
 	const bottomPadding = Platform.OS === "android"
 		? spacing.md
 		: Math.max(insets.bottom + spacing.xs, 20);
-	const maxSheetHeight = Math.min(maxHeight ?? (typeof height === "number" ? height : 520), windowHeight - insets.top - bottomSheetOffset - spacing.md);
+	const maxSheetHeight = Math.min(maxHeight ?? (typeof height === "number" ? height : 520), windowHeight - insets.top - spacing.md);
 	const maxScrollableHeight = height === "full"
-		? windowHeight - insets.top - bottomSheetOffset - bottomPadding - (hasHeader ? 90 : 34)
+		? windowHeight - insets.top - bottomPadding - (hasHeader ? 90 : 34)
 		: height === "auto"
 			? Math.max(120, maxSheetHeight - bottomPadding - (hasHeader ? 76 : 20))
 			: autoHeight ? Math.min(520, windowHeight * 0.72) : windowHeight * 0.7;
@@ -99,13 +95,13 @@ export function PxModal({
 	const surfaceHeightStyle = typeof height === "number"
 		? { height: Math.min(height, maxSheetHeight) }
 		: height === "full"
-		? { height: windowHeight - insets.top - bottomSheetOffset }
+		? { height: windowHeight - insets.top }
 		: height === "auto" ? { maxHeight: maxSheetHeight } : outerHeightStyle;
 	const bottomInsetStyle = position === "bottom" ? { paddingBottom: bottomPadding } : null;
 	const containerPositionStyle = position === "top" ? styles.top : position === "center" ? styles.center : styles.bottom;
 	const contentPositionStyle = position === "center"
 		? styles.centerContentHost
-		: bottomSheetOffset ? { paddingBottom: bottomSheetOffset } : null;
+		: null;
 	const slideValue = useRef(new Animated.Value(position === "top" ? -24 : 24)).current;
 	const opacityValue = useRef(new Animated.Value(0)).current;
 	const [scrollViewportHeight, setScrollViewportHeight] = useState(0);
@@ -113,19 +109,6 @@ export function PxModal({
 	const [isAtScrollBottom, setIsAtScrollBottom] = useState(false);
 	const hasMoreContentBelow = scrollContentHeight > scrollViewportHeight + 2
 		&& !isAtScrollBottom;
-
-	// Removes the Android navigation-area offset while the keyboard occupies that area.
-	useEffect(() => {
-		if (!isOpen) return;
-		setKeyboardVisible(Keyboard.isVisible());
-		const showSubscription = Keyboard.addListener("keyboardDidShow", () => setKeyboardVisible(true));
-		const hideSubscription = Keyboard.addListener("keyboardDidHide", () => setKeyboardVisible(false));
-
-		return () => {
-			showSubscription.remove();
-			hideSubscription.remove();
-		};//return ends
-	}, [isOpen]);
 
 	useEffect(() => {
 		if (!isOpen) return;

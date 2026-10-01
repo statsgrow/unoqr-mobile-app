@@ -5,6 +5,7 @@ This file defines the coding style conventions for AI agents working in this rep
 ## Coding Style
 
 - Use TypeScript with explicit prop and helper types.
+- Use Lucide icons with `strokeWidth={1.25}` consistently for UI icons. Preserve official brand assets for brand logos.
 - Keep imports grouped in this order:
   1. React/external libraries
   2. Internal alias imports (`@/...`)

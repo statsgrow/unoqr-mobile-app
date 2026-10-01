@@ -12,6 +12,7 @@ type PxDialogColor = "primary" | "secondary" | "danger" | "success" | "warning";
 type PxDialogProps = {
 	open: boolean;
 	setOpen: (open: boolean) => void;
+	onDismiss?: () => void;
 	title?: string;
 	subtitle?: string;
 	color?: PxDialogColor;
@@ -37,6 +38,7 @@ const MOBILE_FRAME_MAX_WIDTH = 430;
 export function PxDialog({
 	open,
 	setOpen,
+	onDismiss,
 	title,
 	subtitle,
 	color = "primary",
@@ -51,6 +53,7 @@ export function PxDialog({
 			transparent
 			animationType="fade"
 			onRequestClose={() => setOpen(false)}
+			onDismiss={onDismiss}
 			statusBarTranslucent
 		>
 			<View style={styles.container}>

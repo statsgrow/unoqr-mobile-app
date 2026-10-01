@@ -556,7 +556,7 @@ function getHostname(value: string): string {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: colors.cream.main
+    backgroundColor: colors.white.main
   },
   header: {
     minHeight: 58,

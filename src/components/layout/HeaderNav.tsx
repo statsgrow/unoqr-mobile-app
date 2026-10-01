@@ -1,18 +1,36 @@
 import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
-import { type Href } from "expo-router";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { useRouter, type Href } from "expo-router";
 import { House, User } from "lucide-react-native";
 
 import { redirect } from "@/utils/general/Redirect";
 import { UnoQrLogo } from "@/components/brand/UnoQrLogo";
 import { useSessionRefreshPending } from "@/utils/auth/SessionRefreshContext";
 import { colors } from "@/theme/colors";
-import { spacing } from "@/theme/tokens";
+import { colors as themeColors, radii, spacing } from "@/theme/tokens";
+
+/* ------------------ BREAK ------------------ */
+
+type HeaderNavProps = {
+  showProfile?: boolean;
+  showBack?: boolean;
+};
 
 /* ------------------ BREAK ------------------ */
 
 // Renders the branded app header with home and profile actions.
-export function HeaderNav() {
+export function HeaderNav({ showProfile = true, showBack = false }: HeaderNavProps) {
+  const router = useRouter();
   const isSessionRefreshPending = useSessionRefreshPending();
+
+  // Returns to the previous page or home when there is no navigation history.
+  const handleBackPress = (): void => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      redirect("replace", "/" as Href);
+    };//if ends
+  };//func ends
 
   // Opens the app home screen.
   const handleHomePress = () => {
@@ -27,8 +45,21 @@ export function HeaderNav() {
   //Default Return
   return (
     <View style={styles.root}>
-      <View accessibilityLabel="UnoQR" accessibilityRole="image">
-        <UnoQrLogo width={112} color={colors.primary.main} />
+      <View style={styles.actions}>
+        {showBack ? (
+          <Pressable
+            accessibilityLabel="Go back"
+            accessibilityRole="button"
+            hitSlop={spacing.xs}
+            onPress={handleBackPress}
+            style={({ pressed }) => [styles.backButton, pressed && styles.pressedButton]}
+          >
+            <MaterialCommunityIcons name="arrow-left" size={24} color={themeColors.primary.main} />
+          </Pressable>
+        ) : null}
+        <View accessibilityLabel="UnoQR" accessibilityRole="image">
+          <UnoQrLogo width={112} color={themeColors.primary.main} />
+        </View>
       </View>
 
       <View style={styles.actions}>
@@ -42,7 +73,7 @@ export function HeaderNav() {
           <House color={colors.secondary.main} size={24} strokeWidth={1.25} />
         </Pressable>
 
-        <Pressable
+        {showProfile ? <Pressable
           accessibilityLabel={isSessionRefreshPending ? "Checking account" : "Open profile"}
           accessibilityRole="button"
           accessibilityState={{ disabled: isSessionRefreshPending, busy: isSessionRefreshPending }}
@@ -56,7 +87,7 @@ export function HeaderNav() {
           ) : (
             <User color={colors.secondary.main} size={24} strokeWidth={1.25} />
           )}
-        </Pressable>
+        </Pressable> : null}
       </View>
     </View>
   );//return ends
@@ -86,6 +117,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "transparent"
+  },
+  backButton: {
+    width: 42,
+    height: 42,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: radii.pill,
+    backgroundColor: themeColors.cream.main
   },
   pressedButton: {
     opacity: 0.62
