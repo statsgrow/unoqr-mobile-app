@@ -11,7 +11,7 @@ import { PxButton } from "@/components/elements/PxButton";
 import { GeneralLayout } from "@/components/layout/GeneralLayout";
 import { installSettings } from "@/settings";
 import { insertAppInstall } from "@/utils/auth/AppInstall";
-import { getStorageUser, processUserLogout } from "@/utils/auth/AuthUser";
+import { getStorageUser } from "@/utils/auth/AuthUser";
 import type { UserType } from "@/utils/auth/UserTypes";
 import { getData } from "@/utils/general/Storage";
 import { colors, fontFamilies, fontSizes, radii, spacing } from "@/theme/tokens";
@@ -67,10 +67,9 @@ export default function MoreScreen() {
     };
   }, []);
 
-  // Clears local authentication and restores the anonymous More page state.
-  const handleLogout = async () => {
-    await processUserLogout();
-    setAuthUser(null);
+  // Opens the dedicated logout page to finish installation and local account cleanup.
+  const handleLogout = (): void => {
+    redirect("replace", "/auth/logout");
   };//func ends
 
   // Copies the device installation UUID and shows immediate icon feedback.

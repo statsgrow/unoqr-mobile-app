@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { ContactRound, Globe2, Phone, QrCode as QrCodeIcon, Type, type LucideIcon } from "lucide-react-native";
 import { useFocusEffect } from "expo-router";
 import { ActivityIndicator, Text } from "react-native-paper";
 
@@ -8,12 +9,16 @@ import { redirect } from "@/utils/general/Redirect";
 import { PxCard } from "@/components/elements/PxCard";
 import { UpiPaymentIcon } from "@/helpers/scans/components/UpiPaymentIcon";
 import { getAllScans } from "@/helpers/scans/db/getQueries";
+import { getAllQrCodes } from "@/helpers/qrcodes/db/getQr";
+import type { QrCode } from "@/helpers/qrcodes/db/initQrCodes";
+import type { QrContentType } from "@/helpers/qrcodes/create/QrContent";
 import { getScanTypeInit, normalizeScanType } from "@/helpers/scans/identifiers";
 import { colors, fontFamilies, fontSizes, radii, spacing } from "@/theme/tokens";
 
 /* ------------------ BREAK ------------------ */
 
 type ScanRecord = Awaited<ReturnType<typeof getAllScans>>[number];
+type ActivityTab = "scans" | "qrcodes";
 
 type ScanTypeSummary = {
   type: string;
@@ -38,7 +43,13 @@ type TypePalette = {
 
 const patternLines = Array.from({ length: 24 }, (_, index) => index);
 const maximumVisibleTypes = 4;
-const maximumRecentScans = 3;
+const maximumRecentScans = 10;
+const qrActivityTypes: Record<QrContentType, { label: string; Icon: LucideIcon }> = {
+  website: { label: "Website", Icon: Globe2 },
+  vcard: { label: "vCard", Icon: ContactRound },
+  phone: { label: "Phone", Icon: Phone },
+  text: { label: "Text", Icon: Type }
+};
 const typePalettes: TypePalette[] = [
   {
     color: colors.secondary.main,
@@ -63,6 +74,8 @@ const typePalettes: TypePalette[] = [
 // Displays a compact single-screen summary of the user's QR scan activity.
 export function HomeAnalytics() {
   const [records, setRecords] = useState<ScanRecord[]>([]);
+  const [qrRecords, setQrRecords] = useState<QrCode[]>([]);
+  const [activityTab, setActivityTab] = useState<ActivityTab>("scans");
   const [loading, setLoading] = useState(true);
 
   // Reloads SQLite activity whenever the home route becomes active.
@@ -71,14 +84,18 @@ export function HomeAnalytics() {
       let isMounted = true;
 
       setLoading(true);
-      void getAllScans()
-        .then((storedRecords) => {
+      void Promise.all([getAllScans(), getAllQrCodes()])
+        .then(([storedRecords, storedQrRecords]) => {
           if (!isMounted) return;
           setRecords(storedRecords);
+          setQrRecords(storedQrRecords);
         })
         .catch((error: unknown) => {
           console.error("Unable to load home scan analytics:", error);
-          if (isMounted) setRecords([]);
+          if (isMounted) {
+            setRecords([]);
+            setQrRecords([]);
+          };//if ends
         })
         .finally(() => {
           if (isMounted) setLoading(false);
@@ -94,6 +111,8 @@ export function HomeAnalytics() {
   const visibleTypeSummaries = typeSummaries.slice(0, maximumVisibleTypes);
   const totalScans = records.length;
   const recentScans = useMemo(() => createRecentScans(records), [records]);
+  const recentQrCodes = useMemo(() => selectRecentActivity(qrRecords), [qrRecords]);
+  const hasRecentActivity = activityTab === "scans" ? recentScans.length > 0 : recentQrCodes.length > 0;
 
   //Default Return
   return (
@@ -103,7 +122,6 @@ export function HomeAnalytics() {
     >
       <View style={styles.headingRow}>
         <View style={styles.headingCopy}>
-          <Text style={styles.eyebrow}>YOUR ACTIVITY</Text>
           <Text style={styles.heading}>Scan overview</Text>
         </View>
         <View style={styles.periodPill}>
@@ -157,23 +175,41 @@ export function HomeAnalytics() {
 
       <View style={styles.recentSection}>
         <View style={styles.recentHeadingRow}>
-          <Text style={styles.recentHeading}>Recent Scans</Text>
-          {recentScans.length > 0 ? (
-            <Pressable onPress={() => redirect("push", "/scans/list")}>
+          <Text style={styles.recentHeading}>Recent Activity</Text>
+          {hasRecentActivity ? (
+            <Pressable onPress={() => redirect("push", activityTab === "scans" ? "/scans/list" : "/qrcodes/list")}>
               <Text style={styles.viewAllText}>View all</Text>
             </Pressable>
           ) : null}
         </View>
 
-        {recentScans.length > 0 ? (
+        <View accessibilityRole="tablist" style={styles.activityTabs}>
+          {(["scans", "qrcodes"] as const).map((tab) => (
+            <Pressable
+              key={tab}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: activityTab === tab }}
+              onPress={() => setActivityTab(tab)}
+              style={[styles.activityTab, activityTab === tab && styles.activityTabSelected]}
+            >
+              <Text style={[styles.activityTabText, activityTab === tab && styles.activityTabTextSelected]}>
+                {tab === "scans" ? "Scans" : "Qr Codes"}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+
+        {hasRecentActivity ? (
           <View style={styles.recentList}>
-            {recentScans.map((record) => (
+            {activityTab === "scans" ? recentScans.map((record) => (
               <RecentScanCard key={record.id} record={record} />
+            )) : recentQrCodes.map((record) => (
+              <RecentQrCard key={record.id} record={record} />
             ))}
           </View>
         ) : (
           <View style={styles.emptyRecentScans}>
-            <Text style={styles.emptyMessage}>No recent scans yet</Text>
+            <Text style={styles.emptyMessage}>{activityTab === "scans" ? "No recent scans yet" : "No recent QR codes yet"}</Text>
           </View>
         )}
       </View>
@@ -232,7 +268,7 @@ function RecentScanCard({ record }: { record: ScanRecord }) {
       )}
       <View style={styles.recentContent}>
         <Text numberOfLines={1} style={styles.recentTitle}>{title}</Text>
-        <Text style={styles.recentTimestamp}>{formatRecentScanDate(record.created_at)}</Text>
+        <Text style={styles.recentTimestamp}>{formatRecentScanDate(record.updated_at || record.created_at)}</Text>
       </View>
       <MaterialCommunityIcons name="chevron-right" size={21} color={colors.mute.light} />
     </Pressable>
@@ -243,12 +279,37 @@ function RecentScanCard({ record }: { record: ScanRecord }) {
 
 // Selects the newest saved scans for the compact home activity list.
 function createRecentScans(records: ScanRecord[]): ScanRecord[] {
-  return [...records]
-    .sort(
-      (firstRecord, secondRecord) =>
-        new Date(secondRecord.created_at).getTime() - new Date(firstRecord.created_at).getTime()
-    )
-    .slice(0, maximumRecentScans);
+  return selectRecentActivity(records);
+};//func ends
+
+// Renders a recently updated QR with its saved name, timestamp and edit action.
+function RecentQrCard({ record }: { record: QrCode }) {
+  const typeInfo = record.content_type ? qrActivityTypes[record.content_type] : { label: "Draft", Icon: QrCodeIcon };
+  const title = record.name || typeInfo.label;
+  const Icon = typeInfo.Icon;
+  //Default Return
+  return (
+    <Pressable
+      accessibilityLabel={`Edit recent QR ${title}`}
+      accessibilityRole="button"
+      onPress={() => redirect("push", { pathname: "/qrcodes/create", params: { id: record.id } })}
+      style={({ pressed }) => [styles.recentCard, pressed && styles.recentCardPressed]}
+    >
+      <View style={styles.recentIcon}><Icon size={24} strokeWidth={1.25} color={colors.primary.main} /></View>
+      <View style={styles.recentContent}>
+        <Text numberOfLines={1} style={styles.recentTitle}>{title}</Text>
+        <Text style={styles.recentTimestamp}>{typeInfo.label} · {formatRecentScanDate(record.updated_at || record.created_at)}</Text>
+      </View>
+      <MaterialCommunityIcons name="chevron-right" size={21} color={colors.mute.light} />
+    </Pressable>
+  );//return ends
+};//func ends
+
+// Selects the ten most recently updated records, using creation time for older rows without updates.
+function selectRecentActivity<T extends { created_at: string; updated_at?: string | null }>(records: T[]): T[] {
+  return [...records].sort((first, second) =>
+    new Date(second.updated_at || second.created_at).getTime() - new Date(first.updated_at || first.created_at).getTime()
+  ).slice(0, maximumRecentScans);
 };//func ends
 
 // Resolves a readable recent-scan title without exposing the full database row.
@@ -300,9 +361,13 @@ function TypeCard({ summary }: TypeCardProps) {
       contentStyle={styles.typeCardContent}
     >
       <View style={styles.typeTopRow}>
-        <View style={[styles.typeIconWrap, { backgroundColor: summary.backgroundColor }]}>
-          <MaterialCommunityIcons name={summary.icon} size={20} color={summary.color} />
-        </View>
+        {summary.type === "upi_payment" ? (
+          <UpiPaymentIcon size={46} backgroundColor={colors.cream.main} />
+        ) : (
+          <View style={styles.typeIconWrap}>
+            <MaterialCommunityIcons name={summary.icon} size={24} color={colors.secondary.main} />
+          </View>
+        )}
         <Text style={styles.typePercentage}>{summary.percentage}%</Text>
       </View>
 
@@ -313,7 +378,7 @@ function TypeCard({ summary }: TypeCardProps) {
         <View
           style={[
             styles.progressFill,
-            { width: `${summary.percentage}%`, backgroundColor: summary.color }
+            { width: `${summary.percentage}%`, backgroundColor: colors.primary.main }
           ]}
         />
       </View>
@@ -368,12 +433,6 @@ const styles = StyleSheet.create({
   },
   headingCopy: {
     gap: spacing.xxs
-  },
-  eyebrow: {
-    color: colors.secondary.main,
-    fontFamily: fontFamilies.mono,
-    fontSize: fontSizes.overline,
-    letterSpacing: 1.5
   },
   heading: {
     color: colors.primary.main,
@@ -514,11 +573,14 @@ const styles = StyleSheet.create({
     justifyContent: "space-between"
   },
   typeIconWrap: {
-    width: 34,
-    height: 34,
+    width: 46,
+    height: 46,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: radii.md
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.neutral.light,
+    backgroundColor: colors.cream.main
   },
   typePercentage: {
     color: colors.mute.main,
@@ -590,6 +652,18 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     marginTop: spacing.xs
   },
+  activityTabs: { flexDirection: "row", gap: spacing.xs },
+  activityTab: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    borderColor: colors.border.main,
+    backgroundColor: colors.white.main
+  },
+  activityTabSelected: { backgroundColor: colors.primary.main, borderColor: colors.primary.main },
+  activityTabText: { fontFamily: fontFamilies.primaryMedium, fontSize: fontSizes.body2, color: colors.mute.main },
+  activityTabTextSelected: { color: colors.white.main },
   recentHeadingRow: {
     flexDirection: "row",
     alignItems: "center",

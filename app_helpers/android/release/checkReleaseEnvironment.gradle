@@ -1,0 +1,15 @@
+// Runs on every release build, including Android Studio builds with cached bundles.
+def releaseEnvironmentCheck = tasks.register("checkReleaseEnvironment", Exec) {
+    workingDir rootDir.parentFile
+    commandLine project.extensions.getByName("react").nodeExecutableAndArgs.get() + [new File(rootDir.parentFile, "app_helpers/shared/checkReleaseEnvironment.js").absolutePath]
+}
+
+// Blocks both native release preparation and JavaScript bundling until the check passes.
+androidComponents.onVariants(androidComponents.selector().withBuildType("release")) { variant ->
+    def variantName = variant.name.capitalize()
+    tasks.configureEach { task ->
+        if (task.name == "pre${variantName}Build" || task.name == "createBundle${variantName}JsAndAssets") {
+            task.dependsOn(releaseEnvironmentCheck)
+        }
+    }
+}

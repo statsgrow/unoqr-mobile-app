@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { isAxiosError } from "axios";
 import * as Linking from "expo-linking";
-import { useLocalSearchParams, type Href } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import { useForm, type SubmitHandler } from "react-hook-form";
 import { Text } from "react-native-paper";
@@ -87,7 +87,7 @@ export default function LoginScreen() {
     };//try-catch ends
   };//func ends
 
-  // Verifies the OTP, stores the session, connects the install, and follows the next route.
+  // Verifies the OTP, stores the session, and starts account history synchronization.
   const handleVerifyOtp: SubmitHandler<LoginFormValues> = async ({ email, otp }) => {
     setIsVerifyingOtp(true);
     setLoginError(null);
@@ -105,7 +105,7 @@ export default function LoginScreen() {
       const responseBody = await response.json().catch(() => null) as AuthApiResponse<UserSessionType> | null;
       if (!response.ok) throw new Error(responseBody?.message || "Unable to verify the OTP.");
 
-      await completeAuthenticatedLogin(responseBody?.data, nextRoute);
+      await completeAuthenticatedLogin(responseBody?.data);
     } catch (error: unknown) {
       const message = getErrorMessage(error, "Unable to verify the OTP.");
       showLoginError(message);
@@ -132,7 +132,7 @@ export default function LoginScreen() {
       const responseBody = await response.json().catch(() => null) as AuthApiResponse<UserSessionType> | null;
       if (!response.ok) throw new Error(responseBody?.message || "Unable to log in the test user.");
 
-      await completeAuthenticatedLogin(responseBody?.data, nextRoute);
+      await completeAuthenticatedLogin(responseBody?.data);
     } catch (error: unknown) {
       const message = getErrorMessage(error, "Unable to log in the test user.");
       showLoginError(message);
@@ -346,8 +346,7 @@ function isTestUserEmail(email: string): boolean {
 
 // Stores a returned Supabase session and completes the shared post-login flow.
 async function completeAuthenticatedLogin(
-  session: UserSessionType | null | undefined,
-  nextRoute: string
+  session: UserSessionType | null | undefined
 ): Promise<void> {
   if (!session?.access_token || !session.refresh_token) {
     throw new Error("The authenticated session did not include tokens.");
@@ -359,7 +358,7 @@ async function completeAuthenticatedLogin(
     refreshToken: session.refresh_token
   });
   Toast.success({ message: "You are now logged in." });
-  redirect("replace", nextRoute as Href);
+  redirect("replace", "/sync/myscans");
 };//func ends
 
 // Converts an unknown request failure into readable login feedback.

@@ -65,6 +65,7 @@
     "typescript": "~6.0.3"
   },
   "scripts": {
+    "check:release-env": "node app_helpers/shared/checkReleaseEnvironment.js",
     "start": "expo start --dev-client",
     "android": "JAVA_HOME=$(/usr/libexec/java_home -v 17 -a arm64) expo run:android",
     "android:start": "expo start --dev-client --android",

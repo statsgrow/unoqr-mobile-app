@@ -1,4 +1,31 @@
-# Native iOS helpers
+# Native build helpers
+
+## Release environment check
+
+Platform release hooks live in `android/release/` and `ios/release/`. The shared environment validation lives in `shared/`.
+
+`shared/checkReleaseEnvironment.js` requires `EXPO_PUBLIC_API_ENV=production` in the root `.env`. It also checks Expo's production `.env` overrides and the build process environment. Missing values, development settings, and a non-production `NODE_ENV` override fail with a build error. It does not change `.env` or print secrets.
+
+The check runs automatically for:
+
+- Android Studio release APK/AAB builds and Gradle release builds, before native preparation and JavaScript bundling.
+- Xcode Release builds and archives, through the first app build phase named `[UnoQR] Check Release Environment`.
+
+Debug builds are unaffected. The platform plugins `android/release/withReleaseEnvironment.js` and `ios/release/withReleaseEnvironment.js` restore their native hooks after prebuild. Both checks run every release build, even when other build outputs are cached.
+
+Before building a release, set this in `.env`:
+
+```dotenv
+EXPO_PUBLIC_API_ENV="production"
+```
+
+For an optional manual check without building an APK, AAB, or archive:
+
+```bash
+npm run check:release-env
+```
+
+## iOS startup
 
 `ios/withIOSBundling.js` keeps Xcode version and build settings aligned with `app.json` and disables user script sandboxing for Expo's generated bundling phases.
 

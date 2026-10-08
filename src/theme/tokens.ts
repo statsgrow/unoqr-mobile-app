@@ -39,6 +39,7 @@ export const colors = {
   error: {
     main: "#E03030",
     light: "#F06B6B",
+    surface: "#FDECEC",
     dark: "#B32020",
     contrast: "#FFFFFF",
     text: "#FFFFFF"

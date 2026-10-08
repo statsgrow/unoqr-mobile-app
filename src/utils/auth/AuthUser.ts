@@ -1,6 +1,7 @@
-import { apiSettings, installSettings, userTokenSettings } from "@/settings";
-import { connectUserAppScans, pauseScanSync, resumeScanSync } from "@/helpers/scans/scanSync";
-import { connectUserAppInstall, insertAppInstall } from "@/utils/auth/AppInstall";
+import { Directory, File, Paths } from "expo-file-system";
+
+import { apiSettings, installSettings, scansSettings, userTokenSettings } from "@/settings";
+import { disconnectUserAppInstall, insertAppInstall } from "@/utils/auth/AppInstall";
 import {
   getUserTokens,
   isTokenExpired,
@@ -10,7 +11,6 @@ import {
   resumeTokenRefresh,
   setUserTokens
 } from "@/utils/auth/AuthTokens";
-import { pauseQrCodeSync, resumeQrCodeSync } from "@/helpers/qrcodes/QrSync";
 import { initQrCodes } from "@/helpers/qrcodes/db/initQrCodes";
 import { initScansTable } from "@/helpers/scans/db/init";
 import { sqliteDB } from "@/utils/sqlite/db";
@@ -34,6 +34,11 @@ type AddUserDataInput = {
 type ApiUserResponse = {
   data?: UserType | null;
   message?: string;
+};
+
+type LogoutOptions = {
+  installationConfirmed?: boolean;
+  onInstallationConfirmed?: () => void;
 };
 
 /* ------------------ BREAK ------------------ */
@@ -81,7 +86,7 @@ export async function getUser({
 
 /* ------------------ BREAK ------------------ */
 
-// Stores a completed session, resolves its user, and connects the anonymous app install.
+// Stores a completed session and awaits installation registration before the sync pages open.
 export async function addUserData({
   userData,
   accessToken,
@@ -101,9 +106,8 @@ export async function addUserData({
     key: userTokenSettings.storageTokens.userData.name,
     value: user
   });
-  await insertAppInstall();
-  const connectedInstall = await connectUserAppInstall();
-  if (connectedInstall) await connectUserAppScans();
+  const install = await insertAppInstall();
+  if (!install?.id) throw new Error("Unable to register this app installation. Please try again.");
 
   return user;
 };//export ends
@@ -130,33 +134,61 @@ export async function getStorageUser(): Promise<UserType | null> {
 
 /* ------------------ BREAK ------------------ */
 
-// Clears local account rows, authentication and the installation link on logout.
-export async function processUserLogout(): Promise<void> {
-  await resetLocalUserSession();
+// Confirms installation logout and clears the account, propagating failures to the logout page.
+export async function processUserLogout({ installationConfirmed = false, onInstallationConfirmed }: LogoutOptions = {}): Promise<void> {
+  await resetLocalUserSession(!installationConfirmed, onInstallationConfirmed);
 };//export ends
 
 // Resets account tables while retaining their schema and the shared SQLite connection.
-async function resetLocalUserSession(): Promise<void> {
+async function resetLocalUserSession(logoutInstall = false, onInstallationConfirmed?: () => void): Promise<void> {
+  // Load reset controls after session modules initialize to avoid circular startup imports.
+  const [{ pauseScanSync, resumeScanSync }, { pauseQrCodeSync, resumeQrCodeSync }] = await Promise.all([
+    import("@/helpers/scans/scanSync"),
+    import("@/helpers/qrcodes/QrSync")
+  ]);
   await pauseTokenRefresh();
   try {
-    await clearStoredUserSession();
     // Finish old requests before new credentials can be used by background synchronization.
     await Promise.all([pauseQrCodeSync(), pauseScanSync()]);
-    await removeData({ key: installSettings.storageKeys.installInfo.name });
-    await removeData({ key: installSettings.storageKeys.appAttestKeyId.name });
+    if (logoutInstall) {
+      await disconnectUserAppInstall();
+      onInstallationConfirmed?.();
+    };//if ends
+    await removeData({ key: scansSettings.lastCheckedAtKey });
+    clearLocalAccountFiles();
+    // Installation proof belongs to the device, so account changes retain its credentials.
+    const install = await getData({ key: installSettings.storageKeys.installInfo.name });
+    if (install && typeof install === "object") {
+      await setData({ key: installSettings.storageKeys.installInfo.name, value: { ...install, user_id: null } });
+    };//if ends
     const connection = sqliteDB;
-    if (!connection) return;
+    if (!connection) {
+      await clearStoredUserSession();
+      return;
+    };//if ends
     await initScansTable();
     await initQrCodes();
     // Clear all account records together so the next login starts with empty tables.
     connection.withTransactionSync(() => {
       connection.execSync("DELETE FROM scans; DELETE FROM static_qrcodes; DELETE FROM static_qrcode_deletions;");
     });
+    // Retain authentication until cleanup succeeds so the logout page can retry failures.
+    await clearStoredUserSession();
   } finally {
     resumeQrCodeSync();
     resumeScanSync();
     resumeTokenRefresh();
   };//try-catch ends
+};//func ends
+
+// Removes app-owned QR logos and temporary QR exports without touching installation credentials.
+function clearLocalAccountFiles(): void {
+  const qrDirectory = new Directory(Paths.document, "qrcodes");
+  if (qrDirectory.exists) qrDirectory.delete();
+  for (const name of ["unoqr-code.svg", "unoqr-code.pdf"]) {
+    const file = new File(Paths.cache, name);
+    if (file.exists) file.delete();
+  };//for ends
 };//func ends
 
 // Stores any rotated tokens emitted by the UnoQR API auth-user response.

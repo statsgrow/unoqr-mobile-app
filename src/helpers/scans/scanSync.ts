@@ -1,10 +1,11 @@
 import { and, eq } from "drizzle-orm";
 
-import { apiSettings, installSettings } from "@/settings";
-import { insertAppInstall } from "@/utils/auth/AppInstall";
+import { apiSettings, installSettings, scansSettings } from "@/settings";
+import { getInstallLinkHeaders, insertAppInstall } from "@/utils/auth/AppInstall";
 import { Axios } from "@/utils/general/Axios";
-import { getData } from "@/utils/general/Storage";
-import { db } from "@/utils/sqlite/db";
+import { getStorageUser } from "@/utils/auth/AuthUser";
+import { getData, setData } from "@/utils/general/Storage";
+import { db, sqliteDB } from "@/utils/sqlite/db";
 
 import { getScanById } from "./db/getQueries";
 import { appendScanError, waitForInitialScanSync, waitForInitialScanSyncs } from "./db/insertQueries";
@@ -29,10 +30,24 @@ type InstallInfo = {
   id?: string;
 };
 
+type RemoteScanRecord = Omit<InsertScanInput, "crawl_status"> & {
+  crawl_status: InsertScanInput["crawl_status"] | "cached";
+};
+
+type ScanHistoryResponse = {
+  data: RemoteScanRecord[];
+  count: number;
+};
+
+type RestoreScansOptions = {
+  force?: boolean;
+  signal: AbortSignal;
+  onPage: () => Promise<void>;
+  onProgress: (received: number, total: number) => void;
+};
+
 type CrawlApiResponse = {
-  data?: (Omit<InsertScanInput, "crawl_status"> & {
-    crawl_status: InsertScanInput["crawl_status"] | "cached";
-  }) | null;
+  data?: RemoteScanRecord | null;
 };
 
 /* ------------------ BREAK ------------------ */
@@ -42,6 +57,8 @@ let pendingScanCheckPromise: Promise<void> | null = null;
 let uncrawledUrlCheckPromise: Promise<void> | null = null;
 let uncrawledUrlTrigger: ReturnType<typeof setInterval> | null = null;
 const crawlingScanPromises = new Map<string, Promise<void>>();
+const scanRestorePromises = new Set<Promise<boolean>>();
+export const SCAN_HISTORY_SYNC_WINDOW_MS = 5 * 60 * 1_000;
 const uncrawledUrlCheckIntervalMilliseconds = 5_000;
 
 /* ------------------ BREAK ------------------ */
@@ -63,7 +80,7 @@ export async function pauseScanSync(): Promise<void> {
   isSyncPaused = true;
   await Promise.allSettled([
     pendingScanCheckPromise, uncrawledUrlCheckPromise,
-    ...crawlingScanPromises.values(), waitForInitialScanSyncs()
+    ...crawlingScanPromises.values(), ...scanRestorePromises, waitForInitialScanSyncs()
   ]);
 };//export ends
 
@@ -105,32 +122,100 @@ export function checkUnCrawledUrls(): Promise<void> {
 // Crawls one pending website opened from My Scans and waits for its local row to be updated.
 export async function crawlPendingUrlById(id: string): Promise<void> {
   const scan = await getScanById(id);
+  const install = await getData({ key: installSettings.storageKeys.installInfo.name }) as InstallInfo | null;
 
-  if (!scan || scan.type !== "url" || scan.crawl_status !== "pending") return;
+  if (!scan || scan.install_id !== install?.id || scan.type !== "url" || scan.crawl_status !== "pending") return;
 
   await crawlPendingUrl(scan);
 };//export ends
 
 /* ------------------ BREAK ------------------ */
 
+// Tracks account history restoration so logout waits before clearing SQLite.
+export function restoreUserScans(options: RestoreScansOptions): Promise<boolean> {
+  const operation = restoreScanHistory(options);
+  scanRestorePromises.add(operation);
+  void operation.finally(() => scanRestorePromises.delete(operation)).catch(() => undefined);
+  return operation;
+};//export ends
+
+// Downloads 500-row account pages and commits their original IDs into SQLite.
+async function restoreScanHistory({ force = false, signal, onPage, onProgress }: RestoreScansOptions): Promise<boolean> {
+  const user = await getStorageUser();
+  if (!user || !db || !sqliteDB || isSyncPaused || signal.aborted) return false;
+  await initScansTable();
+  const storedLastCheck = await getData({ key: scansSettings.lastCheckedAtKey });
+  const lastCheckedAt = typeof storedLastCheck === "string" ? Date.parse(storedLastCheck) : NaN;
+  const age = Date.now() - lastCheckedAt;
+  if (!force && Number.isFinite(lastCheckedAt) && age >= 0 && age < SCAN_HISTORY_SYNC_WINDOW_MS) {
+    const total = sqliteDB.getFirstSync<{ total: number }>("SELECT COUNT(*) AS total FROM scans WHERE user_id = ?", user.id)?.total ?? 0;
+    onProgress(total, total);
+    return true;
+  };//if ends
+  let total = 0;
+  let from = 0;
+
+  do {
+    if (isSyncPaused || signal.aborted) return false;
+    const url = apiSettings.getApiUrl({ path: "/app/scans" });
+    const response = await Axios.get<ScanHistoryResponse>(url.href, {
+      params: { from, to: from + 499 }, timeout: 30_000, signal
+    });
+    const rows = response.data.data;
+    if (from === 0) total = response.data.count;
+    if (!Array.isArray(rows) || !Number.isSafeInteger(total) || total < from + rows.length) {
+      throw new Error("The scan API returned an invalid history page or total count.");
+    };//if ends
+    if (isSyncPaused || signal.aborted) return false;
+    if (rows.length === 0 && from < total) throw new Error("Scan history changed while loading. Please retry.");
+
+    sqliteDB.withTransactionSync(() => {
+      for (const row of rows) {
+        const local = db!.select().from(scansTable).where(eq(scansTable.id, row.id)).get();
+        if (local?.sync_status === "pending") continue;
+        if (!local?.notes_pending && Date.parse(local?.updated_at ?? "") > Date.parse(row.updated_at ?? "")) continue;
+        const values: InsertScanInput = {
+          id: row.id, created_at: row.created_at, updated_at: row.updated_at ?? null,
+          value: row.value, input_url: row.input_url ?? null, final_url: row.final_url ?? null,
+          type: row.type ?? null, kind: row.kind ?? null, status: row.status ?? null,
+          user_ip: row.user_ip ?? null, location: row.location ?? null, user_id: user.id,
+          website_id: row.website_id ?? null, install_id: row.install_id ?? null,
+          sync_status: "synced", crawl_status: row.crawl_status === "cached" ? "completed" : row.crawl_status,
+          error: row.error ?? null, metadata: row.metadata ?? null,
+          comment: local?.notes_pending ? local.comment : row.comment ?? null,
+          tags: local?.notes_pending ? local.tags : row.tags ?? [],
+          notes_pending: local?.notes_pending ?? false
+        };
+        const { id, ...updates } = values;
+        db!.insert(scansTable).values(values).onConflictDoUpdate({ target: scansTable.id, set: updates }).run();
+      };//for ends
+    });
+    from += rows.length;
+    onProgress(from, total);
+    await onPage();
+  } while (from < total);
+
+  if (isSyncPaused || signal.aborted) return false;
+  await setData({ key: scansSettings.lastCheckedAtKey, value: new Date().toISOString() });
+  return true;
+};//func ends
+
+/* ------------------ BREAK ------------------ */
+
 // Connects all remote scans for the stored installation to the authenticated user.
-export async function connectUserAppScans(): Promise<InsertScanInput[] | null> {
+export async function connectUserAppScans({ signal }: { signal?: AbortSignal } = {}): Promise<InsertScanInput[]> {
   const installInfo = await getData({
     key: installSettings.storageKeys.installInfo.name
   }) as InstallInfo | null;
-  if (!installInfo?.id) return null;
+  if (!installInfo?.id) throw new Error("An app installation is required to connect your scans.");
 
-  try {
-    const apiUrl = apiSettings.getApiUrl({ path: "/app/scans/connectuser" });
-    const response = await Axios.put<ConnectUserScansApiResponse>(apiUrl.href, {
-      install_id: installInfo.id
-    });
-
-    return response.data?.data || [];
-  } catch (error: unknown) {
-    console.error("Unable to connect app scans to the user:", error);
-    return null;
-  };//try-catch ends
+  const headers = await getInstallLinkHeaders(installInfo.id);
+  const apiUrl = apiSettings.getApiUrl({ path: "/app/scans/connectuser" });
+  const response = await Axios.put<ConnectUserScansApiResponse>(apiUrl.href, {
+    install_id: installInfo.id
+  }, { headers, signal, timeout: 15_000 });
+  if (!response.data?.data) throw new Error("The API did not confirm the scan connection.");
+  return response.data.data;
 };//export ends
 
 /* ------------------ BREAK ------------------ */
@@ -150,6 +235,11 @@ async function synchronizePendingScans(): Promise<void> {
       if (isSyncPaused) return;
       await synchronizePendingScan(pendingScan);
     }
+    const pendingNotes = db.select().from(scansTable).where(eq(scansTable.notes_pending, true)).all();
+    for (const scan of pendingNotes) {
+      if (isSyncPaused) return;
+      await synchronizeScanNotes(scan);
+    };//for ends
   } catch (error: unknown) {
     console.error("Unable to synchronize pending scans:", error);
   };//try-catch ends
@@ -161,12 +251,15 @@ async function crawlPendingUrls(): Promise<void> {
 
   try {
     await initScansTable();
+    const install = await getData({ key: installSettings.storageKeys.installInfo.name }) as InstallInfo | null;
+    if (!install?.id) return;
     const pendingUrls = await db
       .select()
       .from(scansTable)
       .where(and(
         eq(scansTable.type, "url"),
-        eq(scansTable.crawl_status, "pending")
+        eq(scansTable.crawl_status, "pending"),
+        eq(scansTable.install_id, install.id)
       ));
 
     for (const pendingUrl of pendingUrls) {
@@ -208,7 +301,7 @@ async function requestPendingUrlCrawl(scan: InsertScanInput): Promise<void> {
       return;
     };//if ends
 
-    const { id: crawledScanId, ...crawledScanData } = crawledScan;
+    const { id: crawledScanId, comment, tags, notes_pending, ...crawledScanData } = crawledScan;
     await updateScan(crawledScanId, {
       ...crawledScanData,
       crawl_status: crawledScanData.crawl_status === "cached" ? "completed" : crawledScanData.crawl_status,
@@ -233,7 +326,7 @@ async function synchronizePendingScan(scan: InsertScanInput): Promise<void> {
 
     if (!isCompleteScanObject(synchronizedScan, preparedScan.id)) return;
 
-    const { id: synchronizedId, ...synchronizedData } = synchronizedScan;
+    const { id: synchronizedId, comment, tags, notes_pending, ...synchronizedData } = synchronizedScan;
     await updateScan(synchronizedId, {
       ...synchronizedData,
       sync_status: "synced"
@@ -242,6 +335,45 @@ async function synchronizePendingScan(scan: InsertScanInput): Promise<void> {
     console.error(`Unable to synchronize pending scan ${scan.id}:`, error);
   };//try-catch ends
 };//func ends
+
+// Saves note edits locally before attempting the independent cloud notes queue.
+export async function saveScanNotes(id: string, notes: { comment: string | null; tags: string[] }): Promise<{ comment: string | null; tags: string[] }> {
+  if (!db || isSyncPaused) throw new Error("Scan storage is not available. Please try again.");
+  await initScansTable();
+  const normalizedNotes = {
+    comment: notes.comment?.trim() || null,
+    tags: [...new Set(notes.tags.map((tag) => tag.toLowerCase().replace(/[^a-z0-9 ]/g, "").replace(/ +/g, " ").trim()).filter(Boolean))]
+  };
+  const result = db.update(scansTable).set({ ...normalizedNotes, notes_pending: true }).where(eq(scansTable.id, id)).run();
+  if (!result.changes) throw new Error("This scan could not be found on this device.");
+  await checkPendingScans();
+  return normalizedNotes;
+};//export ends
+
+/* ------------------ BREAK ------------------ */
+
+// Updates only cloud note fields and preserves edits made while this request was running.
+async function synchronizeScanNotes(scan: InsertScanInput): Promise<void> {
+  if (!db || scan.sync_status === "pending") return;
+  const notes = { comment: scan.comment ?? null, tags: scan.tags ?? [] };
+  try {
+    const response = await Axios.patch<{ data: { id: string; comment: string | null; tags: string[]; updated_at: string } }>(
+      apiSettings.getApiUrl({ path: `/app/scans/${scan.id}/notes` }).href, notes, { timeout: 15_000 }
+    );
+    const saved = response.data.data;
+    if (saved?.id !== scan.id || saved.comment !== notes.comment || JSON.stringify(saved.tags) !== JSON.stringify(notes.tags)) {
+      throw new Error("Scan notes were not confirmed by the API.");
+    };//if ends
+    const current = db.select().from(scansTable).where(eq(scansTable.id, scan.id)).get();
+    if (current?.comment === notes.comment && JSON.stringify(current.tags) === JSON.stringify(notes.tags)) {
+      db.update(scansTable).set({ notes_pending: false, updated_at: saved.updated_at }).where(eq(scansTable.id, scan.id)).run();
+    };//if ends
+  } catch (error: unknown) {
+    console.warn("Scan notes remain saved locally for cloud retry:", error);
+  };//try-catch ends
+};//func ends
+
+/* ------------------ BREAK ------------------ */
 
 // Confirms the API returned the complete identifying fields for the requested scan row.
 function isCompleteScanObject(
@@ -260,8 +392,6 @@ function isCompleteScanObject(
 
 // Adds the stored or newly created app-install ID before retrying a pending scan.
 async function ensurePendingScanInstall(scan: InsertScanInput): Promise<InsertScanInput | null> {
-  if (scan.install_id) return scan;
-
   const storedInstallInfo = await getData({
     key: installSettings.storageKeys.installInfo.name
   }) as InstallInfo | null;
@@ -270,6 +400,7 @@ async function ensurePendingScanInstall(scan: InsertScanInput): Promise<InsertSc
     : await insertAppInstall() as InstallInfo | null;
 
   if (!installInfo?.id) return null;
+  if (scan.install_id === installInfo.id) return scan;
 
   await updateScan(scan.id, { install_id: installInfo.id });
   return { ...scan, install_id: installInfo.id };

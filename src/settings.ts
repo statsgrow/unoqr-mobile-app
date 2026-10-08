@@ -18,6 +18,11 @@ export const sqliteSettings = {
   dbName: "unoqr_mobile_app.db",
 };//const ends
 
+// Names the persistent freshness marker for downloaded scan history.
+export const scansSettings = {
+  lastCheckedAtKey: "scans_last_checked_at"
+};//export ends
+
 /* ------------------ BREAK ------------------ */
 
 export const userTokenSettings = {
@@ -46,6 +51,7 @@ export const installSettings = {
   //local storage keys for install info
   storageKeys: {
     installInfo: { name: 'uq-install-info' },
+    installTokens: { name: 'uq-install-tokens' },
     appAttestKeyId: { name: 'uq-app-attest-key-id' },
   },
 };//json ends

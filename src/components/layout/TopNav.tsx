@@ -5,6 +5,7 @@ import { CloudAlert, CloudCheck } from "lucide-react-native";
 import { Text } from "react-native-paper";
 
 import { redirect } from "@/utils/general/Redirect";
+import { HeaderBackButton } from "@/components/layout/HeaderBackButton";
 import { UnoQrLogo } from "@/components/brand/UnoQrLogo";
 import { colors, fontFamilies, fontSizes, radii, spacing } from "@/theme/tokens";
 
@@ -50,15 +51,7 @@ export function TopNav({
     //Default Return
     return (
       <View style={[styles.root, styles.titleRoot]}>
-        <Pressable
-          accessibilityLabel="Go back"
-          accessibilityRole="button"
-          hitSlop={spacing.xs}
-          onPress={handleBackPress}
-          style={({ pressed }) => [styles.backButton, pressed && styles.actionButtonPressed]}
-        >
-          <MaterialCommunityIcons name="arrow-left" size={24} color={colors.primary.main} />
-        </Pressable>
+        <HeaderBackButton onPress={handleBackPress} />
         <Text numberOfLines={1} style={styles.title}>{title}</Text>
         {showSyncStatus ? (
           <Pressable
@@ -130,7 +123,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing.sm,
     paddingVertical: spacing.sm,
     borderBottomWidth: 1,
     borderBottomColor: colors.line.main,
@@ -139,14 +132,6 @@ const styles = StyleSheet.create({
   titleRoot: {
     justifyContent: "flex-start",
     gap: spacing.sm
-  },
-  backButton: {
-    width: 42,
-    height: 42,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: radii.pill,
-    backgroundColor: colors.cream.main
   },
   title: {
     minWidth: 0,

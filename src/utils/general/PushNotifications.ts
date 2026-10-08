@@ -12,7 +12,7 @@ type ExpoPushTokenInfo = {
 /* ------------------ BREAK ------------------ */
 
 // Requests an Expo push token only in native builds that support remote notifications.
-export async function getExpoPushToken(): Promise<ExpoPushTokenInfo | null> {
+export async function getExpoPushToken({ requestPermission = true }: { requestPermission?: boolean } = {}): Promise<ExpoPushTokenInfo | null> {
   const isExpoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
 
   if (Platform.OS === "web" || !Device.isDevice || isExpoGo) {
@@ -31,6 +31,7 @@ export async function getExpoPushToken(): Promise<ExpoPushTokenInfo | null> {
   let finalStatus = existingStatus;
 
   if (existingStatus !== "granted") {
+    if (!requestPermission) return null;
     const { status } = await Notifications.requestPermissionsAsync();
     finalStatus = status;
   };//if ends

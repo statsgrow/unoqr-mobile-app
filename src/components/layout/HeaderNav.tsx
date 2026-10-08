@@ -1,13 +1,13 @@
 import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
-import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useRouter, type Href } from "expo-router";
 import { House, User } from "lucide-react-native";
 
 import { redirect } from "@/utils/general/Redirect";
+import { HeaderBackButton } from "@/components/layout/HeaderBackButton";
 import { UnoQrLogo } from "@/components/brand/UnoQrLogo";
 import { useSessionRefreshPending } from "@/utils/auth/SessionRefreshContext";
 import { colors } from "@/theme/colors";
-import { colors as themeColors, radii, spacing } from "@/theme/tokens";
+import { colors as themeColors, spacing } from "@/theme/tokens";
 
 /* ------------------ BREAK ------------------ */
 
@@ -47,15 +47,7 @@ export function HeaderNav({ showProfile = true, showBack = false }: HeaderNavPro
     <View style={styles.root}>
       <View style={styles.actions}>
         {showBack ? (
-          <Pressable
-            accessibilityLabel="Go back"
-            accessibilityRole="button"
-            hitSlop={spacing.xs}
-            onPress={handleBackPress}
-            style={({ pressed }) => [styles.backButton, pressed && styles.pressedButton]}
-          >
-            <MaterialCommunityIcons name="arrow-left" size={24} color={themeColors.primary.main} />
-          </Pressable>
+          <HeaderBackButton onPress={handleBackPress} />
         ) : null}
         <View accessibilityLabel="UnoQR" accessibilityRole="image">
           <UnoQrLogo width={112} color={themeColors.primary.main} />
@@ -101,7 +93,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing.sm,
     borderBottomWidth: 1,
     borderBottomColor: colors.border.main,
     backgroundColor: colors.background.main
@@ -117,14 +109,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "transparent"
-  },
-  backButton: {
-    width: 42,
-    height: 42,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: radii.pill,
-    backgroundColor: themeColors.cream.main
   },
   pressedButton: {
     opacity: 0.62

@@ -1,4 +1,4 @@
-import { sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 import { db, sqliteDB } from "@/utils/sqlite/db";
 
@@ -96,6 +96,9 @@ export type InsertScanInput = {
   crawl_status: ScanCrawlStatus;
   error?: string | null;
   metadata?: ScanMetadata | null;
+  comment?: string | null;
+  tags?: string[];
+  notes_pending?: boolean;
 };
 
 type ScanColumn = {
@@ -135,7 +138,10 @@ export const scansTable = sqliteTable("scans", {
   sync_status: text("sync_status").$type<ScanSyncStatus>().notNull().default("pending"),
   crawl_status: text("crawl_status").$type<ScanCrawlStatus>().notNull().default("not_needed"),
   error: text("error"),
-  metadata: text("metadata", { mode: "json" }).$type<ScanMetadata | null>()
+  metadata: text("metadata", { mode: "json" }).$type<ScanMetadata | null>(),
+  comment: text("comment"),
+  tags: text("tags", { mode: "json" }).$type<string[]>().notNull().default([]),
+  notes_pending: integer("notes_pending", { mode: "boolean" }).notNull().default(false)
 });
 
 /* ------------------ BREAK ------------------ */
@@ -165,7 +171,10 @@ export async function createScansTable() {
       crawl_status TEXT NOT NULL DEFAULT 'not_needed'
         CHECK (crawl_status IN ('not_needed', 'pending', 'processing', 'completed', 'failed')),
       error TEXT,
-      metadata TEXT
+      metadata TEXT,
+      comment TEXT,
+      tags TEXT NOT NULL DEFAULT '[]',
+      notes_pending INTEGER NOT NULL DEFAULT 0
     );
   `);
 };//func ends
@@ -259,6 +268,22 @@ async function initializeScansTable() {
   await createScansTable();
   await migrateScanUrlColumns();
   await migrateScanKindColumn();
+  await migrateScanNotesColumns();
+};//func ends
+
+// Adds note fields without changing existing scan rows or their synchronization state.
+async function migrateScanNotesColumns(): Promise<void> {
+  if (!sqliteDB) return;
+  const columns = new Set(sqliteDB.getAllSync<ScanColumn>("PRAGMA table_info(scans)").map((column) => column.name));
+  if (!columns.has("comment")) {
+    sqliteDB.execSync("ALTER TABLE scans ADD COLUMN comment TEXT;");
+  };//if ends
+  if (!columns.has("tags")) {
+    sqliteDB.execSync("ALTER TABLE scans ADD COLUMN tags TEXT NOT NULL DEFAULT '[]';");
+  };//if ends
+  if (!columns.has("notes_pending")) {
+    sqliteDB.execSync("ALTER TABLE scans ADD COLUMN notes_pending INTEGER NOT NULL DEFAULT 0;");
+  };//if ends
 };//func ends
 
 /* ------------------ BREAK ------------------ */

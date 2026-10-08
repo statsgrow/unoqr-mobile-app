@@ -5,7 +5,7 @@ import { getLocales } from "expo-localization";
 import { Platform } from "react-native";
 
 import { apiSettings, installSettings } from "@/settings";
-import { observeAppIntegrity } from "@/utils/auth/AppIntegrity";
+import { getInstallAccessToken, getInstallCredentials, saveInstallRegistration } from "@/utils/auth/AppInstallTokens";
 import { Axios } from "@/utils/general/Axios";
 import { getExpoPushToken } from "@/utils/general/PushNotifications";
 import { getData, setData } from "@/utils/general/Storage";
@@ -17,8 +17,15 @@ import { isUUID } from "@/utils/general/Uid";
 export type AppInstallInfo = {
   id: string;
   user_id?: string | null;
-  integrity_status?: "not_checked" | "verified" | "unsupported" | "temporary_error" | "verification_failed";
+  status?: "pending" | "active" | "logged_in" | "logged_out";
+  updated_at?: string;
+  last_checked_at?: string;
+  expo_token?: string | null;
+  expo_token_updated_at?: string | null;
+  app_info?: { build?: string | null; version?: string | null; installation_id?: string | null } | null;
+  integrity_status?: "pending" | "checked" | "failed";
   integrity_checked_at?: string | null;
+  integrity_error?: { message?: string } | null;
   [key: string]: unknown;
 };
 
@@ -54,10 +61,6 @@ type DeviceDetails = {
 
 /* ------------------ BREAK ------------------ */
 
-const INTEGRITY_RETRY_INTERVAL_MS = 24 * 60 * 60 * 1000;
-
-/* ------------------ BREAK ------------------ */
-
 // Fetches the current API copy of this locally stored app installation.
 export async function getAppInstallInfo(): Promise<AppInstallInfo | null> {
   try {
@@ -67,7 +70,7 @@ export async function getAppInstallInfo(): Promise<AppInstallInfo | null> {
     const apiUrl = apiSettings.getApiUrl({
       path: `/app/install?id=${encodeURIComponent(existingInstallInfo.id)}`
     });
-    const response = await axios.get<ApiResponse<AppInstallInfo>>(apiUrl.href);
+    const response = await Axios.get<ApiResponse<AppInstallInfo>>(apiUrl.href);
     return response.data?.data || null;
   } catch (error: unknown) {
     console.error("Error fetching app install info:", error);
@@ -77,12 +80,23 @@ export async function getAppInstallInfo(): Promise<AppInstallInfo | null> {
 
 /* ------------------ BREAK ------------------ */
 
+let registrationPromise: Promise<AppInstallInfo | null> | null = null;
+let metadataRefreshPromise: Promise<void> | null = null;
+
+// Shares installation registration across concurrent startup requests.
+export function insertAppInstall(): Promise<AppInstallInfo | null> {
+  if (!registrationPromise) registrationPromise = registerAppInstall().finally(() => { registrationPromise = null; });
+  return registrationPromise;
+};//export ends
+
 // Registers this app installation anonymously once and caches the returned UUID.
-export async function insertAppInstall(): Promise<AppInstallInfo | null> {
+async function registerAppInstall(): Promise<AppInstallInfo | null> {
   try {
     const existingInstallInfo = await getStoredAppInstall();
-    if (existingInstallInfo) {
-      startAppIntegrityObservation(existingInstallInfo);
+    const credentials = await getInstallCredentials();
+    if (existingInstallInfo && credentials?.install_id === existingInstallInfo.id) {
+      startAppIntegrityObservation();
+      void refreshAppInstallMetadata();
       return existingInstallInfo;
     };//if ends
 
@@ -100,11 +114,15 @@ export async function insertAppInstall(): Promise<AppInstallInfo | null> {
     const appInstallData = response.data?.data || null;
 
     if (appInstallData) {
+      const registrationToken = appInstallData.registration_token;
+      if (typeof registrationToken === "string") await saveInstallRegistration(appInstallData.id, registrationToken);
+      delete appInstallData.registration_token;
       await setData({
         key: installSettings.storageKeys.installInfo.name,
         value: appInstallData
       });
-      startAppIntegrityObservation(appInstallData);
+      startAppIntegrityObservation();
+      void refreshAppInstallMetadata();
     };//if ends
 
     return appInstallData;
@@ -118,75 +136,112 @@ export async function insertAppInstall(): Promise<AppInstallInfo | null> {
 
 /* ------------------ BREAK ------------------ */
 
-// Starts a best-effort observation and caches the server-updated installation without blocking app startup.
-function startAppIntegrityObservation(appInstall: AppInstallInfo): void {
-  if (!shouldObserveAppIntegrity(appInstall)) return;
-
-  void observeAppIntegrity({ installId: appInstall.id }).then(async (observedInstall) => {
-    if (!observedInstall) return;
-
-    const currentInstall = await getStoredAppInstall();
-    // Ignore an observation belonging to a session that has already been cleared.
-    if (currentInstall?.id !== appInstall.id) return;
-
-    await setData({
-      key: installSettings.storageKeys.installInfo.name,
-      value: { ...(currentInstall || appInstall), ...observedInstall }
-    });
-  }).catch((error: unknown) => {
-    console.error("Unable to observe app integrity:", error);
-  });
-};//func ends
-
-// Returns whether this installation still needs its initial or retryable integrity observation.
-function shouldObserveAppIntegrity(appInstall: AppInstallInfo): boolean {
-  if (!appInstall.integrity_status || appInstall.integrity_status === "not_checked") return true;
-  if (appInstall.integrity_status !== "temporary_error") return false;
-
-  const checkedAt = appInstall.integrity_checked_at
-    ? Date.parse(appInstall.integrity_checked_at)
-    : Number.NaN;
-
-  return !Number.isFinite(checkedAt)
-    || Date.now() - checkedAt >= INTEGRITY_RETRY_INTERVAL_MS;
+// Starts silent initial verification or UnoQR-only renewal without blocking startup.
+function startAppIntegrityObservation(): void {
+  void getInstallAccessToken().catch(() => null);
 };//func ends
 
 /* ------------------ BREAK ------------------ */
 
-// Connects the existing install UUID to the authenticated API user.
-export async function connectUserAppInstall(): Promise<AppInstallInfo | null> {
+// Links the registered installation to the authenticated user before history restoration.
+export async function connectUserAppInstall({ signal }: { signal?: AbortSignal } = {}): Promise<AppInstallInfo> {
   const existingInstallInfo = await getStoredAppInstall();
+  if (!existingInstallInfo?.id || !isUUID(existingInstallInfo.id)) {
+    throw new Error("A valid app install UUID is required.");
+  };//if ends
 
-  //try catch 
-  try {
-    if (!existingInstallInfo?.id || !isUUID(existingInstallInfo.id)) {
-      throw new Error("A valid app install UUID is required.");
+  const headers = await getInstallLinkHeaders(existingInstallInfo.id);
+  if (signal?.aborted) throw new Error("Installation linking was cancelled.");
+
+  const apiUrl = apiSettings.getApiUrl({ path: "/app/install/connectuser" });
+  const response = await Axios.put<ApiResponse<AppInstallInfo>>(apiUrl.href, {
+    install_id: existingInstallInfo.id
+  }, { headers, signal, timeout: 15_000 });
+  const connectedInstall = response.data?.data;
+  if (!connectedInstall) throw new Error("The API did not confirm the installation link.");
+  await setData({ key: installSettings.storageKeys.installInfo.name, value: { ...existingInstallInfo, ...connectedInstall } });
+  return connectedInstall;
+};//export ends
+
+/* ------------------ BREAK ------------------ */
+
+// Shares silent metadata checks so startup and foreground events cannot send duplicate updates.
+export function refreshAppInstallMetadata(): Promise<void> {
+  metadataRefreshPromise ??= checkAppInstallMetadata().catch(() => undefined).finally(() => { metadataRefreshPromise = null; });
+  return metadataRefreshPromise;
+};//export ends
+
+// Checks push tokens every 24 hours and saves changed token, version or build on the existing row.
+async function checkAppInstallMetadata(): Promise<void> {
+  if (Platform.OS === "web") return;
+  const install = await getStoredAppInstall();
+  if (!install?.id) return;
+  const now = new Date().toISOString();
+  const lastCheck = Date.parse(install.last_checked_at || "");
+  const pushCheckDue = !Number.isFinite(lastCheck) || Date.now() - lastCheck >= 24 * 60 * 60 * 1000;
+  const build = Application.nativeBuildVersion;
+  const version = Application.nativeApplicationVersion;
+  const changes: { app_info?: AppInstallInfo["app_info"]; expo_token?: string; } = {};
+  if (!install.updated_at || install.app_info?.build !== build || install.app_info?.version !== version) {
+    changes.app_info = { ...install.app_info, build, version };
+  };//if ends
+  const pushInfo = pushCheckDue ? await getExpoPushToken({ requestPermission: false }) : null;
+  if (pushInfo?.token && pushInfo.token !== install.expo_token) changes.expo_token = pushInfo.token;
+  let updatedInstall = install;
+  if (Object.keys(changes).length) {
+    const headers = await getInstallLinkHeaders(install.id);
+    const response = await axios.patch<ApiResponse<AppInstallInfo>>(
+      apiSettings.getApiUrl({ path: "/app/install" }).href,
+      { id: install.id, ...changes }, { headers, timeout: 15_000 }
+    );
+    if (response.data?.data?.id !== install.id || !response.data.data.updated_at) throw new Error("Installation metadata update was not confirmed.");
+    updatedInstall = response.data.data;
+  };//if ends
+  if (pushCheckDue || updatedInstall !== install) {
+    const current = await getStoredAppInstall();
+    if (current?.id !== install.id) return;
+    await setData({ key: installSettings.storageKeys.installInfo.name, value: {
+      ...current, ...(updatedInstall !== install ? updatedInstall : {}),
+      ...(pushCheckDue ? { last_checked_at: now } : {})
+    } });
+  };//if ends
+};//func ends
+
+/* ------------------ BREAK ------------------ */
+
+// Proves installation ownership for account linking without requiring a new integrity verdict.
+export async function getInstallLinkHeaders(installId: string): Promise<Record<string, string>> {
+  const credentials = await getInstallCredentials();
+  if (credentials?.install_id !== installId) throw new Error("Installation credentials do not match this device.");
+  if (credentials.registration_token) return { "x-install-registration": credentials.registration_token };
+  const token = await getInstallAccessToken(false, true);
+  if (!token) throw new Error("Installation credentials could not be renewed. Please try again.");
+  return { "x-install-token": token };
+};//export ends
+
+/* ------------------ BREAK ------------------ */
+
+// Marks installation logout and verifies the returned status without caching the response.
+export async function disconnectUserAppInstall(): Promise<void> {
+  const install = await getStoredAppInstall();
+  if (!install?.id || !isUUID(install.id)) throw new Error("A valid app install UUID is required.");
+  const credentials = await getInstallCredentials();
+  const headers: Record<string, string> = {};
+  if (credentials?.install_id === install.id) {
+    if (credentials.registration_token) {
+      headers["x-install-registration"] = credentials.registration_token;
+    } else if (credentials.refresh_token) {
+      const token = await getInstallAccessToken();
+      if (token) headers["x-install-token"] = token;
     };//if ends
-
-    //get url 
-    const apiUrl = apiSettings.getApiUrl({ path: "/app/install/connectuser" });
-    //send put request
-    const response = await Axios.put<ApiResponse<AppInstallInfo>>(apiUrl.href, {
-      install_id: existingInstallInfo.id
-    });
-    //get connected install info
-    const connectedInstall = response.data?.data || null;
-
-    //store connected install info
-    if (connectedInstall) {
-      await setData({
-        key: installSettings.storageKeys.installInfo.name,
-        value: connectedInstall
-      });
-    };//if ends
-
-    //return connected install info
-    return connectedInstall;
-  } catch (error: any) {
-    console.error("Unable to connect the app install to the user:", error);
-    //return error
-    return null;
-  };//try-catch ends
+  };//if ends
+  const apiUrl = apiSettings.getApiUrl({ path: "/app/install" });
+  const response = await Axios.put<ApiResponse<AppInstallInfo>>(apiUrl.href, {
+    id: install.id,
+    status: "logged_out"
+  }, { headers, timeout: 15_000 });
+  const updatedInstall = response.data?.data;
+  if (updatedInstall?.status !== "logged_out") throw new Error("The API did not confirm installation logout.");
 };//export ends
 
 /* ------------------ BREAK ------------------ */

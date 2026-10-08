@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { StyleSheet, View } from "react-native";
+import { Linking, StyleSheet, View } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
 import { Text } from "react-native-paper";
@@ -8,6 +8,7 @@ import { PxButton } from "@/components/elements/PxButton";
 import { UpiPaymentIcon } from "@/helpers/scans/components/UpiPaymentIcon";
 import { getScanById } from "@/helpers/scans/db/getQueries";
 import { colors, fontFamilies, fontSizes, radii, spacing } from "@/theme/tokens";
+import { Toast } from "@/utils/general/Toast";
 
 /* ------------------ BREAK ------------------ */
 
@@ -118,6 +119,7 @@ const uniqueUpiParameters = ["pa", "pn", "mc", "tr", "tn", "am", "mam", "cu", "u
 // Shows a UPI payment summary with the provider inferred from the payee VPA.
 export function UpiPayment({ record }: UpiPaymentProps) {
   const [upiIdCopied, setUpiIdCopied] = useState(false);
+  const [isOpeningPayment, setIsOpeningPayment] = useState(false);
   const metadata = record.metadata;
   const paymentDetails = getUpiPaymentDetails(record.value);
   const payeeVpa = metadata?.payeeVpa || paymentDetails?.payeeVpa || null;
@@ -138,6 +140,19 @@ export function UpiPayment({ record }: UpiPaymentProps) {
 
     await Clipboard.setStringAsync(payeeVpa);
     setUpiIdCopied(true);
+  };//func ends
+
+  // Opens the saved, validated payment URI only after the user chooses Pay Now.
+  const handlePayNow = async (): Promise<void> => {
+    if (isOpeningPayment || !paymentDetails) return;
+    setIsOpeningPayment(true);
+    try {
+      await Linking.openURL(paymentDetails.paymentUrl);
+    } catch {
+      Toast.error({ message: "Could not open a UPI payment app. You can copy the UPI ID and pay in your preferred app." });
+    } finally {
+      setIsOpeningPayment(false);
+    };//try-catch ends
   };//func ends
 
   //Default Return
@@ -187,6 +202,11 @@ export function UpiPayment({ record }: UpiPaymentProps) {
               </View>
             ) : null}
           </View>
+          {paymentDetails ? (
+            <PxButton fullWidth color="secondary" loading={isOpeningPayment} onPress={() => void handlePayNow()}>
+              Pay Now
+            </PxButton>
+          ) : null}
         </View>
       ) : null}
 

@@ -1,9 +1,11 @@
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
+import { CloudAlert } from "lucide-react-native";
 import { Text } from "react-native-paper";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { UnoQrLogo } from "@/components/brand/UnoQrLogo";
+import { PxButton } from "@/components/elements/PxButton";
 import { colors, fontFamilies, fontSizes, radii, spacing } from "@/theme/tokens";
 
 /* ------------------ BREAK ------------------ */
@@ -12,15 +14,19 @@ type PxPageLoaderProps = {
   visible?: boolean;
   title: string;
   description: string;
+  error?: string | null;
+  onRetry?: () => void;
 };
 
 /* ------------------ BREAK ------------------ */
 
-// Shows a reusable full-page branded loader with configurable title and description text.
+// Shows a branded full-screen loader or an error with its message and retry action.
 export function PxPageLoader({
   visible = true,
   title,
-  description
+  description,
+  error,
+  onRetry
 }: PxPageLoaderProps) {
   if (!visible) return null;
 
@@ -29,11 +35,13 @@ export function PxPageLoader({
     <View accessibilityLiveRegion="polite" style={styles.overlay}>
       <StatusBar style="dark" />
       <View style={styles.content}>
-        <View style={styles.indicatorShell}>
-          <ActivityIndicator size="large" color={colors.secondary.main} />
+        <View style={[styles.indicatorShell, error && styles.errorShell]}>
+          {error ? <CloudAlert size={40} strokeWidth={1.25} color={colors.error.main} />
+            : <ActivityIndicator size="large" color={colors.secondary.main} />}
         </View>
         <Text style={styles.title}>{title}</Text>
-        <Text style={styles.description}>{description}</Text>
+        <Text accessibilityRole={error ? "alert" : undefined} style={styles.description}>{error || description}</Text>
+        {error && onRetry ? <View style={styles.retryAction}><PxButton onPress={onRetry}>Try again</PxButton></View> : null}
       </View>
 
       <SafeAreaView pointerEvents="none" edges={["bottom"]} style={styles.poweredSafeArea}>
@@ -69,6 +77,8 @@ const styles = StyleSheet.create({
     borderRadius: radii.pill,
     backgroundColor: colors.secondary.light
   },
+  errorShell: { backgroundColor: colors.error.surface },
+  retryAction: { marginTop: spacing.lg },
   title: {
     marginTop: spacing.lg,
     color: colors.primary.main,

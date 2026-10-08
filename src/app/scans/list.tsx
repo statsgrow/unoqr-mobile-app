@@ -1,6 +1,8 @@
-import { useCallback, useMemo, useRef, useState, type ComponentProps } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
 import {
   FlatList,
+  Animated,
+  AppState,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -14,17 +16,24 @@ import {
 } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
+import { CloudAlert, CloudCheck } from "lucide-react-native";
+import moment from "moment";
 import { ActivityIndicator, Text } from "react-native-paper";
 import Svg, { Defs, LinearGradient as SvgLinearGradient, Rect, Stop } from "react-native-svg";
 
 import { redirect } from "@/utils/general/Redirect";
 import { GeneralLayout } from "@/components/layout/GeneralLayout";
-import { PageHeader } from "@/components/layout/PageHeader";
+import { TopNav } from "@/components/layout/TopNav";
+import { PxDialog } from "@/components/elements/PxDialog";
+import { PxButton } from "@/components/elements/PxButton";
 import { UpiPaymentIcon } from "@/helpers/scans/components/UpiPaymentIcon";
 import { getAllScans } from "@/helpers/scans/db/getQueries";
 import { getScanTypeInit, normalizeScanType } from "@/helpers/scans/identifiers";
 import { getScanCrawlError, getScanStatusColor, getScanStatusLabel } from "@/helpers/scans/status";
+import { SCAN_HISTORY_SYNC_WINDOW_MS, restoreUserScans } from "@/helpers/scans/scanSync";
 import { colors, fontFamilies, fontSizes, radii, spacing } from "@/theme/tokens";
+import { scansSettings } from "@/settings";
+import { getData } from "@/utils/general/Storage";
 
 /* ------------------ BREAK ------------------ */
 
@@ -34,6 +43,13 @@ type ScanListState = {
   records: ScanRecord[];
   loading: boolean;
   refreshing: boolean;
+  error: string | null;
+};
+
+type CloudHistoryState = {
+  status: "idle" | "loading" | "completed" | "error" | "unavailable";
+  received: number;
+  total: number | null;
   error: string | null;
 };
 
@@ -58,6 +74,14 @@ export default function ScansListScreen() {
   const normalizedTypeFilter = typeFilter ? normalizeScanType(typeFilter) : "";
   const typeFilterInit = normalizedTypeFilter ? getScanTypeInit(normalizedTypeFilter) : null;
   const [searchText, setSearchText] = useState("");
+  const searchPinProgress = useRef(new Animated.Value(0)).current;
+  const isSearchPinnedRef = useRef(false);
+  const [isSearchPinned, setIsSearchPinned] = useState(false);
+  const [statsHeight, setStatsHeight] = useState(32);
+  const cloudControllerRef = useRef<AbortController | null>(null);
+  const [cloudState, setCloudState] = useState<CloudHistoryState>({ status: "idle", received: 0, total: null, error: null });
+  const [isCloudDialogOpen, setIsCloudDialogOpen] = useState(false);
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const [listState, setListState] = useState<ScanListState>({
     records: [],
     loading: true,
@@ -65,11 +89,34 @@ export default function ScansListScreen() {
     error: null
   });
 
+  // Collapses scan totals and widens the fixed search after 100 pixels of scrolling.
+  const handleListScroll = useCallback(({ nativeEvent }: NativeSyntheticEvent<NativeScrollEvent>): void => {
+    const offset = nativeEvent.contentOffset.y;
+    const pinned = isSearchPinnedRef.current ? offset > 60 : offset >= 100;
+    if (pinned === isSearchPinnedRef.current) return;
+    isSearchPinnedRef.current = pinned;
+    setIsSearchPinned(pinned);
+    Animated.timing(searchPinProgress, { toValue: pinned ? 1 : 0, duration: 220, useNativeDriver: false }).start();
+  }, [searchPinProgress]);
+
+  // Stops the search header animation when the scan list unmounts.
+  useEffect(() => () => searchPinProgress.stopAnimation(), [searchPinProgress]);
+
+  // Reads the persisted successful sync time when the dialog opens or synchronization finishes.
+  useEffect(() => {
+    if (!isCloudDialogOpen) return;
+    let active = true;
+    void getData({ key: scansSettings.lastCheckedAtKey }).then((value: unknown) => {
+      if (active) setLastSyncedAt(typeof value === "string" && Number.isFinite(Date.parse(value)) ? value : null);
+    }).catch(() => undefined);
+    return () => { active = false; };//return ends
+  }, [isCloudDialogOpen, cloudState.status]);
+
   // Loads the latest scan rows from the on-device database.
-  const loadScans = useCallback(async (refreshing = false) => {
+  const loadScans = useCallback(async (refreshing = false, background = false): Promise<void> => {
     setListState((currentState) => ({
       ...currentState,
-      loading: refreshing ? currentState.loading : true,
+      loading: refreshing || background ? currentState.loading : true,
       refreshing,
       error: null
     }));
@@ -93,10 +140,71 @@ export default function ScansListScreen() {
     };//try ends
   }, []);
 
+  // Restores account history within the freshness window or when explicitly forced.
+  const loadCloudScans = useCallback(async (force = false): Promise<void> => {
+    if (cloudControllerRef.current) return;
+    const controller = new AbortController();
+    cloudControllerRef.current = controller;
+    setCloudState({ status: "loading", received: 0, total: null, error: null });
+    try {
+      const completed = await restoreUserScans({
+        force,
+        signal: controller.signal,
+        onPage: async () => { if (!controller.signal.aborted) await loadScans(false, true); },
+        onProgress: (received, total) => {
+          if (!controller.signal.aborted) setCloudState({ status: "loading", received, total, error: null });
+        }
+      });
+      if (!controller.signal.aborted) {
+        setCloudState((current) => ({ ...current, status: completed ? "completed" : "unavailable" }));
+      };//if ends
+    } catch (error: unknown) {
+      if (!controller.signal.aborted) {
+        setCloudState((current) => ({ ...current, status: "error", error: error instanceof Error ? error.message : "Unable to download your saved scans." }));
+      };//if ends
+    } finally {
+      if (cloudControllerRef.current === controller) cloudControllerRef.current = null;
+    };//try-catch ends
+  }, [loadScans]);
+
   useFocusEffect(
     useCallback(() => {
       void loadScans();
-    }, [loadScans])
+      let syncTimer: ReturnType<typeof setInterval> | null = null;
+      let checksStarted = false;
+      let checkGeneration = 0;
+
+      // Checks cloud history every five minutes only while this list is visible.
+      const startCloudChecks = (): void => {
+        if (checksStarted) return;
+        checksStarted = true;
+        const generation = ++checkGeneration;
+        void loadCloudScans().then(() => {
+          if (generation !== checkGeneration) return;
+          syncTimer = setInterval(() => { void loadCloudScans(); }, SCAN_HISTORY_SYNC_WINDOW_MS);
+        });
+      };//func ends
+
+      // Cancels periodic checks and active downloads when the list leaves the foreground.
+      const stopCloudChecks = (): void => {
+        if (syncTimer) clearInterval(syncTimer);
+        syncTimer = null;
+        checksStarted = false;
+        checkGeneration += 1;
+        cloudControllerRef.current?.abort();
+        cloudControllerRef.current = null;
+      };//func ends
+
+      if (AppState.currentState === "active") startCloudChecks();
+      const subscription = AppState.addEventListener("change", (nextState) => {
+        if (nextState === "active") startCloudChecks();
+        else stopCloudChecks();
+      });
+      return () => {
+        stopCloudChecks();
+        subscription.remove();
+      };
+    }, [loadScans, loadCloudScans])
   );
 
   const filteredRecords = useMemo(
@@ -110,9 +218,44 @@ export default function ScansListScreen() {
 
   //Default Return
   return (
-    <GeneralLayout scroll={false} bodyStyle={styles.layoutBody}>
+    <GeneralLayout scroll={false} topView={<TopNav title="My Scans" />} bodyStyle={styles.layoutBody}>
       <View style={styles.screen}>
-        <PageHeader title="My Scans" />
+        <Animated.View style={[styles.searchControls, {
+          paddingHorizontal: searchPinProgress.interpolate({ inputRange: [0, 1], outputRange: [spacing.lg, spacing.md] }),
+          backgroundColor: searchPinProgress.interpolate({ inputRange: [0, 1], outputRange: [colors.cream.main, colors.white.main] }),
+          shadowOpacity: searchPinProgress.interpolate({ inputRange: [0, 1], outputRange: [0, 0.12] }),
+          elevation: searchPinProgress.interpolate({ inputRange: [0, 1], outputRange: [0, 5] })
+        }]}>
+        <Animated.View
+          pointerEvents={isSearchPinned ? "none" : "auto"}
+          accessibilityElementsHidden={isSearchPinned}
+          importantForAccessibility={isSearchPinned ? "no-hide-descendants" : "auto"}
+          style={[styles.statsClip, {
+            height: searchPinProgress.interpolate({ inputRange: [0, 1], outputRange: [statsHeight + spacing.xs, 0] }),
+            opacity: searchPinProgress.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }),
+            transform: [{ translateY: searchPinProgress.interpolate({ inputRange: [0, 1], outputRange: [0, -spacing.sm] }) }]
+          }]}
+        >
+        <View style={styles.headerRow} onLayout={({ nativeEvent }) => setStatsHeight(nativeEvent.layout.height)}>
+          <View style={styles.scanTotalCopy}>
+            <Text style={styles.scanTotalLabel}>Total scans</Text>
+            <Text style={styles.scanTotalValue}>
+              {Math.max(cloudState.total ?? 0, listState.records.length).toLocaleString()}
+            </Text>
+          </View>
+          <Pressable
+            accessibilityLabel={`${cloudState.status === "loading" ? "Downloading cloud scans" : cloudState.status === "completed" ? "Cloud scans downloaded" : "Cloud scans need attention"}. Show cloud status.`}
+            accessibilityRole="button"
+            hitSlop={spacing.xs}
+            onPress={() => setIsCloudDialogOpen(true)}
+            style={styles.cloudStatus}
+          >
+            {cloudState.status === "loading" ? <ActivityIndicator size="small" color={colors.secondary.main} />
+              : cloudState.status === "completed" ? <CloudCheck size={22} strokeWidth={1.25} color={colors.success.dark} />
+                : <CloudAlert size={22} strokeWidth={1.25} color={colors.warning.dark} />}
+          </Pressable>
+        </View>
+        </Animated.View>
 
         <View style={styles.filterControls}>
           <View style={styles.searchShell}>
@@ -147,6 +290,7 @@ export default function ScansListScreen() {
             />
           ) : null}
         </View>
+        </Animated.View>
 
         {listState.loading ? (
           <View style={styles.centerState}>
@@ -155,6 +299,7 @@ export default function ScansListScreen() {
           </View>
         ) : (
           <FlatList
+            style={styles.listViewport}
             data={filteredRecords}
             keyExtractor={(record) => record.id}
             renderItem={renderScanItem}
@@ -173,6 +318,8 @@ export default function ScansListScreen() {
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="on-drag"
             showsVerticalScrollIndicator={false}
+            onScroll={handleListScroll}
+            scrollEventThrottle={16}
             refreshControl={
               <RefreshControl
                 refreshing={listState.refreshing}
@@ -184,9 +331,32 @@ export default function ScansListScreen() {
           />
         )}
       </View>
+      <PxDialog open={isCloudDialogOpen} setOpen={setIsCloudDialogOpen} title="Cloud scan history">
+        <View style={styles.cloudDialog} accessibilityLiveRegion="polite">
+          <Text style={styles.cloudLabel}>
+            {cloudState.status === "loading" ? "Downloading saved scans…" : cloudState.status === "completed" ? "Saved scans are on this device" : cloudState.status === "unavailable" ? "Cloud history unavailable" : "Cloud history needs attention"}
+          </Text>
+          <Text style={styles.cloudDescription}>
+            {cloudState.total !== null ? `${cloudState.received.toLocaleString()} of ${cloudState.total.toLocaleString()} scans downloaded. ` : ""}
+            {cloudState.status === "error" ? `${cloudState.error} Your local scans remain available.`
+              : cloudState.status === "unavailable" ? "Sign in on the mobile app to download your account's saved scans."
+                : cloudState.status === "completed" ? "Your account's scans from all devices are saved here for offline access."
+                  : "Downloading your account's scans from all devices. Scans already downloaded are available here."}
+          </Text>
+          <PxButton disabled={cloudState.status === "loading"} loading={cloudState.status === "loading"} onPress={() => void loadCloudScans(true)}>Sync Again</PxButton>
+          <Text style={styles.lastSynced}>Last Synced: {lastSyncedAt ? formatLastSyncedAt(lastSyncedAt) : "Not yet synced"}</Text>
+        </View>
+      </PxDialog>
     </GeneralLayout>
   );//return ends
 };//export ends
+
+/* ------------------ BREAK ------------------ */
+
+// Formats the saved sync timestamp as DD/MM/YYYY mm:hh using local device time.
+function formatLastSyncedAt(value: string): string {
+  return moment(value).format("DD/MM/YYYY mm:hh");
+};//func ends
 
 /* ------------------ BREAK ------------------ */
 
@@ -555,16 +725,27 @@ function formatScanDate(value: string): string {
 /* ------------------ BREAK ------------------ */
 
 const styles = StyleSheet.create({
+  headerRow: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm
+  },
+  scanTotalCopy: { flex: 1, flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  scanTotalLabel: { color: colors.mute.main, fontFamily: fontFamilies.primaryRegular, fontSize: fontSizes.body2 },
+  scanTotalValue: { color: colors.primary.main, fontFamily: fontFamilies.primaryBold, fontSize: fontSizes.h6 },
+  cloudStatus: { padding: spacing.xs },
+  cloudDialog: { gap: spacing.sm },
+  cloudLabel: { color: colors.primary.main, fontFamily: fontFamilies.primarySemiBold, fontSize: fontSizes.body2 },
+  cloudDescription: { color: colors.mute.main, fontFamily: fontFamilies.primaryRegular, fontSize: fontSizes.body2 },
+  lastSynced: { color: colors.mute.main, fontFamily: fontFamilies.primaryRegular, fontSize: fontSizes.caption, textAlign: "center" },
   layoutBody: {
     flex: 1
   },
   screen: {
     flex: 1,
-    gap: spacing.md,
-    paddingTop: spacing.xs,
-    paddingHorizontal: spacing.lg * 0.6,
     backgroundColor: colors.cream.main
   },
+  searchControls: { paddingTop: spacing.sm, paddingBottom: spacing.md, zIndex: 1, shadowColor: colors.primary.main, shadowOffset: { width: 0, height: spacing.xs }, shadowRadius: spacing.sm },
+  statsClip: { overflow: "hidden" },
+  listViewport: { flex: 1, paddingHorizontal: spacing.lg },
   filterControls: {
     gap: spacing.xs
   },
@@ -631,7 +812,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.xs,
-    paddingVertical: spacing.xs,
+    paddingVertical: spacing.xxs,
     paddingHorizontal: spacing.sm,
     borderWidth: 1,
     borderColor: colors.border.main,

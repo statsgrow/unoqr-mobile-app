@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
 import * as Linking from "expo-linking";
-import { useLocalSearchParams, type Href } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 
 import { redirect } from "@/utils/general/Redirect";
@@ -28,7 +28,7 @@ WebBrowser.maybeCompleteAuthSession();
 
 /* ------------------ BREAK ------------------ */
 
-// Completes app OAuth, connects the install, and follows the validated next route.
+// Completes app OAuth, awaits install registration, and starts account history synchronization.
 export default function LoginCallbackScreen() {
   const params = useLocalSearchParams<LoginCallbackParams>();
   const currentUrl = Linking.useURL();
@@ -65,7 +65,7 @@ export default function LoginCallbackScreen() {
 
     hasProcessed.current = true;
 
-    // Stores the authenticated session and returns to the requested internal page.
+    // Stores the authenticated session before restoring account history.
     const completeAuthentication = async () => {
       try {
         await addUserData({
@@ -73,7 +73,7 @@ export default function LoginCallbackScreen() {
           refreshToken: tokens.refreshToken as string
         });
         Toast.success({ message: "You are now logged in." });
-        redirect("replace", nextRoute as Href);
+        redirect("replace", "/sync/myscans");
       } catch (error: unknown) {
         const message = error instanceof Error
           ? error.message

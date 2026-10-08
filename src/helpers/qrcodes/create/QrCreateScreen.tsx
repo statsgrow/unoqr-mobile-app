@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { yupResolver } from "@hookform/resolvers/yup";
 import { router } from "expo-router";
-import { ArrowLeft, ChevronRight, CloudAlert, CloudCheck, ExternalLink, Eye, FileCode2, FileImage, FileText, Grip, ImagePlus, Palette, Pencil, Plus, QrCode, Settings, VectorSquare } from "lucide-react-native";
+import { ChevronRight, CloudAlert, CloudCheck, ExternalLink, Eye, FileCode2, FileImage, FileText, Grip, ImagePlus, Palette, Pencil, Plus, QrCode, Settings, VectorSquare } from "lucide-react-native";
 import { ActivityIndicator, Alert, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useForm } from "react-hook-form";
 import Svg, { SvgXml } from "react-native-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as yup from "yup";
 
+import { HeaderBackButton } from "@/components/layout/HeaderBackButton";
 import { PxModal } from "@/components/elements/PxModal";
 import { fileDownload, openDownloadedFile, type DownloadedFile } from "@/components/files/FileDownload";
 import { deleteFile } from "@/components/files/FileStorage";
@@ -422,15 +423,7 @@ export default function CreateQrScreen({ qrId }: CreateQrScreenProps) {
       style={styles.root}
     >
       <View style={styles.header}>
-        <Pressable
-          accessibilityLabel="Back to More"
-          accessibilityRole="button"
-          hitSlop={spacing.sm}
-          onPress={() => void handleBackPress()}
-          style={styles.backButton}
-        >
-          <ArrowLeft color={colors.primary.main} size={25} strokeWidth={1.8} />
-        </Pressable>
+        <HeaderBackButton accessibilityLabel="Back to More" onPress={() => void handleBackPress()} />
         <Text style={styles.headerTitle}>{qrId ? "Edit QR code" : "Create QR code"}</Text>
         <Pressable
           accessibilityLabel={isSavedInCloud ? "QR saved on this device and in the cloud. Show save status." : "QR save pending. Show save status."}
@@ -690,12 +683,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.md,
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing.sm,
     borderBottomWidth: 1,
     borderBottomColor: colors.border.main,
     backgroundColor: colors.white.main
   },
-  backButton: { width: 32, height: 40, alignItems: "center", justifyContent: "center" },
   headerTitle: { flex: 1, color: colors.primary.main, fontFamily: fontFamilies.primaryBold, fontSize: fontSizes.h6 },
   saveStatus: { width: 38, height: 38, alignItems: "center", justifyContent: "center" },
   content: {

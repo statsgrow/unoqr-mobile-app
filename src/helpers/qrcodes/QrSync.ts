@@ -1,18 +1,33 @@
 import { and, eq, isNull, or } from "drizzle-orm";
+import { File } from "expo-file-system";
 
 import { deleteQrFromApi } from "@/helpers/qrcodes/api/deleteQr";
+import { getQrPageFromApi } from "@/helpers/qrcodes/api/getQr";
 import { putQrToApi } from "@/helpers/qrcodes/api/putQr";
 import type { QrApiData } from "@/helpers/qrcodes/api/types";
 import { getQrById } from "@/helpers/qrcodes/db/getQr";
 import { initQrCodes, qrCodeDeletionsTable, qrCodesTable, type QrCode } from "@/helpers/qrcodes/db/initQrCodes";
 import { getStorageUser } from "@/utils/auth/AuthUser";
 import { publishQrSaveStatus } from "@/helpers/qrcodes/db/QrSaveStatus";
-import { db } from "@/utils/sqlite/db";
+import { db, sqliteDB } from "@/utils/sqlite/db";
+import { colors } from "@/theme/tokens";
+
+/* ------------------ BREAK ------------------ */
+
+type RestoreQrOptions = {
+  force?: boolean;
+  signal: AbortSignal;
+  onPage: () => Promise<void>;
+  onProgress: (received: number, total: number) => void;
+};
 
 /* ------------------ BREAK ------------------ */
 
 const syncTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const syncQueues = new Map<string, Promise<void>>();
+const restorePromises = new Set<Promise<boolean>>();
+const historySyncs = new Map<string, { syncedAt: number; total: number }>();
+export const QR_HISTORY_SYNC_WINDOW_MS = 5 * 60 * 1_000;
 let isSyncPaused = false;
 let pendingCheckPromise: Promise<void> | null = null;
 
@@ -37,8 +52,9 @@ export function cancelScheduledQrCodeSync(): void {
 // Waits for existing QR requests before another account can supply authentication.
 export async function pauseQrCodeSync(): Promise<void> {
   isSyncPaused = true;
+  historySyncs.clear();
   cancelScheduledQrCodeSync();
-  await Promise.allSettled([...syncQueues.values(), ...(pendingCheckPromise ? [pendingCheckPromise] : [])]);
+  await Promise.allSettled([...syncQueues.values(), ...restorePromises, ...(pendingCheckPromise ? [pendingCheckPromise] : [])]);
 };//export ends
 
 // Enables QR synchronization after the account reset finishes.
@@ -65,6 +81,72 @@ export function checkPendingQrCodes(): Promise<void> {
   pendingCheckPromise ??= synchronizePendingQrCodes().finally(() => { pendingCheckPromise = null; });
   return pendingCheckPromise;
 };//export ends
+
+// Tracks GET-only QR restoration so account resets wait before clearing its rows.
+export function restoreUserQrCodes(options: RestoreQrOptions): Promise<boolean> {
+  const operation = restoreQrHistory(options);
+  restorePromises.add(operation);
+  void operation.finally(() => restorePromises.delete(operation)).catch(() => undefined);
+  return operation;
+};//export ends
+
+/* ------------------ BREAK ------------------ */
+
+// Restores account QR pages by their original IDs while retaining pending local work.
+async function restoreQrHistory({ force = false, signal, onPage, onProgress }: RestoreQrOptions): Promise<boolean> {
+  const user = await getStorageUser();
+  if (!user || !db || !sqliteDB || isSyncPaused || signal.aborted) return false;
+  const previousSync = historySyncs.get(user.id);
+  if (!force && previousSync && Date.now() - previousSync.syncedAt < QR_HISTORY_SYNC_WINDOW_MS) {
+    onProgress(previousSync.total, previousSync.total);
+    return true;
+  };//if ends
+  await initQrCodes();
+  let from = 0;
+  let total = 0;
+
+  do {
+    if (isSyncPaused || signal.aborted) return false;
+    const response = await getQrPageFromApi(from, signal);
+    const rows = response.data;
+    if (from === 0) total = response.count;
+    if (!Array.isArray(rows) || !Number.isSafeInteger(total) || total < from + rows.length) {
+      throw new Error("The QR API returned an invalid history page or total count.");
+    };//if ends
+    if (isSyncPaused || signal.aborted) return false;
+    if (rows.length === 0 && from < total) throw new Error("QR history changed while loading. Please retry.");
+
+    sqliteDB.withTransactionSync(() => {
+      for (const row of rows) {
+        const local = db!.select().from(qrCodesTable).where(eq(qrCodesTable.id, row.id)).get();
+        const deletion = db!.select().from(qrCodeDeletionsTable).where(eq(qrCodeDeletionsTable.id, row.id)).get();
+        if (deletion || local?.sync_status === "pending") continue;
+        const logoExists = isLocalLogoAvailable(row.logo_device_path);
+        const values: QrCode = {
+          id: row.id, created_at: row.created_at, updated_at: row.updated_at, user_id: user.id,
+          sync_status: "completed", name: row.name, hide_logo: row.hide_logo,
+          content: row.content, content_type: row.content_type as QrCode["content_type"],
+          content_data: row.content_data, size: row.size ?? Array.from(row.content).length, type: "static",
+          dot: row.dot ?? { type: "square", color: "" }, eye: row.eye ?? { type: "square", color: "" },
+          frame: row.frame ?? { type: "squircle", color: colors.secondary.main },
+          styles: row.styles ?? { bg_color: colors.white.main, fg_color: colors.primary.main },
+          logo: logoExists && row.logo_device_path
+            ? local?.logo?.uri === row.logo_device_path ? local.logo : { uri: row.logo_device_path, name: "QR logo" }
+            : null,
+          last_download_type: row.last_download_type ?? null, last_download_at: row.last_download_at ?? null
+        };
+        const { id, ...updates } = values;
+        db!.insert(qrCodesTable).values(values).onConflictDoUpdate({ target: qrCodesTable.id, set: updates }).run();
+      };//for ends
+    });
+    from += rows.length;
+    onProgress(from, total);
+    await onPage();
+  } while (from < total);
+  if (isSyncPaused || signal.aborted) return false;
+  historySyncs.set(user.id, { syncedAt: Date.now(), total });
+  return true;
+};//func ends
 
 /* ------------------ BREAK ------------------ */
 
@@ -126,6 +208,18 @@ async function synchronizeQrCode(id: string): Promise<void> {
     };//if ends
   };//while ends
 };//func ends
+
+// Checks optional device logo URIs without allowing stale cloud paths to interrupt QR restoration.
+function isLocalLogoAvailable(uri: string | null): boolean {
+  if (!uri || !/^(file:\/\/\/|content:\/\/)/.test(uri)) return false;
+  try {
+    return new File(uri).exists;
+  } catch {
+    return false;
+  };//try-catch ends
+};//func ends
+
+/* ------------------ BREAK ------------------ */
 
 // Maps the SQLite snapshot to the API contract without uploading image data or local synchronization fields.
 function getQrApiData(row: QrCode): QrApiData {

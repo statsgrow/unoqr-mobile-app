@@ -22,6 +22,8 @@ import {
 import { refreshTokensSilently, triggerTokenChecking } from "@/utils/auth/AuthTokens";
 import { SessionRefreshContext } from "@/utils/auth/SessionRefreshContext";
 import { checkPendingQrCodes } from "@/helpers/qrcodes/QrSync";
+import { refreshAppInstallMetadata } from "@/utils/auth/AppInstall";
+import { AppVersionDialog } from "@/utils/general/AppVersion";
 
 /* ------------------ BREAK ------------------ */
 
@@ -35,6 +37,21 @@ export default function RootLayout() {
     BricolageGrotesque_600SemiBold,
     BricolageGrotesque_700Bold
   });
+
+  // Checks installation metadata silently on startup, foreground and every 24 hours while open.
+  useEffect(() => {
+    void refreshAppInstallMetadata();
+    const timer = setInterval(() => {
+      if (AppState.currentState === "active") void refreshAppInstallMetadata();
+    }, 24 * 60 * 60 * 1000);
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") void refreshAppInstallMetadata();
+    });
+    return () => {
+      clearInterval(timer);
+      subscription.remove();
+    };//return ends
+  }, []);
 
   // Refreshes a stored session in the background while the home screen renders.
   useEffect(() => {
@@ -115,6 +132,7 @@ export default function RootLayout() {
       <SessionRefreshContext.Provider value={isSessionRefreshPending}>
         <Stack screenOptions={{ headerShown: false, animation: Platform.OS === "ios" ? "none" : "default", ...(Platform.OS === "ios" ? { animationTypeForReplace: "pop" as const } : {}) }} />
         <StatusBar style="dark" />
+        <AppVersionDialog />
       </SessionRefreshContext.Provider>
     </>
   );
