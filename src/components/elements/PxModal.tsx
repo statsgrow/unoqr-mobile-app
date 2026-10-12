@@ -28,7 +28,7 @@ import { colors as tokenColors, fontFamilies, fontSizes, spacing } from "@/theme
 type PxModalProps = {
 	visible?: boolean;
 	onRequestClose?: () => void;
-	onDismiss?: () => void;
+	onDismiss?: () => void;	onShow?: () => void;
 	open?: boolean;
 	setOpen?: (open: boolean) => void;
 	children: ReactNode;
@@ -57,6 +57,7 @@ export function PxModal({
 	visible,
 	onRequestClose,
 	onDismiss,
+	onShow,
 	open,
 	setOpen,
 	children,
@@ -167,6 +168,7 @@ export function PxModal({
 			animationType="fade"
 			onRequestClose={handleRequestClose}
 			onDismiss={onDismiss}
+			onShow={onShow}
 			statusBarTranslucent
 			navigationBarTranslucent={false}
 			testID={testID}

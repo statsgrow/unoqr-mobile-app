@@ -47,7 +47,7 @@ export type QrCreateFormValues = {
   eye: { type: EyeStyle; color: string };
   frame: { type: FrameOptions["style"]; color: string };
   logo: QrUserLogo | null;
-  styles: { bg_color: string; fg_color: string };
+  styles: { bg_color: string; fg_color: string; card_primary_color?: string; card_bg_color?: string };
 };
 
 /* ------------------ BREAK ------------------ */

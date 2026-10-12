@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { Keyboard, Pressable, StyleSheet, View } from "react-native";
 import { Controller, useForm, type FieldPath, type FieldValues, type RegisterOptions, type UseFormReturn } from "react-hook-form";
 import { HelperText, IconButton, Text } from "react-native-paper";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
@@ -26,7 +26,7 @@ type PxSelectProps<TFieldValues extends FieldValues> = {
 	options: PxSelectOption[];
 	label?: string;
 	placeholder?: string;
-	disabled?: boolean;
+	disabled?: boolean;	onOpenChange?: (open: boolean) => void;
 	leftAdornment?: LeftAdornment;
 	rules?: RegisterOptions<TFieldValues, FieldPath<TFieldValues>>;
 };
@@ -45,6 +45,7 @@ export function PxSelect<TFieldValues extends FieldValues>({
 	label,
 	placeholder = "Select an option",
 	disabled = false,
+	onOpenChange,
 	leftAdornment,
 	rules
 }: PxSelectProps<TFieldValues>) {
@@ -62,6 +63,7 @@ export function PxSelect<TFieldValues extends FieldValues>({
 						label={label}
 						placeholder={placeholder}
 						disabled={disabled}
+						onOpenChange={onOpenChange}
 						leftAdornment={leftAdornment}
 					/>
 
@@ -81,8 +83,9 @@ export default PxSelect;
 /* ------------------ BREAK ------------------ */
 
 // Renders the interactive select field and manages its searchable options modal.
-function SelectElement({ field, fieldState, options, label, placeholder, disabled, leftAdornment }: any) {
+function SelectElement({ field, fieldState, options, label, placeholder, disabled, leftAdornment, onOpenChange }: any) {
 	const [open, setOpen] = useState(false);
+	const [searchReady, setSearchReady] = useState(false);
 	const searchRHF = useForm<SearchFormValues>({ defaultValues: { search: "" } });
 	const searchText = searchRHF.watch("search");
 	const selectedOption = useMemo(
@@ -98,7 +101,10 @@ function SelectElement({ field, fieldState, options, label, placeholder, disable
 
 	// Closes the options modal and clears its search text.
 	function closeSelectModal() {
+		Keyboard.dismiss();
 		setOpen(false);
+		setSearchReady(false);
+		onOpenChange?.(false);
 		searchRHF.reset();
 	};//func ends
 
@@ -108,7 +114,7 @@ function SelectElement({ field, fieldState, options, label, placeholder, disable
 
 			<Pressable
 				disabled={disabled}
-				onPress={() => setOpen(true)}
+				onPress={() => { Keyboard.dismiss(); setOpen(true); onOpenChange?.(true); }}
 				style={[styles.inputShell, hasError && styles.inputShellError, disabled && styles.inputShellDisabled]}
 			>
 				{leftAdornment?.text || leftAdornment?.icon ? (
@@ -126,18 +132,18 @@ function SelectElement({ field, fieldState, options, label, placeholder, disable
 				</View>
 			</Pressable>
 
-			<PxModal autoHeight={false} visible={open} onRequestClose={closeSelectModal}>
+			<PxModal autoHeight={false} visible={open} onRequestClose={closeSelectModal} keyboardAvoiding onShow={() => setSearchReady(true)}>
 				<View style={styles.modalSheet}>
 					<Text style={styles.modalTitle}>{label || "Select Option"}</Text>
 
 					<View style={styles.searchRow}>
 						<View style={styles.searchInput}>
-							<PxTextInput
+							{searchReady ? <PxTextInput
 								name="search" size="small"
 								RHF={searchRHF}
 								placeholder="Search options"
 								autoFocus
-							/>
+							/> : null}
 						</View>
 						<IconButton
 							icon="close"

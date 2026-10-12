@@ -1,13 +1,17 @@
+import type { ReactNode } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import { usePathname, type Href } from "expo-router";
 import { Grip, House, QrCode, ScanText, type LucideIcon } from "lucide-react-native";
 import { Text } from "react-native-paper";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { redirect } from "@/utils/general/Redirect";
 import { UnoQrLogo } from "@/components/brand/UnoQrLogo";
 import { colors, fontFamilies, fontSizes, radii, spacing } from "@/theme/tokens";
 
 /* ------------------ BREAK ------------------ */
+
+type BottomNavProps = { footerAction?: ReactNode; hideMenu?: boolean };
 
 type StandardNavItem = {
   label: string;
@@ -49,13 +53,15 @@ const moreItem: StandardNavItem = {
 /* ------------------ BREAK ------------------ */
 
 // Renders the primary app navigation with a prominent central scan action.
-export function BottomNav() {
+export function BottomNav({ footerAction, hideMenu = false }: BottomNavProps) {
   const pathname = usePathname();
+  const insets = useSafeAreaInsets();
 
   //Default Return
   return (
-    <View style={styles.root}>
-      <View style={styles.container}>
+    <View style={[styles.root, footerAction != null && { paddingTop: 0, paddingBottom: insets.bottom }]}>
+      {footerAction}
+      {!hideMenu ? <View style={styles.container}>
         <NavItem item={homeItem} isActive={pathname === homeItem.matchingPath} />
         <NavItem
           item={scansItem}
@@ -84,7 +90,7 @@ export function BottomNav() {
           item={moreItem}
           isActive={pathname === moreItem.matchingPath}
         />
-      </View>
+      </View> : null}
     </View>
   );//return ends
 };//export ends

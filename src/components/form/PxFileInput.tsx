@@ -1,13 +1,18 @@
 import _ from "lodash";
 import { useEffect, useMemo, useState } from "react";
+import { ImagePlus, Trash2 } from "lucide-react-native";
 import { Image, Pressable, StyleSheet, View } from "react-native";
-import { ActivityIndicator, HelperText, Text } from "react-native-paper";
+import { ActivityIndicator, Text } from "react-native-paper";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { manipulateAsync, SaveFormat } from "expo-image-manipulator";
 import * as DocumentPicker from "expo-document-picker";
-import * as ImagePicker from "expo-image-picker";
+import { File } from "expo-file-system";
 import type { UseFormReturn } from "react-hook-form";
 
+import { selectImage, type ImagePickerFile } from "@/components/files/ImagePicker";
+import GetError from "@/utils/general/Error";
 import { colors, fontFamilies, fonts, sizes } from "@/theme/themeSettings";
+
 import { PxButton } from "../elements/PxButton";
 
 /* ------------------ TYPES ------------------ */
@@ -22,13 +27,19 @@ export type BasicFileInputType = {
 	noFilePlaceHolder?: string;
 	type?: "image" | "pdf" | "csv";
 	helperText?: string | null;
+	onUpload?: (file: FileInputValue) => Promise<FileInputValue>;
+	onRemove?: (file: FileInputValue) => Promise<void>;
 	leftAdornment?: {
 		icon?: keyof typeof MaterialCommunityIcons.glyphMap;
 		text?: string;
 	};
 };
 
-type StoredFileValue = {
+export type FileInputValue = {
+	id?: string;
+	uid?: string;
+	path?: string;
+	url?: string | null;
 	uri?: string | null;
 	base64?: string | null;
 	name?: string | null;
@@ -39,16 +50,7 @@ type StoredFileValue = {
 
 /* ------------------ BREAK ------------------ */
 
-const DEFAULT_FILE_VALUE: StoredFileValue = {
-	uri: null,
-	base64: null,
-	name: null,
-	size: null,
-	type: null,
-	cdn_url: null
-};
-
-/* ------------------ BREAK ------------------ */
+const MAX_FILE_SIZE_BYTES = 25 * 1024 * 1024;
 
 //Renders a reusable file picker with preview, validation, and form binding.
 export default function PxFileInput({
@@ -61,41 +63,34 @@ export default function PxFileInput({
 	helperText = null,
 	filename = "basic_filename",
 	leftAdornment,
+	onUpload,
+	onRemove,
 	type = "image"
 }: BasicFileInputType) {
 	const [fileLoading, setFileLoading] = useState(false);
 	const [previewUri, setPreviewUri] = useState<string | null>(null);
 	const [moduleError, setModuleError] = useState<string | null>(null);
+	const [previewError, setPreviewError] = useState<string | null>(null);
 
-	const watchedValue: StoredFileValue | null = name ? RHF.watch(name) : null;
+	const watchedValue: FileInputValue | null = name ? RHF.watch(name) : null;
 	const fileError = useMemo(() => getFileError({ RHF, name }), [RHF?.formState?.errors, name]);
 
 	useEffect(() => {
-		if (!name) {
-			return;
-		}
-
-		const currentValue = RHF.getValues(name);
-		if (!currentValue) {
-			RHF.setValue(name, DEFAULT_FILE_VALUE, { shouldValidate: false });
-		}
-	}, [RHF, name]);
-
-	useEffect(() => {
+		setPreviewError(null);
 		if (!watchedValue) {
 			setPreviewUri(null);
 			return;
 		}
 
-		setPreviewUri(watchedValue.uri || watchedValue.base64 || watchedValue.cdn_url || null);
+		setPreviewUri(watchedValue.url || watchedValue.cdn_url || watchedValue.base64 || watchedValue.uri || null);
 	}, [watchedValue]);
 
 	//Builds a file extension from the picked file name or MIME type.
-	function getFileExtension(sourceName?: string | null, mimeType?: string | null) {
+	function getFileExtension(sourceName?: string | null, mimeType?: string | null): string | null {
 		if (sourceName) {
 			const sourceParts = sourceName.split(".");
 			const ext = sourceParts[sourceParts.length - 1];
-			if (ext && ext.length <= 8) {
+			if (sourceParts.length > 1 && ext && ext.length <= 8) {
 				return ext;
 			}
 		}
@@ -104,6 +99,8 @@ export default function PxFileInput({
 			"image/jpeg": "jpg",
 			"image/png": "png",
 			"image/webp": "webp",
+			"image/heic": "heic",
+			"image/heif": "heif",
 			"application/pdf": "pdf",
 			"text/csv": "csv",
 			"application/vnd.ms-excel": "csv"
@@ -113,7 +110,7 @@ export default function PxFileInput({
 	}
 
 	//Builds the final stored file name with the configured base name and extension.
-	function buildFileName(nextValue: StoredFileValue) {
+	function buildFileName(nextValue: FileInputValue): string {
 		const baseName = (filename || nextValue.name || "selected-file").trim();
 		const extension = getFileExtension(nextValue.name || null, nextValue.type || null);
 
@@ -126,22 +123,22 @@ export default function PxFileInput({
 	}
 
 	//Stores the selected file data into the form state.
-	function setFileValue(nextValue: StoredFileValue) {
+	function setFileValue(nextValue: FileInputValue): void {
 		if (!name) {
 			return;
 		}
 
 		const resolvedValue = {
 			...nextValue,
-			name: buildFileName(nextValue)
+			name: nextValue.id ? nextValue.name : buildFileName(nextValue)
 		};
 
 		RHF.setValue(name, resolvedValue, { shouldValidate: true, shouldDirty: true });
-		setPreviewUri(resolvedValue.uri || resolvedValue.base64 || resolvedValue.cdn_url || null);
+		setPreviewUri(resolvedValue.url || resolvedValue.cdn_url || resolvedValue.base64 || resolvedValue.uri || null);
 	};//func ends
 
 	//Opens the picker and stores the selected file in the form state.
-	async function handlePickFile() {
+	async function handlePickFile(): Promise<void> {
 		if (!name || disabled || fileLoading) {
 			return;
 		}
@@ -151,31 +148,23 @@ export default function PxFileInput({
 
 		try {
 			if (type === "image") {
-				const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-				if (!permissionResult.granted) {
-					setModuleError("Media library permission is required to upload an image.");
+				const selected = await selectImage();
+				if (!selected) {
 					return;
-				}
+				};//if ends
 
-				const pickedResult = await ImagePicker.launchImageLibraryAsync({
-					mediaTypes: ImagePicker.MediaTypeOptions.Images,
-					quality: 1,
-					base64: true
-				});
-
-				if (pickedResult.canceled || pickedResult.assets.length === 0) {
-					return;
-				}
-
-				const asset = pickedResult.assets[0];
-				setFileValue({
-					uri: asset.uri,
-					base64: asset.base64 ? `data:${asset.mimeType || "image/jpeg"};base64,${asset.base64}` : null,
-					name: asset.fileName || "selected-image",
-					size: asset.fileSize ?? null,
-					type: asset.mimeType || "image/jpeg",
+				const prepared = await preparePhotoForUpload(selected, (error) => setModuleError(GetError({ error }).message));
+				// Enforce the limit on the final image, including unchanged HEIC/HEIF files.
+				const preparedSize = new File(prepared.uri!).size;
+				if (preparedSize > MAX_FILE_SIZE_BYTES) throw new Error("File exceeds the 25 MB limit. Choose a smaller file.");
+				prepared.size = preparedSize;
+				const base64 = onUpload ? null : await new File(prepared.uri!).base64();
+				const picked: FileInputValue = {
+					...prepared,
+					base64: base64 ? `data:${prepared.type};base64,${base64}` : null,
 					cdn_url: null
-				});
+				};
+				setFileValue(onUpload ? await onUpload({ ...picked, name: buildFileName(picked) }) : picked);
 
 				return;
 			}
@@ -191,31 +180,37 @@ export default function PxFileInput({
 			}
 
 			const asset = documentResult.assets[0];
+			const fileSize = new File(asset.uri).size;
+			if (fileSize > MAX_FILE_SIZE_BYTES) throw new Error("File exceeds the 25 MB limit. Choose a smaller file.");
 			setFileValue({
 				uri: asset.uri,
 				base64: null,
 				name: asset.name,
-				size: asset.size ?? null,
+				size: fileSize,
 				type: asset.mimeType || (type === "pdf" ? "application/pdf" : "text/csv"),
 				cdn_url: null
 			});
-		} catch (error) {
-			console.error("Failed to pick file:", error);
-			setModuleError("Unable to open the file picker. Please try again.");
+		} catch (error: unknown) {
+			setModuleError(GetError({ error, message: "Unable to select or upload the file. Please try again." }).message);
 		} finally {
 			setFileLoading(false);
 		}
 	};//func ends
 
-	//Clears the stored file value and preview.
-	function handleRemove() {
-		if (!name || disabled) {
-			return;
-		}
-
-		RHF.setValue(name, null, { shouldValidate: true, shouldDirty: true });
-		setPreviewUri(null);
+	// Removes a server file successfully before clearing its RHF value and preview.
+	async function handleRemove(): Promise<void> {
+		if (!name || disabled || fileLoading) return;
+		setFileLoading(true);
 		setModuleError(null);
+		try {
+			if (watchedValue && onRemove) await onRemove(watchedValue);
+			RHF.setValue(name, null, { shouldValidate: true, shouldDirty: true });
+			setPreviewUri(null);
+		} catch (error: unknown) {
+			setModuleError(GetError({ error, message: "Your file could not be removed." }).message);
+		} finally {
+			setFileLoading(false);
+		};//try-catch ends
 	};//func ends
 
 	const hasFile = Boolean(previewUri);
@@ -230,7 +225,10 @@ export default function PxFileInput({
 			<View style={styles.contentRow}>
 				<Pressable style={styles.previewBox} onPress={!hasFile ? handlePickFile : undefined} disabled={disabled || fileLoading || hasFile}>
 					{hasFile && isImageFile ? (
-						<Image source={{ uri: previewUri! }} style={styles.previewImage} resizeMode="cover" />
+						<Image source={{ uri: previewUri! }} style={styles.previewImage} resizeMode="cover"
+							onError={({ nativeEvent }) => setPreviewError(GetError({ error: new Error(nativeEvent.error), message: "Unable to load the photo preview." }).message)}
+							onLoad={() => setPreviewError(null)}
+						/>
 					) : null}
 
 					{hasFile && !isImageFile ? (
@@ -259,32 +257,49 @@ export default function PxFileInput({
 					<View style={styles.buttonRow}>
 						{hasFile ? (
 							<PxButton mode="outlined" onPress={handleRemove} disabled={fileLoading} compact color="error" size="xs"
-								startIcon="delete"
+								icon={({ color, size }: { color: string; size: number }) => <Trash2 color={color} size={size} strokeWidth={1.25} />}
 							>
 								Remove
 							</PxButton>
 						) : (
 							<PxButton mode="outlined" onPress={handlePickFile} disabled={fileLoading} compact color="primary" size="xs"
-								startIcon="upload"
+								icon={({ color, size }: { color: string; size: number }) => <ImagePlus color={color} size={size} strokeWidth={1.25} />}
 							>
-								Upload
+									{type === "image" ? "Choose image" : "Choose file"}
 							</PxButton>
 						)}
 					</View>
 
-					{watchedValue?.name ? <Text style={styles.filenameText}>{watchedValue.name}</Text> : null}
 				</View>
 			</View>
 
-			{fileError ? <HelperText type="error" padding="none">{fileError}</HelperText> : null}
-			{moduleError ? <HelperText type="error" padding="none">{moduleError}</HelperText> : null}
+			{fileError ? <Text accessibilityRole="alert" style={styles.errorText}>{fileError}</Text> : null}
+			{moduleError ? <Text accessibilityRole="alert" style={styles.errorText}>{moduleError}</Text> : null}
+			{previewError ? <Text accessibilityRole="alert" style={styles.errorText}>{previewError}</Text> : null}
 		</View>
 	);//return ends
-}
+};//export ends
+/* ------------------ BREAK ------------------ */
+
+// Converts a picked photo to WebP, preserving HEIC/HEIF and existing WebP for upload.
+async function preparePhotoForUpload(file: ImagePickerFile, onConversionError: (error: unknown) => void): Promise<FileInputValue> {
+  const original: FileInputValue = { ...file, base64: null, cdn_url: null };
+  const extension = file.name.split(".").pop()?.toLowerCase();
+  if (/^image\/(webp|hei[cf](?:-sequence)?)$/i.test(file.type) || ["webp", "heic", "heif"].includes(extension || "")) return original;
+  try {
+    const converted = await manipulateAsync(file.uri, [], { format: SaveFormat.WEBP, compress: 0.8 });
+    return { ...original, uri: converted.uri, name: `${file.name.replace(/\.[^.]+$/, "")}.webp`, type: "image/webp", size: new File(converted.uri).size };
+  } catch (error: unknown) {
+    onConversionError(error);
+    // The API converts the original image when the device cannot encode WebP.
+    return original;
+  };//try-catch ends
+};//func ends
+
 /* ------------------ BREAK ------------------ */
 
 //Returns the default helper copy for the active file type.
-function defaultHelperText(type: BasicFileInputType["type"]) {
+function defaultHelperText(type: BasicFileInputType["type"]): string {
 	if (type === "pdf") {
 		return "Upload a PDF document.";
 	}
@@ -293,7 +308,7 @@ function defaultHelperText(type: BasicFileInputType["type"]) {
 		return "Upload a CSV file.";
 	}
 
-	return "Upload an image in JPG, PNG or WEBP format.";
+	return "Only images can be uploaded of upto 25MB";
 };//func ends
 
 /* ------------------ BREAK ------------------ */
@@ -328,6 +343,7 @@ function getFileError({ RHF, name }: { RHF: any; name: string | null }) {
 /* ------------------ BREAK ------------------ */
 
 const styles = StyleSheet.create({
+	errorText: { width: "100%", alignSelf: "stretch", color: colors.danger.main, fontFamily: fontFamilies.normal, fontSize: fonts.sizes.xs },
 	wrapper: {
 		borderWidth: 1.5,
 		borderColor: colors.border.main,
@@ -411,10 +427,5 @@ const styles = StyleSheet.create({
 		flexDirection: "row",
 		flexWrap: "wrap",
 		gap: sizes.spacing.sm
-	},
-	filenameText: {
-		fontSize: fonts.sizes.xs,
-		fontFamily: fontFamilies.medium,
-		color: colors.primary
 	}
 });

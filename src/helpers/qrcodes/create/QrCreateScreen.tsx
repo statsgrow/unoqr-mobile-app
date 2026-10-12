@@ -2,12 +2,13 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { yupResolver } from "@hookform/resolvers/yup";
 import { router } from "expo-router";
 import { ChevronRight, CloudAlert, CloudCheck, ExternalLink, Eye, FileCode2, FileImage, FileText, Grip, ImagePlus, Palette, Pencil, Plus, QrCode, Settings, VectorSquare } from "lucide-react-native";
-import { ActivityIndicator, Alert, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Keyboard, KeyboardAvoidingView, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useForm } from "react-hook-form";
 import Svg, { SvgXml } from "react-native-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as yup from "yup";
 
+import { BottomNav } from "@/components/layout/BottomNav";
 import { HeaderBackButton } from "@/components/layout/HeaderBackButton";
 import { PxModal } from "@/components/elements/PxModal";
 import { fileDownload, openDownloadedFile, type DownloadedFile } from "@/components/files/FileDownload";
@@ -47,6 +48,15 @@ type ExportRowProps = {
 
 type CreateQrScreenProps = {
   qrId?: string;
+  digitalCard?: {
+    refreshing?: boolean;
+    onRefresh?: () => void;
+    settings: QrCreateFormValues;
+    primaryColor: string;
+    onSave: (settings: QrCreateFormValues) => Promise<void>;
+    onDraftChange: (settings: QrCreateFormValues) => void;
+    renderPreview?: (settings: QrCreateFormValues) => ReactNode;
+  };
 };
 
 /* ------------------ BREAK ------------------ */
@@ -76,11 +86,13 @@ const QR_SCHEMA: yup.ObjectSchema<QrCreateFormValues> = yup.object({
   logo: yup.mixed<QrUserLogo>().nullable().defined(),
   styles: yup.object({
     bg_color: yup.string().matches(HEX_COLOR).required(),
-    fg_color: yup.string().matches(HEX_COLOR).required()
+    fg_color: yup.string().matches(HEX_COLOR).required(),
+    card_primary_color: yup.string().matches(HEX_COLOR).optional(),
+    card_bg_color: yup.string().matches(HEX_COLOR).optional()
   }).required()
 });
 
-const QR_DEFAULTS: QrCreateFormValues = {
+export const QR_DEFAULTS: QrCreateFormValues = {
   name: "My Qr",
   hide_logo: false,
   content: "",
@@ -93,21 +105,27 @@ const QR_DEFAULTS: QrCreateFormValues = {
   frame: { type: "squircle", color: colors.secondary.main },
   logo: null,
   styles: { bg_color: colors.white.main, fg_color: colors.primary.main }
-};
+};//export ends
 
 /* ------------------ BREAK ------------------ */
 
 // Shows a QR preview with eye, dot, and frame styling plus a download format picker.
-export default function CreateQrScreen({ qrId }: CreateQrScreenProps) {
-  const form = useForm<QrCreateFormValues>({ defaultValues: QR_DEFAULTS, resolver: yupResolver(QR_SCHEMA), mode: "onChange" });
+export default function CreateQrScreen({ qrId, digitalCard }: CreateQrScreenProps) {
+  const defaults = digitalCard?.settings ?? QR_DEFAULTS;
+  const saveCardQr = digitalCard?.onSave;
+  const onCardDraftChange = digitalCard?.onDraftChange;
+  const [savingCardQr, setSavingCardQr] = useState(false);
+  const [cardSaveError, setCardSaveError] = useState<string | null>(null);
+  const form = useForm<QrCreateFormValues>({ defaultValues: defaults, resolver: yupResolver(QR_SCHEMA), mode: "onChange" });
   const settings = form.watch();
+  const { isDirty } = form.formState;
   const { name, hide_logo, content, content_type, content_data, dot, eye, frame, logo, styles: qrStyles } = settings;
   const { bg_color, fg_color } = qrStyles;
   const contentSelection: QrContentSelection | null = content_type && content_data ? { type: content_type, data: content_data } : null;
   const [qrSvg, setQrSvg] = useState<string | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [renderedKey, setRenderedKey] = useState("");
-  const [settledSettings, setSettledSettings] = useState<QrCreateFormValues>(QR_DEFAULTS);
+  const [settledSettings, setSettledSettings] = useState<QrCreateFormValues>(defaults);
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadingFormat, setDownloadingFormat] = useState<QrExportFormat | null>(null);
   const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
@@ -117,8 +135,11 @@ export default function CreateQrScreen({ qrId }: CreateQrScreenProps) {
   const [isDotDialogOpen, setIsDotDialogOpen] = useState(false);
   const [isFrameDialogOpen, setIsFrameDialogOpen] = useState(false);
   const [isColorDialogOpen, setIsColorDialogOpen] = useState(false);
+  const [isCardColorDialogOpen, setIsCardColorDialogOpen] = useState(false);
   const [isLogoDialogOpen, setIsLogoDialogOpen] = useState(false);
   const [isSettingsDialogOpen, setIsSettingsDialogOpen] = useState(false);
+  const [isCardToolsOpen, setIsCardToolsOpen] = useState(false);
+  const cardToolsDismissRef = useRef<(() => void) | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isContentDialogOpen, setIsContentDialogOpen] = useState(false);
   const [isQrCreated, setIsQrCreated] = useState(false);
@@ -146,8 +167,9 @@ export default function CreateQrScreen({ qrId }: CreateQrScreenProps) {
   // Loads the selected QR or inserts one initial row before displaying the form.
   useEffect(() => {
     let isMounted = true;
-    qrIdRef.current ??= qrId || getUUIDv4();
+    if (!digitalCard) qrIdRef.current ??= qrId || getUUIDv4();
     initializationPromiseRef.current ??= (async (): Promise<QrCreateFormValues> => {
+      if (digitalCard) return digitalCard.settings;
       if (qrId) {
         const record = await getQrById(qrId);
         if (!record) throw new Error("This QR code could not be found on this device.");
@@ -195,22 +217,50 @@ export default function CreateQrScreen({ qrId }: CreateQrScreenProps) {
     const operation = saveQueueRef.current.catch(() => undefined).then(async () => {
       if (deletingRef.current) return;
       if (savedKeyRef.current === key) return;
-      if (!qrIdRef.current) throw new Error("The QR entry is not ready.");
-      const result = await updateQrcode({
-        ...snapshot,
-        id: qrIdRef.current
-      });
-      if (!result || result.changes !== 1) throw new Error("Your QR changes could not be saved.");
+      if (saveCardQr) {
+        await saveCardQr(snapshot);
+        // Establish the saved baseline while retaining any edits made during the request.
+        const current = form.getValues();
+        form.reset(snapshot, { keepValues: true });
+        for (const field of ["dot", "eye", "frame", "styles"] as const) {
+          form.setValue(field, current[field], { shouldDirty: true });
+        };//for ends
+      } else {
+        if (!qrIdRef.current) throw new Error("The QR entry is not ready.");
+        const result = await updateQrcode({ ...snapshot, id: qrIdRef.current });
+        if (!result || result.changes !== 1) throw new Error("Your QR changes could not be saved.");
+      };//if ends
       savedKeyRef.current = key;
       setSavedKey(key);
     });
     saveQueueRef.current = operation;
     return operation;
-  }, [form]);
+  }, [form, saveCardQr]);
+
+  // Shares the unsaved QR design with the card editor's Preview action.
+  useEffect(() => {
+    if (!onCardDraftChange) return;
+    const subscription = form.watch(() => onCardDraftChange(form.getValues()));
+    return () => subscription.unsubscribe();
+  }, [form, onCardDraftChange]);
+
+  // Saves the digital card QR through its supplied save handler only when Save is pressed.
+  const handleSaveCardQr = async (): Promise<void> => {
+    if (savingCardQr) return;
+    setSavingCardQr(true);
+    setCardSaveError(null);
+    try {
+      await saveQrChanges();
+    } catch (saveError: unknown) {
+      setCardSaveError(saveError instanceof Error ? saveError.message : "Your QR could not be saved.");
+    } finally {
+      setSavingCardQr(false);
+    };//try-catch ends
+  };//func ends
 
   // Saves form changes after a short pause while leaving pending or failed changes marked unsaved.
   useEffect(() => {
-    if (!isQrCreated) return;
+    if (!isQrCreated || saveCardQr) return;
     const timeout = setTimeout(() => {
       void saveQrChanges().catch((error: unknown) => console.error("Unable to save QR changes:", error));
     }, 500);
@@ -219,7 +269,7 @@ export default function CreateQrScreen({ qrId }: CreateQrScreenProps) {
 
   // Flushes the final form values when the user leaves through system navigation.
   useEffect(() => {
-    if (!isQrCreated) return;
+    if (!isQrCreated || saveCardQr) return;
     return () => {
       void saveQrChanges().catch((error: unknown) => console.error("Unable to save QR changes on exit:", error));
     };//return ends
@@ -355,10 +405,12 @@ export default function CreateQrScreen({ qrId }: CreateQrScreenProps) {
     setDownloadingFormat(format);
 
     try {
-      await saveQrChanges();
-      if (!qrIdRef.current) throw new Error("The QR entry is not ready.");
-      // Require API confirmation for the latest local snapshot before creating a download.
-      await syncQrCode(qrIdRef.current);
+      if (!digitalCard) await saveQrChanges();
+      if (!digitalCard) {
+        if (!qrIdRef.current) throw new Error("The QR entry is not ready.");
+        // Require API confirmation for the latest static QR snapshot before creating a download.
+        await syncQrCode(qrIdRef.current);
+      };//if ends
       await closeDownloadModal();
       const file = await createQrFile(qrSvg, format, svgRef.current);
       const saved = await fileDownload({
@@ -367,13 +419,15 @@ export default function CreateQrScreen({ qrId }: CreateQrScreenProps) {
       });
       if (saved) {
         setDownloadedFile(saved);
-        if (!qrIdRef.current) throw new Error("The QR entry is not ready.");
-        const result = await updateQrcode({
-          id: qrIdRef.current,
-          last_download_type: format === "jpeg" ? "jpg" : format,
-          last_download_at: new Date().toISOString()
-        });
-        if (!result || result.changes !== 1) throw new Error("The file was downloaded, but its download details could not be saved.");
+        if (!digitalCard) {
+          if (!qrIdRef.current) throw new Error("The QR entry is not ready.");
+          const result = await updateQrcode({
+            id: qrIdRef.current,
+            last_download_type: format === "jpeg" ? "jpg" : format,
+            last_download_at: new Date().toISOString()
+          });
+          if (!result || result.changes !== 1) throw new Error("The file was downloaded, but its download details could not be saved.");
+        };//if ends
       };//if ends
     } catch (error: unknown) {
       console.error("Unable to download QR code:", error);
@@ -407,6 +461,67 @@ export default function CreateQrScreen({ qrId }: CreateQrScreenProps) {
     updateQrPreview();
   };//func ends
 
+  // Dismisses the card tools sheet before presenting a native customization dialog.
+  async function openQrTool(tool: "color" | "qrColor" | "eye" | "frame" | "dot"): Promise<void> {
+    if (digitalCard && isCardToolsOpen) {
+      if (Platform.OS === "ios") {
+        await new Promise<void>((resolve) => {
+          cardToolsDismissRef.current = resolve;
+          setIsCardToolsOpen(false);
+        });
+      } else {
+        setIsCardToolsOpen(false);
+      };//if ends
+    };//if ends
+    if (tool === "color") {
+      if (digitalCard) setIsCardColorDialogOpen(true);
+      else setIsColorDialogOpen(true);
+    };//if ends
+    if (tool === "qrColor") setIsColorDialogOpen(true);
+    if (tool === "eye") setIsEyeDialogOpen(true);
+    if (tool === "frame") setIsFrameDialogOpen(true);
+    if (tool === "dot") setIsDotDialogOpen(true);
+  };//func ends
+
+  // Completes the iOS sheet transition before opening the selected QR control.
+  function handleCardToolsDismiss(): void {
+    cardToolsDismissRef.current?.();
+    cardToolsDismissRef.current = null;
+  };//func ends
+
+  const qrTools = (
+        <View style={styles.tools}>
+          <Pressable accessibilityLabel={digitalCard ? "Customize card colors" : "Customize QR colors"} accessibilityRole="button" onPress={() => void openQrTool("color")} style={styles.tool}>
+            <Palette color={colors.primary.main} size={25} strokeWidth={1.25} />
+            <Text style={styles.toolLabel}>Color</Text>
+          </Pressable>
+          {digitalCard ? <Pressable accessibilityLabel="Customize QR colors" accessibilityRole="button" onPress={() => void openQrTool("qrColor")} style={styles.tool}>
+            <QrCode color={colors.primary.main} size={25} strokeWidth={1.25} />
+            <Text style={styles.toolLabel}>QR Color</Text>
+          </Pressable> : null}
+          <Pressable accessibilityLabel="Customize QR eyes" accessibilityRole="button" onPress={() => void openQrTool("eye")} style={styles.tool}>
+            <Eye color={colors.primary.main} size={25} strokeWidth={1.25} />
+            <Text style={styles.toolLabel}>Eye</Text>
+          </Pressable>
+          <Pressable accessibilityLabel="Customize QR frame" accessibilityRole="button" onPress={() => void openQrTool("frame")} style={styles.tool}>
+            <VectorSquare color={colors.primary.main} size={25} strokeWidth={1.25} />
+            <Text style={styles.toolLabel}>Frame</Text>
+          </Pressable>
+          <Pressable accessibilityLabel="Customize QR dots" accessibilityRole="button" onPress={() => void openQrTool("dot")} style={styles.tool}>
+            <Grip color={colors.primary.main} size={25} strokeWidth={1.25} />
+            <Text style={styles.toolLabel}>Dot</Text>
+          </Pressable>
+          {!digitalCard ? <Pressable accessibilityLabel="Add center logo" accessibilityRole="button" onPress={() => setIsLogoDialogOpen(true)} style={styles.tool}>
+            <ImagePlus color={colors.primary.main} size={25} strokeWidth={1.25} />
+            <Text style={styles.toolLabel}>Logo</Text>
+          </Pressable> : null}
+          {!digitalCard ? <Pressable accessibilityLabel="QR settings" accessibilityRole="button" onPress={() => setIsSettingsDialogOpen(true)} style={styles.tool}>
+            <Settings color={colors.primary.main} size={25} strokeWidth={1.25} />
+            <Text style={styles.toolLabel}>Settings</Text>
+          </Pressable> : null}
+        </View>
+  );
+
   if (!isQrCreated) {
     return (
       <View style={styles.loading}>
@@ -422,7 +537,7 @@ export default function CreateQrScreen({ qrId }: CreateQrScreenProps) {
       behavior={Platform.OS === "ios" ? "padding" : undefined}
       style={styles.root}
     >
-      <View style={styles.header}>
+      {!digitalCard ? <View style={styles.header}>
         <HeaderBackButton accessibilityLabel="Back to More" onPress={() => void handleBackPress()} />
         <Text style={styles.headerTitle}>{qrId ? "Edit QR code" : "Create QR code"}</Text>
         <Pressable
@@ -434,15 +549,16 @@ export default function CreateQrScreen({ qrId }: CreateQrScreenProps) {
         >
           {isSavedInCloud ? <CloudCheck size={19} strokeWidth={1.25} color={colors.primary.main} /> : <CloudAlert size={19} strokeWidth={1.25} color={colors.warning.dark} />}
         </Pressable>
-      </View>
+      </View> : null}
 
       <ScrollView
+        refreshControl={digitalCard?.onRefresh ? <RefreshControl refreshing={digitalCard.refreshing ?? false} onRefresh={digitalCard.onRefresh} tintColor={colors.secondary.main} colors={[colors.secondary.main]} /> : undefined}
         contentContainerStyle={[styles.content, { paddingBottom: spacing.lg + keyboardHeight }]}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.previewArea}>
+        {digitalCard?.renderPreview ? digitalCard.renderPreview(settings) : <View style={styles.previewArea}>
           {qrSvg ? (
             <View style={styles.qrFrame}>
               <SvgXml xml={qrSvg} override={{ ref: svgRef, width: "100%", height: "100%" }} />
@@ -453,17 +569,17 @@ export default function CreateQrScreen({ qrId }: CreateQrScreenProps) {
               <Text style={styles.emptyPreviewText}>{previewError || "Add content to preview your QR"}</Text>
             </View>
           )}
-        </View>
+        </View>}
 
-        <QrQuality
+        {!digitalCard ? <QrQuality
           content={settledSettings.content}
           backgroundColor={settledSettings.styles.bg_color}
           foregroundColor={settledSettings.styles.fg_color}
           dotColor={settledSettings.dot.color}
           eyeColor={settledSettings.eye.color}
-        />
+        /> : null}
 
-        {contentSelection && content ? (
+        {!digitalCard ? contentSelection && content ? (
           <Pressable accessibilityLabel="Edit QR content" accessibilityRole="button" onPress={() => setIsContentDialogOpen(true)} style={styles.inputCard}>
             <View style={styles.inputContent}>
               <Text style={styles.inputLabel}>{content_type === "vcard" ? "vCard" : content_type === "website" ? "Website" : content_type === "phone" ? "Phone" : "Text"}</Text>
@@ -476,39 +592,26 @@ export default function CreateQrScreen({ qrId }: CreateQrScreenProps) {
             <Plus color={colors.secondary.main} size={22} strokeWidth={1.75} />
             <Text style={styles.addContentText}>Add Content</Text>
           </Pressable>
-        )}
+        ) : null}
 
-        <View style={styles.tools}>
-          <Pressable accessibilityLabel="Customize QR colors" accessibilityRole="button" onPress={() => setIsColorDialogOpen(true)} style={styles.tool}>
-            <Palette color={colors.primary.main} size={25} strokeWidth={1.7} />
-            <Text style={styles.toolLabel}>Color</Text>
-          </Pressable>
-          <Pressable accessibilityLabel="Customize QR eyes" accessibilityRole="button" onPress={() => setIsEyeDialogOpen(true)} style={styles.tool}>
-            <Eye color={colors.primary.main} size={25} strokeWidth={1.7} />
-            <Text style={styles.toolLabel}>Eye</Text>
-          </Pressable>
-          <Pressable accessibilityLabel="Customize QR frame" accessibilityRole="button" onPress={() => setIsFrameDialogOpen(true)} style={styles.tool}>
-            <VectorSquare color={colors.primary.main} size={25} strokeWidth={1.25} />
-            <Text style={styles.toolLabel}>Frame</Text>
-          </Pressable>
-          <Pressable accessibilityLabel="Customize QR dots" accessibilityRole="button" onPress={() => setIsDotDialogOpen(true)} style={styles.tool}>
-            <Grip color={colors.primary.main} size={25} strokeWidth={1.25} />
-            <Text style={styles.toolLabel}>Dot</Text>
-          </Pressable>
-          <Pressable accessibilityLabel="Add center logo" accessibilityRole="button" onPress={() => setIsLogoDialogOpen(true)} style={styles.tool}>
-            <ImagePlus color={colors.primary.main} size={25} strokeWidth={1.7} />
-            <Text style={styles.toolLabel}>Logo</Text>
-          </Pressable>
-          <Pressable accessibilityLabel="QR settings" accessibilityRole="button" onPress={() => setIsSettingsDialogOpen(true)} style={styles.tool}>
-            <Settings color={colors.primary.main} size={25} strokeWidth={1.7} />
-            <Text style={styles.toolLabel}>Settings</Text>
-          </Pressable>
-        </View>
+        {!digitalCard ? qrTools : null}
+
       </ScrollView>
 
-      {/* Keep the safe-area inset on the footer because iOS keyboard avoidance overrides root padding. */}
-      {keyboardHeight === 0 ? <View style={[styles.footer, { paddingBottom: spacing.sm + insets.bottom }]}>
-        <Pressable
+      {keyboardHeight === 0 ? <BottomNav hideMenu={true} footerAction={<View style={styles.footer}>
+        {digitalCard ? <>
+          <View pointerEvents="box-none" style={styles.cardSettingsPosition}>
+            <Pressable accessibilityLabel="QR Card settings" accessibilityRole="button" disabled={savingCardQr || digitalCard.refreshing} onPress={() => setIsCardToolsOpen(true)} style={styles.cardSettingsButton}>
+              <Settings color={colors.primary.main} size={24} strokeWidth={1.25} />
+              <Text style={styles.cardSettingsText}>Settings</Text>
+            </Pressable>
+          </View>
+          {cardSaveError ? <Text accessibilityRole="alert" style={styles.cardSaveError}>{cardSaveError}</Text> : null}
+          {isDirty || savingCardQr ? <Pressable accessibilityRole="button" disabled={savingCardQr || digitalCard.refreshing} onPress={() => void form.handleSubmit(handleSaveCardQr)()} style={styles.cardSaveButton}>
+            {savingCardQr ? <ActivityIndicator color={colors.white.main} /> : null}
+            <Text style={styles.downloadText}>{savingCardQr ? "Saving…" : "Save Now"}</Text>
+          </Pressable> : null}
+        </> : <Pressable
           accessibilityRole="button"
           accessibilityState={{ disabled: !hasValue || !qrSvg || renderedKey !== previewKey || isDownloading }}
           disabled={!hasValue || !qrSvg || renderedKey !== previewKey || isDownloading}
@@ -516,8 +619,18 @@ export default function CreateQrScreen({ qrId }: CreateQrScreenProps) {
           style={[styles.downloadButton, (!hasValue || !qrSvg || renderedKey !== previewKey || isDownloading) && styles.downloadButtonDisabled]}
         >
           <Text style={styles.downloadText}>{isDownloading ? "Saving..." : "Download QR"}</Text>
-        </Pressable>
-      </View> : null}
+        </Pressable>}
+      </View>} /> : null}
+
+      {digitalCard ? <PxModal
+        visible={isCardToolsOpen}
+        onDismiss={handleCardToolsDismiss}
+        onRequestClose={() => setIsCardToolsOpen(false)}
+        name="QR Card settings"
+        height="auto"
+      >
+        <View style={styles.cardToolsContent}>{qrTools}</View>
+      </PxModal> : null}
 
       <PxModal
         visible={isDownloadModalOpen}
@@ -571,8 +684,8 @@ export default function CreateQrScreen({ qrId }: CreateQrScreenProps) {
         onClose={() => setIsEyeDialogOpen(false)}
         eyeStyle={eye.type}
         eyeColor={eye.color || fg_color}
-        onChangeStyle={(type) => updateQrSetting(() => form.setValue("eye.type", type, { shouldValidate: true }))}
-        onChangeColor={(color) => updateQrSetting(() => form.setValue("eye.color", color, { shouldValidate: true }))}
+        onChangeStyle={(type) => updateQrSetting(() => form.setValue("eye.type", type, { shouldValidate: true, shouldDirty: Boolean(digitalCard) }))}
+        onChangeColor={(color) => updateQrSetting(() => form.setValue("eye.color", color, { shouldValidate: true, shouldDirty: Boolean(digitalCard) }))}
       />
 
       <DotDialog
@@ -580,8 +693,8 @@ export default function CreateQrScreen({ qrId }: CreateQrScreenProps) {
         onClose={() => setIsDotDialogOpen(false)}
         dotStyle={dot.type}
         dotColor={dot.color || fg_color}
-        onChangeStyle={(type) => updateQrSetting(() => form.setValue("dot.type", type, { shouldValidate: true }))}
-        onChangeColor={(color) => updateQrSetting(() => form.setValue("dot.color", color, { shouldValidate: true }))}
+        onChangeStyle={(type) => updateQrSetting(() => form.setValue("dot.type", type, { shouldValidate: true, shouldDirty: Boolean(digitalCard) }))}
+        onChangeColor={(color) => updateQrSetting(() => form.setValue("dot.color", color, { shouldValidate: true, shouldDirty: Boolean(digitalCard) }))}
       />
 
       <FrameDialog
@@ -589,50 +702,67 @@ export default function CreateQrScreen({ qrId }: CreateQrScreenProps) {
         onClose={() => setIsFrameDialogOpen(false)}
         frameStyle={frame.type}
         frameColor={frame.color || fg_color}
-        onChangeStyle={(type) => updateQrSetting(() => form.setValue("frame.type", type, { shouldValidate: true }))}
-        onChangeColor={(color) => updateQrSetting(() => form.setValue("frame.color", color, { shouldValidate: true }))}
+        onChangeStyle={(type) => updateQrSetting(() => form.setValue("frame.type", type, { shouldValidate: true, shouldDirty: Boolean(digitalCard) }))}
+        onChangeColor={(color) => updateQrSetting(() => form.setValue("frame.color", color, { shouldValidate: true, shouldDirty: Boolean(digitalCard) }))}
       />
 
+      {digitalCard ? <ColorDialog
+        visible={isCardColorDialogOpen}
+        onClose={() => setIsCardColorDialogOpen(false)}
+        foregroundLabel="Primary Color"
+        foregroundColor={qrStyles.card_primary_color || digitalCard.primaryColor}
+        backgroundColor={qrStyles.card_bg_color || colors.white.main}
+        foregroundHint="Controls the patterned top of your QR card."
+        backgroundHint="Controls the background of the entire QR card."
+        onChangeForeground={(color) => updateQrSetting(() => form.setValue("styles.card_primary_color", color, { shouldValidate: true, shouldDirty: Boolean(digitalCard) }))}
+        onChangeBackground={(color) => updateQrSetting(() => form.setValue("styles.card_bg_color", color, { shouldValidate: true, shouldDirty: Boolean(digitalCard) }))}
+        onReset={() => updateQrSetting(() => {
+          form.setValue("styles.card_primary_color", digitalCard.primaryColor, { shouldValidate: true, shouldDirty: Boolean(digitalCard) });
+          form.setValue("styles.card_bg_color", colors.white.main, { shouldValidate: true, shouldDirty: Boolean(digitalCard) });
+        })}
+      /> : null}
+
       <ColorDialog
+        name={digitalCard ? "QR Color" : "Color"}
         visible={isColorDialogOpen}
         onClose={() => setIsColorDialogOpen(false)}
         foregroundColor={fg_color}
         backgroundColor={bg_color}
-        onChangeForeground={(color) => updateQrSetting(() => form.setValue("styles.fg_color", color, { shouldValidate: true }))}
-        onChangeBackground={(color) => updateQrSetting(() => form.setValue("styles.bg_color", color, { shouldValidate: true }))}
+        onChangeForeground={(color) => updateQrSetting(() => form.setValue("styles.fg_color", color, { shouldValidate: true, shouldDirty: Boolean(digitalCard) }))}
+        onChangeBackground={(color) => updateQrSetting(() => form.setValue("styles.bg_color", color, { shouldValidate: true, shouldDirty: Boolean(digitalCard) }))}
       />
 
-      <LogoDialog
+      {!digitalCard ? <LogoDialog
         visible={isLogoDialogOpen}
         onClose={() => setIsLogoDialogOpen(false)}
         logo={logo}
         onChangeLogo={(nextLogo) => updateQrSetting(() => form.setValue("logo", nextLogo, { shouldValidate: true }))}
-      />
+      /> : null}
 
-      <ContentDialog
+      {!digitalCard ? <ContentDialog
         visible={isContentDialogOpen}
         onClose={() => setIsContentDialogOpen(false)}
         selection={contentSelection}
         onSave={handleContentSave}
-      />
+      /> : null}
 
-      <SaveStatusDialog
+      {!digitalCard ? <SaveStatusDialog
         visible={isSaveStatusDialogOpen}
         onClose={() => setIsSaveStatusDialogOpen(false)}
         isSavedOnDevice={isSaved}
         isSavedInCloud={isSavedInCloud}
-      />
+      /> : null}
 
-      <SettingsDialog
+      {!digitalCard ? <SettingsDialog
         visible={isSettingsDialogOpen}
         onClose={() => setIsSettingsDialogOpen(false)}
         name={name}
         hideLogo={hide_logo}
         isDeleting={isDeleting}
-        onDelete={() => void handleDeleteQr()}
+        onDelete={digitalCard ? undefined : () => void handleDeleteQr()}
         onChangeName={(value) => form.setValue("name", value, { shouldValidate: true, shouldDirty: true })}
         onChangeHideLogo={(value) => updateQrSetting(() => form.setValue("hide_logo", value, { shouldValidate: true, shouldDirty: true }))}
-      />
+      /> : null}
     </KeyboardAvoidingView>
   );//return ends
 };//export ends
@@ -756,12 +886,15 @@ const styles = StyleSheet.create({
   },
   toolLabel: { color: colors.mute.main, fontFamily: fontFamilies.primaryRegular, fontSize: fontSizes.body2 },
   footer: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    borderTopWidth: 1,
-    borderTopColor: colors.border.main,
+    padding: spacing.md,
     backgroundColor: colors.white.main
   },
+  cardSaveError: { color: colors.error.main, fontFamily: fontFamilies.primaryRegular, fontSize: fontSizes.caption, marginBottom: spacing.xs },
+  cardToolsContent: { paddingHorizontal: spacing.lg, paddingBottom: spacing.md },
+  cardSettingsPosition: { position: "absolute", bottom: "100%", left: 0, right: 0, marginBottom: spacing.md + 25, alignItems: "center" },
+  cardSettingsText: { color: colors.primary.main, fontFamily: fontFamilies.primarySemiBold, fontSize: fontSizes.button },
+  cardSettingsButton: { width: 140, height: 52, flexDirection: "row", gap: spacing.xs, alignItems: "center", justifyContent: "center", borderRadius: radii.pill, borderWidth: 1, borderColor: colors.primary.main, backgroundColor: colors.white.main, elevation: 3, shadowColor: colors.primary.main, shadowOpacity: 0.12, shadowRadius: 6, shadowOffset: { width: 0, height: 2 } },
+  cardSaveButton: { minHeight: 50, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.xs, borderRadius: radii.lg, backgroundColor: colors.secondary.main },
   downloadButton: {
     minHeight: 56,
     alignItems: "center",

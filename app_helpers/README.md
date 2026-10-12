@@ -13,6 +13,8 @@ The check runs automatically for:
 
 Debug builds are unaffected. The platform plugins `android/release/withReleaseEnvironment.js` and `ios/release/withReleaseEnvironment.js` restore their native hooks after prebuild. Both checks run every release build, even when other build outputs are cached.
 
+Android release builds also regenerate Expo's embedded asset manifest on every build. Expo's `createReleaseUpdatesResources` task does not track changes to JavaScript or asset files, so a cached manifest can omit newly added images even when those images are packaged in the APK/AAB. Regenerating it keeps release image resolution aligned with the bundled assets.
+
 Before building a release, set this in `.env`:
 
 ```dotenv

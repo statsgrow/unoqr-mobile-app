@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { ContactRound, Globe2, Phone, QrCode as QrCodeIcon, Type, type LucideIcon } from "lucide-react-native";
@@ -19,6 +19,7 @@ import { colors, fontFamilies, fontSizes, radii, spacing } from "@/theme/tokens"
 
 type ScanRecord = Awaited<ReturnType<typeof getAllScans>>[number];
 type ActivityTab = "scans" | "qrcodes";
+type HomeAnalyticsProps = { topContent?: ReactNode };
 
 type ScanTypeSummary = {
   type: string;
@@ -72,7 +73,7 @@ const typePalettes: TypePalette[] = [
 /* ------------------ BREAK ------------------ */
 
 // Displays a compact single-screen summary of the user's QR scan activity.
-export function HomeAnalytics() {
+export function HomeAnalytics({ topContent }: HomeAnalyticsProps) {
   const [records, setRecords] = useState<ScanRecord[]>([]);
   const [qrRecords, setQrRecords] = useState<QrCode[]>([]);
   const [activityTab, setActivityTab] = useState<ActivityTab>("scans");
@@ -120,6 +121,7 @@ export function HomeAnalytics() {
       showsVerticalScrollIndicator={false}
       contentContainerStyle={styles.root}
     >
+      {topContent}
       <View style={styles.headingRow}>
         <View style={styles.headingCopy}>
           <Text style={styles.heading}>Scan overview</Text>

@@ -12,14 +12,14 @@ type SettingsDialogProps = {
   hideLogo: boolean;
   onChangeName: (name: string) => void;
   onChangeHideLogo: (hide: boolean) => void;
-  onDelete: () => void;
-  isDeleting: boolean;
+  onDelete?: () => void;
+  isDeleting?: boolean;
 };
 
 /* ------------------ BREAK ------------------ */
 
 // Edits the QR name and built-in logo visibility in the main form.
-export default function SettingsDialog({ visible, onClose, name, hideLogo, onChangeName, onChangeHideLogo, onDelete, isDeleting }: SettingsDialogProps) {
+export default function SettingsDialog({ visible, onClose, name, hideLogo, onChangeName, onChangeHideLogo, onDelete, isDeleting = false }: SettingsDialogProps) {
   //Default Return
   return (
     <PxModal visible={visible} onRequestClose={onClose} name="Settings" height="auto" maxHeight={440} keyboardAvoiding>
@@ -47,7 +47,7 @@ export default function SettingsDialog({ visible, onClose, name, hideLogo, onCha
             value={hideLogo}
           />
         </View>
-        <Pressable
+        {onDelete ? <Pressable
           accessibilityRole="button"
           accessibilityState={{ disabled: isDeleting }}
           disabled={isDeleting}
@@ -55,7 +55,7 @@ export default function SettingsDialog({ visible, onClose, name, hideLogo, onCha
           style={styles.deleteButton}
         >
           <Text style={styles.deleteText}>{isDeleting ? "Deleting..." : "Delete"}</Text>
-        </Pressable>
+        </Pressable> : null}
       </View>
     </PxModal>
   );//return ends

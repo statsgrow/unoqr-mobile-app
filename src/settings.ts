@@ -14,6 +14,19 @@ export const apiSettings = {
 
 /* ------------------ BREAK ------------------ */
 
+export const frontendSettings = {
+  // Builds frontend URLs for the same environment as the app's API.
+  getFrontendUrl({ path }: { path: string }): URL {
+    const host = process.env.EXPO_PUBLIC_API_ENV === "production"
+      ? process.env.EXPO_PUBLIC_FRONTEND_URL_PRODUCTION || "https://unoqr.com"
+      : process.env.EXPO_PUBLIC_FRONTEND_URL_DEVELOPMENT;
+    if (!host) throw new Error("The card preview is not configured yet.");
+    return new URL(path, host);
+  },//func ends
+};//export ends
+
+/* ------------------ BREAK ------------------ */
+
 export const sqliteSettings = {
   dbName: "unoqr_mobile_app.db",
 };//const ends

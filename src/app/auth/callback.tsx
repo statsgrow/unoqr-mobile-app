@@ -14,6 +14,7 @@ type LoginCallbackParams = {
   callback_url?: string | string[];
   access_token?: string | string[];
   refresh_token?: string | string[];
+  auth_error?: string | string[];
   next?: string | string[];
 };
 
@@ -49,14 +50,15 @@ export default function LoginCallbackScreen() {
     const tokens = directTokens.accessToken && directTokens.refreshToken
       ? directTokens
       : getTokensFromUrl(callbackUrl);
-    const callbackNext = getNextFromUrl(callbackUrl);
+    const callbackNext = getCallbackParam(callbackUrl, "next");
+    const callbackError = getFirstParam(params.auth_error) || getCallbackParam(callbackUrl, "auth_error");
     const nextRoute = getSafeNextRoute(getFirstParam(params.next) || callbackNext);
 
-    if (!tokens.accessToken || !tokens.refreshToken) {
-      if (!callbackUrl) return;
+    if (callbackError || !tokens.accessToken || !tokens.refreshToken) {
+      if (!callbackUrl && !callbackError) return;
 
       hasProcessed.current = true;
-      Toast.error({ message: "Google authentication could not be completed." });
+      Toast.error({ message: callbackError || "Google authentication could not be completed." });
       const redirectTimeout = setTimeout(() => {
         redirect("replace", { pathname: "/auth/login", params: { next: nextRoute } });
       }, 1200);
@@ -84,7 +86,7 @@ export default function LoginCallbackScreen() {
     };//func ends
 
     void completeAuthentication();
-  }, [callbackUrl, params.access_token, params.next, params.refresh_token]);
+  }, [callbackUrl, params.access_token, params.auth_error, params.next, params.refresh_token]);
 
   //Default Return
   return (
@@ -119,12 +121,12 @@ function getTokensFromUrl(value: string): AuthTokens {
   };//try-catch ends
 };//func ends
 
-// Reads the post-login route supplied by the fixed API callback.
-function getNextFromUrl(value: string): string | null {
+// Reads navigation or login errors supplied by the UnoQR API callback.
+function getCallbackParam(value: string, name: "next" | "auth_error"): string | null {
   if (!value) return null;
 
   try {
-    return new URL(value).searchParams.get("next");
+    return new URL(value).searchParams.get(name);
   } catch {
     return null;
   };//try-catch ends

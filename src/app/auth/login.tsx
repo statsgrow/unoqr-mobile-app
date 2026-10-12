@@ -141,16 +141,16 @@ export default function LoginScreen() {
     };//try-catch ends
   };//func ends
 
-  // Starts Google OAuth through the isolated mobile API route and hands success to the callback page.
+  // Starts direct Google OAuth through the UnoQR API and returns to the mobile callback.
   const handleGoogleLogin = async () => {
     setIsOpeningGoogle(true);
     setLoginError(null);
 
     try {
-      const callbackUrl = new URL(Linking.createURL("/auth/callback"));
+      const callbackUrl = new URL(Linking.createURL("/auth/callback", { scheme: "unoqr" }));
       callbackUrl.searchParams.set("next", nextRoute);
-      const loginUrl = new URL(`https://api.unoqr.com/auth/app/login/google`);
-      loginUrl.searchParams.set("next", callbackUrl.href);
+      const loginUrl = new URL("https://api.unoqr.com/auth/login/google");
+      loginUrl.searchParams.set("redirect", callbackUrl.href);
       const result = await WebBrowser.openAuthSessionAsync(loginUrl.href, callbackUrl.href);
 
       if (result.type === "success") {

@@ -8,6 +8,11 @@ import { colors, spacing } from "@/theme/tokens";
 
 type ColorDialogProps = {
   visible: boolean;
+  name?: string;
+  foregroundLabel?: string;
+  foregroundHint?: string;
+  backgroundHint?: string;
+  onReset?: () => void;
   onClose: () => void;
   foregroundColor: string;
   backgroundColor: string;
@@ -25,27 +30,27 @@ const BACKGROUND_COLORS = [
 /* ------------------ BREAK ------------------ */
 
 // Edits the shared QR foreground fallback and the QR background color.
-export default function ColorDialog({ visible, onClose, foregroundColor, backgroundColor, onChangeForeground, onChangeBackground }: ColorDialogProps) {
+export default function ColorDialog({ visible, onClose, foregroundColor, backgroundColor, onChangeForeground, onChangeBackground, name = "Color", foregroundLabel = "Foreground", foregroundHint = "Used by dots, eyes, and frames unless they have their own color.", backgroundHint = "Choose a light background for reliable scanning.", onReset }: ColorDialogProps) {
   //Default Return
   return (
-    <PxModal visible={visible} onRequestClose={onClose} name="Color" height="auto" maxHeight={820} keyboardAvoiding>
+    <PxModal visible={visible} onRequestClose={onClose} name={name} height="auto" maxHeight={820} keyboardAvoiding>
       <View style={styles.content}>
         <QrColorPicker
-          name="Foreground"
+          name={foregroundLabel}
           color={foregroundColor}
           onChangeColor={onChangeForeground}
-          hint="Used by dots, eyes, and frames unless they have their own color."
+          hint={foregroundHint}
         />
         <QrColorPicker
           name="Background"
           color={backgroundColor}
           onChangeColor={onChangeBackground}
           presets={BACKGROUND_COLORS}
-          onReset={() => {
+          onReset={onReset ?? (() => {
             onChangeForeground(colors.primary.main);
             onChangeBackground(colors.white.main);
-          }}
-          hint="Choose a light background for reliable scanning."
+          })}
+          hint={backgroundHint}
         />
       </View>
     </PxModal>

@@ -8,8 +8,12 @@ def releaseEnvironmentCheck = tasks.register("checkReleaseEnvironment", Exec) {
 androidComponents.onVariants(androidComponents.selector().withBuildType("release")) { variant ->
     def variantName = variant.name.capitalize()
     tasks.configureEach { task ->
-        if (task.name == "pre${variantName}Build" || task.name == "createBundle${variantName}JsAndAssets") {
+        if (task.name == "pre${variantName}Build" || task.name == "createBundle${variantName}JsAndAssets" || task.name == "create${variantName}UpdatesResources") {
             task.dependsOn(releaseEnvironmentCheck)
+        }
+        // Expo's task does not track source assets, so its cached manifest can miss new images.
+        if (task.name == "create${variantName}UpdatesResources") {
+            task.outputs.upToDateWhen { false }
         }
     }
 }
