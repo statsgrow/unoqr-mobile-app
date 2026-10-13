@@ -8,6 +8,7 @@ import { getUID } from "@/utils/general/Uid";
 export type DigitalCardLayoutType = "modern" | "centered" | "spotlight" | "minimal";
 export type DigitalCardSocialLink = { label: string; url: string };
 export type DigitalCardSettingsValues = {
+  name: string;
   status: "published" | "unpublished";
   seoTitle: string;
   seoDescription: string;
@@ -16,7 +17,7 @@ export type DigitalCardSettingsValues = {
 };
 export type DigitalCardDetails = {
   profilePicture: FileInputValue | null;
-  name: string;
+  fullname: string;
   company: string;
   position: string;
   phones: { value: string }[];
@@ -31,7 +32,7 @@ export type AppDigitalCardQr = { id?: string; uid: string; userId: string; setti
 
 export const DIGITAL_CARD_DEFAULTS: DigitalCardDetails = {
   profilePicture: null,
-  name: "",
+  fullname: "",
   company: "",
   position: "",
   phones: [{ value: "" }],
@@ -42,6 +43,7 @@ export const DIGITAL_CARD_DEFAULTS: DigitalCardDetails = {
 };//export ends
 
 export const DIGITAL_CARD_SETTINGS_DEFAULTS: DigitalCardSettingsValues = {
+  name: "My Card",
   status: "unpublished",
   seoTitle: "",
   seoDescription: "",

@@ -818,7 +818,7 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border.main,
     backgroundColor: colors.white.main
   },
-  headerTitle: { flex: 1, color: colors.primary.main, fontFamily: fontFamilies.primaryBold, fontSize: fontSizes.h6 },
+  headerTitle: { flex: 1, color: colors.primary.main, fontFamily: fontFamilies.primaryBold, fontSize: fontSizes.navigationTitle },
   saveStatus: { width: 38, height: 38, alignItems: "center", justifyContent: "center" },
   content: {
     flexGrow: 1,

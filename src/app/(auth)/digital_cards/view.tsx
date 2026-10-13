@@ -1,14 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { File, Paths } from "expo-file-system";
-import { Share2 } from "lucide-react-native";
-import { router } from "expo-router";
+import { Redirect } from "expo-router";
 import { ActivityIndicator, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import WebView, { type WebViewMessageEvent } from "react-native-webview";
 
 import { fileDownload } from "@/components/files/FileDownload";
-import { BottomNav } from "@/components/layout/BottomNav";
-import { HeaderBackButton } from "@/components/layout/HeaderBackButton";
-import { getDigitalCard, restoreDigitalCard, saveDigitalCard } from "@/helpers/digital_cards/api/cards";
+import { getDigitalCard, restoreDigitalCard, saveDigitalCard, type RemoteCard } from "@/helpers/digital_cards/api/cards";
 import { createDigitalCard, type AppDigitalCardQr } from "@/helpers/digital_cards/model";
 import DigitalCardShareDialog from "@/helpers/digital_cards/dialogs/DigitalCardShareDialog";
 import { validateDigitalCard } from "@/helpers/digital_cards/validations";
@@ -21,14 +19,16 @@ import GetError from "@/utils/general/Error";
 
 /* ------------------ BREAK ------------------ */
 
-type DigitalCardViewProps = { embedded?: boolean; onCardSettings?: () => void; onPublished?: (card: AppDigitalCardQr) => void };
+type DigitalCardViewProps = { embedded?: boolean; savedCard?: AppDigitalCardQr; onPublished?: (card: AppDigitalCardQr) => void; onCardRefreshed?: (card: AppDigitalCardQr) => void };
 type PreviewSource = { uri: string; headers: Record<string, string> };
-type PreviewMessage = { type?: unknown; uid?: unknown; content?: unknown; message?: unknown };
+type PreviewMessage = { type?: unknown; uid?: unknown; content?: unknown; message?: unknown; atTop?: unknown };
+type PreviewCard = Omit<RemoteCard, "id" | "user_id" | "photo">;
 
 /* ------------------ BREAK ------------------ */
 
 // Shows the shared frontend preview while keeping publishing and contact downloads native.
-export default function DigitalCardViewScreen({ embedded = false, onCardSettings, onPublished }: DigitalCardViewProps = {}) {
+export default function DigitalCardViewScreen({ embedded = false, savedCard, onPublished, onCardRefreshed }: DigitalCardViewProps = {}) {
+  const insets = useSafeAreaInsets();
   const [shareOpen, setShareOpen] = useState(false);
   const [card, setCard] = useState<AppDigitalCardQr | null>(null);
   const [source, setSource] = useState<PreviewSource | null>(null);
@@ -41,11 +41,13 @@ export default function DigitalCardViewScreen({ embedded = false, onCardSettings
   const [formType, setFormType] = useState<"add" | "edit">("add");
   const [publishError, setPublishError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [contactMessage, setContactMessage] = useState<string | null>(null);
   const downloadLock = useRef(false);
+  const webView = useRef<WebView | null>(null);
+  const confirmedCard = useRef<AppDigitalCardQr | null>(savedCard ?? null);
 
-  // Loads the account's saved card and authenticates the frontend's server-side preview request.
+  // Reuses the saved response, fetching a card only for direct opening or explicit refresh.
   useEffect(() => {
+    if (!embedded) return;
     let mounted = true;
     const loadCard = async (): Promise<void> => {
       setError(null);
@@ -56,21 +58,28 @@ export default function DigitalCardViewScreen({ embedded = false, onCardSettings
       try {
         const user = await getStorageUser();
         if (!user) throw new Error("Sign in to view your digital business card.");
-        const remote = await getDigitalCard();
-        if (!remote) throw new Error("Add your card details before previewing it.");
-        const loaded = restoreDigitalCard(remote, createDigitalCard({ userId: user.id, defaults: QR_DEFAULTS, uid: remote.uid }));
-        if (!loaded.details.name.trim()) throw new Error("Add your card details before previewing it.");
+        let loaded = confirmedCard.current;
+        const fetched = !loaded;
+        if (!loaded) {
+          const remote = await getDigitalCard();
+          if (!remote) throw new Error("Add your card details before previewing it.");
+          loaded = restoreDigitalCard(remote, createDigitalCard({ userId: user.id, defaults: QR_DEFAULTS, uid: remote.uid }));
+        };//if ends
+        if (loaded.userId !== user.id) throw new Error("Sign in to view your digital business card.");
+        if (!loaded.details.fullname.trim()) throw new Error("Add your card details before previewing it.");
         const { accessToken } = await getUserTokens();
         if (!accessToken) throw new Error("Sign in to preview your card.");
         const url = frontendSettings.getFrontendUrl({ path: "/dc/preview" });
         url.searchParams.set("uid", loaded.uid);
+        url.searchParams.set("native", "true");
         if (mounted) {
-          setFormType(remote?.id ? "edit" : "add");
+          confirmedCard.current = loaded;
+          setFormType(loaded.id ? "edit" : "add");
           setCard(loaded);
           setSource({ uri: url.href, headers: { [userTokenSettings.headerTokens.accessToken.name]: accessToken } });
           setPublishError(null);
           setActionError(null);
-          setContactMessage(null);
+          if (fetched) onCardRefreshed?.(loaded);
         };//if ends
       } catch (loadError: unknown) {
         if (mounted) setError(GetError({ error: loadError, message: "Your digital card preview could not be loaded." }).message);
@@ -80,7 +89,13 @@ export default function DigitalCardViewScreen({ embedded = false, onCardSettings
     };//func ends
     void loadCard();
     return () => { mounted = false; };//return ends
-  }, [loadKey]);
+  }, [embedded, loadKey]);
+
+  // Refreshes account data explicitly before rebuilding the preview page.
+  const reloadCard = (): void => {
+    confirmedCard.current = null;
+    setLoadKey((key) => key + 1);
+  };//func ends
 
   // Publishes the reviewed card, then reloads the frontend to show its latest status.
   const handlePublish = async (): Promise<AppDigitalCardQr | null> => {
@@ -93,6 +108,7 @@ export default function DigitalCardViewScreen({ embedded = false, onCardSettings
       const saved = restoreDigitalCard(await saveDigitalCard(next, formType === "edit"), next);
       setFormType("edit");
       setCard(saved);
+      confirmedCard.current = saved;
       onPublished?.(saved);
       setLoadKey((key) => key + 1);
       return saved;
@@ -120,7 +136,6 @@ export default function DigitalCardViewScreen({ embedded = false, onCardSettings
     if (downloadLock.current) return;
     downloadLock.current = true;
     setActionError(null);
-    setContactMessage(null);
     let file: File | null = null;
     try {
       const fileName = `unoqr-contact-${Date.now()}.vcf`;
@@ -128,7 +143,10 @@ export default function DigitalCardViewScreen({ embedded = false, onCardSettings
       file.create();
       file.write(content);
       const saved = await fileDownload({ uri: file.uri, fileName, mimeType: "text/vcard" });
-      if (saved) setContactMessage(`Contact saved to ${saved.location}.`);
+      if (saved) {
+        const payload = JSON.stringify({ type: "digital-card-contact-saved", uid: card?.uid, location: saved.location });
+        webView.current?.injectJavaScript(`window.dispatchEvent(new MessageEvent('message', { data: ${JSON.stringify(payload)} })); true;`);
+      };//if ends
     } catch (downloadError: unknown) {
       setActionError(GetError({ error: downloadError, message: "Your contact could not be saved." }).message);
     } finally {
@@ -142,7 +160,13 @@ export default function DigitalCardViewScreen({ embedded = false, onCardSettings
     if (!source || !card || !isPreviewOrigin(event.nativeEvent.url, source.uri)) return;
     const message = parsePreviewMessage(event.nativeEvent.data);
     if (!message) return;
+    if (message.type === "digital-card-preview-ready" && message.uid === card.uid) {
+      const payload = JSON.stringify({ type: "digital-card-preview", card: toPreviewCard(card) });
+      webView.current?.injectJavaScript(`window.dispatchEvent(new MessageEvent('message', { data: ${JSON.stringify(payload)} })); true;`);
+    };//if ends
+    if (message.type === "digital-card-scroll" && message.uid === card.uid && typeof message.atTop === "boolean") setAtTop(message.atTop);
     if (message.type === "digital-card-ready" && message.uid === card.uid) setPreviewReady(true);
+    if (message.type === "digital-card-share" && message.uid === card.uid && previewReady && !publishing && !refreshing) setShareOpen(true);
     if (message.type === "digital-card-error" && typeof message.message === "string") {
       setError(message.message);
       setPreviewReady(false);
@@ -153,19 +177,13 @@ export default function DigitalCardViewScreen({ embedded = false, onCardSettings
   };//func ends
 
   //Default Return
+  if (!embedded) return <Redirect href="/digital_cards/modify" />;//return ends
   return (
-    <View style={styles.root}>
-      {!embedded ? <View style={styles.header}>
-        <HeaderBackButton accessibilityLabel="Back to card editor" onPress={() => router.back()} />
-        <Text style={styles.headerTitle}>Card preview</Text>
-      </View> : null}
-      {card ? <View style={styles.shareToolbar}>
-        <Text style={styles.hint}>Your digital business card</Text>
-        <Pressable accessibilityRole="button" accessibilityLabel="Share digital card" disabled={!previewReady || publishing || refreshing} onPress={() => setShareOpen(true)} style={styles.shareButton}><Share2 size={22} strokeWidth={1.25} color={colors.primary.main} /></Pressable>
-      </View> : null}
-      <ScrollView style={styles.previewArea} contentContainerStyle={styles.previewContent} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => setLoadKey((key) => key + 1)} enabled={atTop && !publishing} tintColor={colors.secondary.main} colors={[colors.secondary.main]} />}>
+    <View style={[styles.root, { paddingBottom: insets.bottom }]}>
+      <ScrollView style={styles.previewArea} contentContainerStyle={styles.previewContent} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={reloadCard} enabled={atTop && !publishing} tintColor={colors.secondary.main} colors={[colors.secondary.main]} />}>
         {source && !error ? (
           <WebView
+            ref={webView}
             key={loadKey}
             source={source}
             style={styles.webView}
@@ -199,22 +217,33 @@ export default function DigitalCardViewScreen({ embedded = false, onCardSettings
         ) : <View style={styles.message}>
           {error ? <>
             <Text accessibilityRole="alert" style={styles.error}>{error}</Text>
-            <Pressable accessibilityRole="button" onPress={() => setLoadKey((key) => key + 1)} style={styles.retry}><Text style={styles.retryText}>Try again</Text></Pressable>
+            <Pressable accessibilityRole="button" onPress={reloadCard} style={styles.retry}><Text style={styles.retryText}>Try again</Text></Pressable>
           </> : <ActivityIndicator size="large" color={colors.secondary.main} />}
         </View>}
       </ScrollView>
-      {card ? <BottomNav hideMenu={true} footerAction={<View style={styles.publishFooter}>
+      {card && (actionError || publishError) ? <View style={styles.actionFeedback}>
         {actionError ? <Text accessibilityRole="alert" style={styles.error}>{actionError}</Text> : null}
-        {contactMessage ? <Text style={styles.hint}>{contactMessage}</Text> : null}
         {publishError ? <Text accessibilityRole="alert" style={styles.error}>{publishError}</Text> : null}
-        <Pressable accessibilityRole="button" accessibilityLabel="My Card Settings" onPress={() => onCardSettings ? onCardSettings() : router.replace("/digital_cards/modify")} style={styles.settingsButton}>
-          <Text style={styles.settingsText}>My Card Settings</Text>
-        </Pressable>
-      </View>} /> : null}
+      </View> : null}
       {card ? <DigitalCardShareDialog card={card} open={shareOpen} setOpen={setShareOpen} onPublish={handlePublish} /> : null}
     </View>
   );//return ends
 };//export ends
+
+/* ------------------ BREAK ------------------ */
+
+// Sends display fields only, excluding database ownership and uploaded-file metadata.
+function toPreviewCard(card: AppDigitalCardQr): PreviewCard {
+  const { profilePicture, socialLinks, ...details } = card.details;
+  const { dot, eye, frame, styles } = card.settings;
+  return {
+    ...details, name: card.cardSettings.name, uid: card.uid, url: card.settings.content, status: card.cardSettings.status,
+    photo_url: profilePicture?.url || null, social_links: socialLinks,
+    layout: card.layout, primary_color: card.primaryColor, qr_design: { dot, eye, frame, styles },
+    seo: { title: card.cardSettings.seoTitle, description: card.cardSettings.seoDescription, allow_indexing: card.cardSettings.allowIndexing },
+    allow_save_contact: card.cardSettings.allowSaveContact
+  };//return ends
+};//func ends
 
 /* ------------------ BREAK ------------------ */
 
@@ -243,10 +272,6 @@ function parsePreviewMessage(value: string): PreviewMessage | null {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.cream.main },
-  header: { minHeight: 64, flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.sm, backgroundColor: colors.white.main },
-  headerTitle: { flex: 1, color: colors.primary.main, fontFamily: fontFamilies.primaryBold, fontSize: fontSizes.h6 },
-  shareToolbar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: spacing.md, backgroundColor: colors.white.main },
-  shareButton: { width: 48, height: 48, alignItems: "center", justifyContent: "center" },
   previewArea: { flex: 1 },
   previewContent: { flex: 1 },
   webView: { flex: 1, backgroundColor: colors.cream.main },
@@ -256,7 +281,5 @@ const styles = StyleSheet.create({
   hint: { color: colors.mute.main, fontFamily: fontFamilies.primaryRegular, fontSize: fontSizes.caption, textAlign: "center" },
   retry: { backgroundColor: colors.secondary.main, borderRadius: radii.lg, padding: spacing.md },
   retryText: { color: colors.white.main, fontFamily: fontFamilies.primarySemiBold, fontSize: fontSizes.button },
-  publishFooter: { padding: spacing.md, gap: spacing.sm, backgroundColor: colors.white.main },
-  settingsButton: { minHeight: 50, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm, borderRadius: radii.lg, backgroundColor: colors.black.main },
-  settingsText: { color: colors.white.main, fontFamily: fontFamilies.primarySemiBold, fontSize: fontSizes.button }
+  actionFeedback: { padding: spacing.md, gap: spacing.sm, backgroundColor: colors.white.main },
 });

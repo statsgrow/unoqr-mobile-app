@@ -48,7 +48,7 @@ export default function DigitalCardSettings({ refreshing, onRefresh, settings, o
   const handleSaveSettings = async (values: DigitalCardSettingsValues): Promise<void> => {
     form.clearErrors("root.save");
     try {
-      const settings = { ...values, seoTitle: values.seoTitle.trim(), seoDescription: values.seoDescription.trim() };
+      const settings = { ...values, name: values.name.trim(), seoTitle: values.seoTitle.trim(), seoDescription: values.seoDescription.trim() };
       await onSave(settings);
       form.reset(settings);
     } catch (saveError: unknown) {
@@ -60,6 +60,9 @@ export default function DigitalCardSettings({ refreshing, onRefresh, settings, o
   return (
     <View style={styles.root}>
       <ScrollView refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.secondary.main} colors={[colors.secondary.main]} />} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" contentContainerStyle={styles.content}>
+        <View style={styles.section}>
+          <PxTextInput RHF={form} name="name" label="Card name *" placeholder="My Card" rules={{ validate: (value) => typeof value === "string" && !!value.trim() || "Enter a card name." }} disabled={isSubmitting} />
+        </View>
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Publication</Text>
           <Text style={styles.description}>Choose Published or Unpublished, then save to update your card.</Text>

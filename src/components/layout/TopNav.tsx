@@ -138,7 +138,7 @@ const styles = StyleSheet.create({
     flex: 1,
     color: colors.primary.main,
     fontFamily: fontFamilies.primarySemiBold,
-    fontSize: fontSizes.h6
+    fontSize: fontSizes.navigationTitle
   },
   syncStatus: {
     width: 38,

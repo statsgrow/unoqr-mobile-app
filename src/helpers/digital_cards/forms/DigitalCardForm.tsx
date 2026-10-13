@@ -89,7 +89,7 @@ export default function DigitalCardForm({ refreshing, onRefresh, details, onDraf
             onRemove={deleteCardPhoto}
             disabled={isSubmitting}
           />
-          <CardField form={form} name="name" label="Full name *" placeholder="Your full name" required disabled={isSubmitting} />
+          <CardField form={form} name="fullname" label="Full name *" placeholder="Your full name" required disabled={isSubmitting} />
           <CardField form={form} name="company" label="Company" placeholder="Company name" disabled={isSubmitting} />
           <CardField form={form} name="position" label="Position" placeholder="Job title" disabled={isSubmitting} />
         </View>
@@ -243,7 +243,7 @@ function validateCardField(value: string, keyboardType: KeyboardTypeOptions, req
 function normalizeCardDetails(values: DigitalCardDetails): DigitalCardDetails {
   return {
     profilePicture: values.profilePicture,
-    name: values.name.trim(),
+    fullname: values.fullname.trim(),
     company: values.company.trim(),
     position: values.position.trim(),
     phones: values.phones.map(({ value }) => ({ value: value.trim() })).filter(({ value }) => value),

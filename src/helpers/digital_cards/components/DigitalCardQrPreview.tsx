@@ -70,7 +70,7 @@ export default function DigitalCardQrPreview({ card, exportRef, onReadyChange }:
 
   const { dot, eye, frame, styles: qrStyles } = card.settings;
   const payload = JSON.stringify({ type: "digital-card-qr-preview", card: {
-    uid: card.uid, url: `https://unoqr.com/dc/${card.uid}`, name: card.details.name,
+    uid: card.uid, url: `https://unoqr.com/dc/${card.uid}`, name: card.details.fullname,
     position: card.details.position, company: card.details.company, primary_color: card.primaryColor,
     qr_design: { dot, eye, frame, styles: qrStyles }, photo_data_url: photoData, photo_expected: Boolean(photo)
   } });

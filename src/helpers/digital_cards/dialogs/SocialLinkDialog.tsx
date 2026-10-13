@@ -16,7 +16,10 @@ type SocialLinkDialogProps = {
   onSave: (link: DigitalCardSocialLink) => void;
 };
 
-const SOCIAL_PLATFORMS: PxSelectOption[] = ["LinkedIn", "Instagram", "Facebook", "X", "YouTube", "TikTok", "GitHub", "Threads", "Pinterest", "Telegram", "WhatsApp", "Website"].map((platform) => ({ label: platform, value: platform }));
+const SOCIAL_PLATFORMS: PxSelectOption[] = [
+  "Link", "Website", "Company Website", "LinkedIn", "Instagram", "Calendly", "X", "Facebook", "Threads", "Snapchat",
+  "TikTok", "YouTube", "GitHub", "Yelp", "Venmo", "PayPal", "CashApp", "Discord", "Signal", "Skype", "Telegram", "Twitch", "WhatsApp", "Pinterest"
+].map((platform) => ({ label: platform, value: platform }));
 
 /* ------------------ BREAK ------------------ */
 

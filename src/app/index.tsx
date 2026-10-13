@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import { useFocusEffect } from "expo-router";
 import { ArrowUpRight, ChevronRight, ContactRound } from "lucide-react-native";
-import { Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { HomeAnalytics } from "@/components/home/HomeAnalytics";
 import { getDigitalCard, type RemoteCard } from "@/helpers/digital_cards/api/cards";
@@ -13,16 +13,20 @@ import { redirect } from "@/utils/general/Redirect";
 
 // Renders the app home route inside the shared general layout.
 export default function HomeScreen() {
+  const [loadingCard, setLoadingCard] = useState(true);
   const [card, setCard] = useState<RemoteCard | null>(null);
   const [failedPhoto, setFailedPhoto] = useState<string | null>(null);
 
   // Loads the account's saved card on Home entry and after returning from its editor.
   useFocusEffect(useCallback(() => {
     let active = true;
+    setLoadingCard(true);
     void getDigitalCard().then(saved => {
       if (active) setCard(saved);
     }).catch(() => {
       console.warn("Unable to refresh the Home digital card.");
+    }).finally(() => {
+      if (active) setLoadingCard(false);
     });
     return () => { active = false; };
   }, []));
@@ -32,7 +36,9 @@ export default function HomeScreen() {
     <GeneralLayout scroll={false}>
       <HomeAnalytics topContent={(
         <Pressable
-          accessibilityLabel={card ? `View ${card.name}’s Digital Business Card` : "Create Digital Business Card"}
+          disabled={loadingCard}
+          accessibilityState={{ busy: loadingCard, disabled: loadingCard }}
+          accessibilityLabel={loadingCard ? "Loading your Digital Business Card" : card ? `View ${card.name}’s Digital Business Card` : "Create Digital Business Card"}
           accessibilityRole="button"
           onPress={() => redirect("push", "/digital_cards/modify")}
           style={({ pressed }) => [styles.digitalCard, pressed && styles.pressed]}
@@ -43,7 +49,7 @@ export default function HomeScreen() {
             <View style={[styles.patternRing, styles.patternRingInner]} />
           </View>
           {/* Keeps the original content height as the sizing reference for both states. */}
-          <View style={[styles.createContent, card && styles.hiddenContent]} accessibilityElementsHidden={Boolean(card)} importantForAccessibility={card ? "no-hide-descendants" : "auto"}>
+          <View style={[styles.createContent, (card || loadingCard) && styles.hiddenContent]} accessibilityElementsHidden={Boolean(card) || loadingCard} importantForAccessibility={card || loadingCard ? "no-hide-descendants" : "auto"}>
             <View style={styles.cardTopRow}>
               <View style={styles.cardIcon}>
                 <ContactRound size={22} strokeWidth={1.25} color={colors.secondary.main} />
@@ -63,7 +69,17 @@ export default function HomeScreen() {
               </View>
             </View>
           </View>
-          {card ? <View style={styles.savedCard}>
+          {loadingCard ? <View style={styles.savedCard}>
+            <View style={styles.avatarBorder}>
+              <View style={[styles.avatar, styles.loadingAvatar]}>
+                <ActivityIndicator color={colors.white.main} />
+              </View>
+            </View>
+            <View style={styles.cardContent}>
+              <Text style={styles.cardHeading}>My Digital Business Card</Text>
+              <Text style={styles.cardDescription}>Loading your card…</Text>
+            </View>
+          </View> : card ? <View style={styles.savedCard}>
             <View style={styles.avatarBorder}>
             <View style={styles.avatar}>
               {card.photo_url && failedPhoto !== card.photo_url ? <Image source={{ uri: card.photo_url }} style={styles.avatarImage} onError={() => setFailedPhoto(card.photo_url)} /> : <Text style={styles.avatarInitial}>{card.name.trim().slice(0, 1).toUpperCase()}</Text>}
@@ -97,6 +113,7 @@ const styles = StyleSheet.create({
   cardHeading: { color: colors.neutral.light, fontFamily: fontFamilies.primaryMedium, fontSize: fontSizes.caption },
   avatarBorder: { padding: 3, borderWidth: 1, borderColor: colors.white.main, borderRadius: radii.pill },
   avatar: { width: 56, height: 56, borderRadius: radii.pill, overflow: "hidden", alignItems: "center", justifyContent: "center", backgroundColor: colors.secondary.light },
+  loadingAvatar: { backgroundColor: "transparent" },
   avatarImage: { width: "100%", height: "100%", resizeMode: "cover" },
   avatarInitial: { color: colors.primary.main, fontFamily: fontFamilies.primaryBold, fontSize: fontSizes.h5 },
   pressed: { opacity: 0.8 },

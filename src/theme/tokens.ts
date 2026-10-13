@@ -145,6 +145,8 @@ export const fontSizes = {
   h4: 28,
   h5: 24,
   h6: 20,
+  // Shared size for titles in the app's top navigation bars.
+  navigationTitle: 18,
   subtitle1: 16,
   subtitle2: 14,
   body1: 16,

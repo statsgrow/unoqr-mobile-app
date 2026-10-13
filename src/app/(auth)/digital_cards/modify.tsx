@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { router } from "expo-router";
-import { ValidationError } from "yup";
+import { Eye, Pencil } from "lucide-react-native";
 import { ActivityIndicator, Keyboard, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -21,18 +21,16 @@ import DigitalCardViewScreen from "./view";
 
 /* ------------------ BREAK ------------------ */
 
-type DigitalCardTab = "card" | "preview";
+type DigitalCardScreen = "edit" | "preview";
 type DigitalCardStep = "form" | "layout" | "qr" | "settings";
 
 /* ------------------ BREAK ------------------ */
 
-// Loads the card and keeps its QR and card sections mounted beneath the fixed navigation.
+// Opens the saved card in Preview and keeps its editor sections mounted beneath the header.
 export default function ModifyDigitalCardScreen() {
-  const [activeTab, setActiveTab] = useState<DigitalCardTab>("card");
+  const [screen, setScreen] = useState<DigitalCardScreen>("preview");
   const [activeStep, setActiveStep] = useState<DigitalCardStep>("form");
   const [card, setCard] = useState<AppDigitalCardQr | null>(null);
-  const [formType, setFormType] = useState<"add" | "edit">("add");
-  const [previewing, setPreviewing] = useState(false);
   const draftCard = useRef<AppDigitalCardQr | null>(null);
   const latestCard = useRef<AppDigitalCardQr | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -54,7 +52,7 @@ export default function ModifyDigitalCardScreen() {
         const defaults = createDigitalCard({ userId: user.id, defaults: QR_DEFAULTS, uid: remote?.uid });
         const loaded = remote ? restoreDigitalCard(remote, defaults) : defaults;
         if (isMounted) {
-          setFormType(remote?.id ? "edit" : "add");
+          if (loadKey === 0 || !remote?.id) setScreen(remote?.id ? "preview" : "edit");
           latestCard.current = loaded;
           draftCard.current = loaded;
           setCard(loaded);
@@ -86,7 +84,6 @@ export default function ModifyDigitalCardScreen() {
     latestCard.current = saved;
     draftCard.current = { ...(draftCard.current ?? saved), ...changes, id: saved.id };
     setCard(saved);
-    setFormType("edit");
   }, []);
 
   // Reloads saved card values into each mounted form after a pull gesture.
@@ -115,7 +112,7 @@ export default function ModifyDigitalCardScreen() {
     await persistCard({ details }, (uid) => saveDigitalCardDetails(uid, details));
   }, [persistCard]);
 
-  // Collects each mounted RHF draft so Preview includes edits that have not been saved individually.
+  // Retains each mounted RHF draft while moving between editor sections.
   const updateDraft = useCallback((changes: Partial<AppDigitalCardQr>): void => {
     if (draftCard.current) draftCard.current = { ...draftCard.current, ...changes };
   }, []);
@@ -134,60 +131,28 @@ export default function ModifyDigitalCardScreen() {
     const draft = draftCard.current ?? saved;
     draftCard.current = { ...draft, id: saved.id, cardSettings: { ...draft.cardSettings, status: saved.cardSettings.status } };
     setCard(saved);
-    setFormType("edit");
   }, []);
 
-  // Validates every section and opens Preview without changing the saved publication status.
-  const handlePreview = async (): Promise<void> => {
-    if (!draftCard.current || previewing || refreshing) return;
-    Keyboard.dismiss();
-    setError(null);
-    setPreviewing(true);
-    const draft = { ...draftCard.current, cardSettings: { ...draftCard.current.cardSettings, status: latestCard.current?.cardSettings.status ?? "unpublished" } };
-    try {
-      await validateDigitalCard(draft);
-      const saved = restoreDigitalCard(await saveDigitalCard(draft, formType === "edit"), draft);
-      latestCard.current = saved;
-      draftCard.current = saved;
-      setCard(saved);
-      setFormType("edit");
-      setActiveTab("preview");
-    } catch (previewError: unknown) {
-      setActiveTab("card");
-      if (previewError instanceof ValidationError) {
-        const path = previewError.path ?? "";
-        setActiveStep(path.startsWith("details") ? "form" : path.startsWith("cardSettings") ? "settings" : "layout");
-      };//if ends
-      setError(previewError instanceof Error ? previewError.message : "Your card could not be previewed.");
-    } finally {
-      setPreviewing(false);
-    };//try-catch ends
-  };//func ends
+  // Replaces editor values only when Preview explicitly reloads the card from the API.
+  const handleCardRefreshed = useCallback((loaded: AppDigitalCardQr): void => {
+    latestCard.current = loaded;
+    draftCard.current = loaded;
+    setCard(loaded);
+    setRevision((value) => value + 1);
+  }, []);
 
   //Default Return
   return (
-    <KeyboardAvoidingView style={styles.root} behavior={activeTab === "card" && activeStep !== "layout" && Platform.OS === "ios" ? "padding" : undefined} keyboardVerticalOffset={insets.top}>
+    <KeyboardAvoidingView style={styles.root} behavior={screen === "edit" && activeStep !== "layout" && Platform.OS === "ios" ? "padding" : undefined} keyboardVerticalOffset={insets.top}>
       <View style={styles.header}>
-        <HeaderBackButton accessibilityLabel="Back to Home" onPress={() => router.back()} />
-        <Text style={styles.title}>Digital Business Card</Text>
+        <HeaderBackButton accessibilityLabel={screen === "edit" && card?.id ? "Back to card preview" : "Back to Home"} onPress={() => { Keyboard.dismiss(); if (screen === "edit" && card?.id) setScreen("preview"); else router.back(); }} />
+        <Text numberOfLines={1} style={styles.title}>{card?.cardSettings.name || "My Card"}</Text>
+        {card?.id ? <Pressable accessibilityRole="button" accessibilityLabel={screen === "preview" ? "Edit digital business card" : "Preview digital business card"} disabled={refreshing} onPress={() => { Keyboard.dismiss(); setScreen(screen === "preview" ? "edit" : "preview"); }} style={styles.editButton}>
+          {screen === "preview" ? <Pencil size={18} strokeWidth={1.25} color={colors.primary.main} /> : <Eye size={18} strokeWidth={1.25} color={colors.primary.main} />}
+          <Text style={styles.editText}>{screen === "preview" ? "Edit" : "Preview"}</Text>
+        </Pressable> : null}
       </View>
-      <View style={styles.tabsArea}>
-        <View accessibilityRole="tablist" style={styles.tabs}>
-          {(["card", "preview"] as const).map((tab) => (
-            <Pressable
-              key={tab}
-              accessibilityRole="tab"
-              accessibilityState={{ selected: activeTab === tab }}
-              disabled={!card || previewing || refreshing}
-              onPress={() => { Keyboard.dismiss(); if (tab === "preview" && activeTab !== "preview") void handlePreview(); else if (tab === "card") setActiveTab("card"); }}
-              style={[styles.tab, activeTab === tab && styles.selectedTab]}
-            >
-              <Text style={[styles.tabText, activeTab === tab && styles.selectedTabText]}>{tab === "card" ? "My Card" : previewing ? "Preparing…" : "Preview"}</Text>
-            </Pressable>
-          ))}
-        </View>
-      </View>
-      {activeTab === "card" ? (
+      {screen === "edit" ? (
         <View style={styles.stepsArea}>
           <View accessibilityRole="tablist" style={styles.steps}>
             {(["form", "layout", "qr", "settings"] as const).map((step) => (
@@ -209,7 +174,7 @@ export default function ModifyDigitalCardScreen() {
       {error && card ? <Text accessibilityRole="alert" style={styles.messageText}>{error}</Text> : null}
       {card ? (
         <>
-          <View style={[styles.panel, activeTab !== "card" && styles.hiddenPanel]}>
+          <View style={[styles.panel, screen !== "edit" && styles.hiddenPanel]}>
             <View style={[styles.panel, activeStep !== "form" && styles.hiddenPanel]}>
               <DigitalCardForm key={revision} refreshing={refreshing} onRefresh={handleRefresh} details={card.details} onDraftChange={handleDetailsDraft} onSave={handleSaveDetails} />
             </View>
@@ -217,13 +182,13 @@ export default function ModifyDigitalCardScreen() {
               <DigitalCardLayout key={revision} refreshing={refreshing} onRefresh={handleRefresh} layout={card.layout} primaryColor={card.primaryColor} onDraftChange={handleLayoutDraft} onSave={handleSaveLayout} />
             </View>
             <View style={[styles.panel, activeStep !== "qr" && styles.hiddenPanel]}>
-              <CreateQrScreen key={revision} digitalCard={{ primaryColor: (draftCard.current || card).primaryColor, settings: card.settings, onSave: handleSaveQr, onDraftChange: handleQrDraft, refreshing, onRefresh: handleRefresh, renderPreview: (settings) => <DigitalCardQrPreview card={{ ...(draftCard.current || card), settings }} /> }} />
+              <CreateQrScreen key={revision} digitalCard={{ primaryColor: (draftCard.current || card).primaryColor, settings: card.settings, onSave: handleSaveQr, onDraftChange: handleQrDraft, refreshing, onRefresh: handleRefresh, renderPreview: (settings) => screen === "edit" && activeStep === "qr" ? <DigitalCardQrPreview card={{ ...(draftCard.current || card), settings }} /> : null }} />
             </View>
             <View style={[styles.panel, activeStep !== "settings" && styles.hiddenPanel]}>
               <DigitalCardSettings key={revision} refreshing={refreshing} onRefresh={handleRefresh} settings={card.cardSettings} onDraftChange={handleSettingsDraft} onSave={handleSaveSettings} />
             </View>
           </View>
-          {activeTab === "preview" ? <DigitalCardViewScreen embedded onPublished={handlePublished} onCardSettings={() => { setActiveTab("card"); setActiveStep("settings"); }} /> : null}
+          {screen === "preview" ? <DigitalCardViewScreen embedded savedCard={card} onPublished={handlePublished} onCardRefreshed={handleCardRefreshed} /> : null}
         </>
       ) : (
         <View style={styles.message}>
@@ -248,13 +213,9 @@ export default function ModifyDigitalCardScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.cream.main },
   header: { minHeight: 64, flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.sm, backgroundColor: colors.white.main },
-  title: { flex: 1, color: colors.primary.main, fontFamily: fontFamilies.primaryBold, fontSize: fontSizes.h6 },
-  tabsArea: { paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.line.main, backgroundColor: colors.white.main },
-  tabs: { flexDirection: "row", gap: spacing.xxs, padding: spacing.xxs, borderRadius: radii.pill, backgroundColor: colors.cream.main },
-  tab: { flex: 1, minHeight: 44, alignItems: "center", justifyContent: "center", borderRadius: radii.pill },
-  selectedTab: { backgroundColor: colors.primary.main },
-  tabText: { color: colors.mute.main, fontFamily: fontFamilies.primarySemiBold, fontSize: fontSizes.button },
-  selectedTabText: { color: colors.white.main },
+  title: { flex: 1, color: colors.primary.main, fontFamily: fontFamilies.primaryBold, fontSize: fontSizes.navigationTitle },
+  editButton: { minHeight: 44, minWidth: 44, flexDirection: "row", gap: spacing.xxs, alignItems: "center", justifyContent: "center", paddingHorizontal: spacing.xs },
+  editText: { color: colors.primary.main, fontFamily: fontFamilies.primarySemiBold, fontSize: fontSizes.button },
   stepsArea: { paddingHorizontal: spacing.lg, paddingVertical: spacing.xxs, borderBottomWidth: 1, borderBottomColor: colors.line.main, backgroundColor: colors.cream.main },
   steps: { flexDirection: "row", gap: spacing.xs },
   stepButton: { flex: 1, minHeight: 44, justifyContent: "center" },

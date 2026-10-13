@@ -1,11 +1,12 @@
 import { useEffect } from "react";
-import QRCode from "qrcode";
-import Svg, { Path, Rect } from "react-native-svg";
+import Svg, { ClipPath, Defs, Path } from "react-native-svg";
 import { Check, Download, Globe, Mail, MapPin, Phone } from "lucide-react-native";
 import { useForm } from "react-hook-form";
 import { ActivityIndicator, Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, useWindowDimensions, View, type ImageSourcePropType } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import CalendlyIcon from "@/assets/svg/digital-cards/calendly.svg";
+import { UnoQrLogo } from "@/components/brand/UnoQrLogo";
 import { BottomNav } from "@/components/layout/BottomNav";
 import type { DigitalCardLayoutType } from "@/helpers/digital_cards/model";
 import QrColorPicker from "@/helpers/qrcodes/create/QrColorPicker";
@@ -26,13 +27,14 @@ type LayoutOption = { value: DigitalCardLayoutType; label: string; portrait: Ima
 type LayoutPreviewProps = { layout: DigitalCardLayoutType; portrait: ImageSourcePropType; primaryColor: string };
 type DemoIdentityProps = { centered?: boolean; light?: boolean };
 type DemoContactsProps = { light?: boolean };
-type DemoButtonProps = { primaryColor: string; outlined?: boolean };
+type DemoSocialsProps = { primaryColor: string; centered: boolean; light: boolean };
+type DemoFooterProps = { primaryColor: string };
 
 const LAYOUT_OPTIONS: LayoutOption[] = [
-  { value: "modern", label: "Modern", portrait: require("@/assets/images/digital-cards/indian-male.png") },
-  { value: "centered", label: "Centered", portrait: require("@/assets/images/digital-cards/american-female.png") },
-  { value: "spotlight", label: "Spotlight", portrait: require("@/assets/images/digital-cards/african-male.png") },
-  { value: "minimal", label: "Minimal", portrait: require("@/assets/images/digital-cards/russian-female.png") }
+  { value: "modern", label: "Modern", portrait: require("@/assets/images/digital-cards/indian-male.webp") },
+  { value: "centered", label: "Centered", portrait: require("@/assets/images/digital-cards/american-female.webp") },
+  { value: "spotlight", label: "Spotlight", portrait: require("@/assets/images/digital-cards/african-male.webp") },
+  { value: "minimal", label: "Minimal", portrait: require("@/assets/images/digital-cards/russian-female.webp") }
 ];
 const PREVIEW_WIDTH = 184;
 const PREVIEW_HEIGHT = 310;
@@ -40,7 +42,7 @@ const PRIMARY_COLORS = [colors.secondary.main, "#315E9C", "#214D3A", "#5B2A69", 
 
 /* ------------------ BREAK ------------------ */
 
-// Shows four sample cards with one editable primary color and saves their appearance locally.
+// Shows the current frontend card designs and saves the chosen layout and primary color.
 export default function DigitalCardLayout({ refreshing, onRefresh, layout, primaryColor, onDraftChange, onSave }: DigitalCardLayoutProps) {
   const form = useForm<LayoutFormValues>({ defaultValues: { layout, primaryColor } });
   const selectedLayout = form.watch("layout");
@@ -135,94 +137,48 @@ export default function DigitalCardLayout({ refreshing, onRefresh, layout, prima
 
 /* ------------------ BREAK ------------------ */
 
-// Renders four distinct card compositions using consistent John Doe example details.
+// Mirrors the frontend profile layouts with social links beneath the bio and a fixed sample footer.
 function LayoutPreview({ layout, portrait, primaryColor }: LayoutPreviewProps) {
-  if (layout === "modern") {
-    //Default Return
-    return (
-      <View style={styles.modern}>
-        <View style={styles.modernCover}>
-          <View style={[styles.coverCircle, { backgroundColor: primaryColor }]} />
-          <View style={[styles.coverRing, { borderColor: primaryColor }]} />
-        </View>
-        <View style={styles.modernBody}>
-          <Image source={portrait} style={styles.modernAvatar} />
-          <DemoIdentity />
-          <Text style={styles.demoBio}>Turning ideas into meaningful connections.</Text>
-          <DemoContacts />
-          <DemoSocials />
-          <DemoQr /><View style={styles.buttonArea}><DemoButton primaryColor={primaryColor} /></View>
-        </View>
-      </View>
-    );//return ends
-  };//if ends
-
-  if (layout === "centered") {
-    //Default Return
-    return (
-      <View style={styles.centered}>
-        <View style={[styles.centeredHalo, { backgroundColor: primaryColor + "22" }]} />
-        <Image source={portrait} style={styles.centeredAvatar} />
-        <DemoIdentity centered />
-        <Text style={[styles.demoBio, styles.centeredText]}>Let's create something great together.</Text>
-        <DemoSocials />
-        <View style={styles.centeredContacts}><DemoContacts /></View>
-        <DemoQr /><View style={styles.centeredButtonArea}><DemoButton primaryColor={primaryColor} /></View>
-      </View>
-    );//return ends
-  };//if ends
-
-  if (layout === "spotlight") {
-    //Default Return
-    return (
-      <View style={styles.spotlight}>
-        <View style={styles.spotlightHero}>
-          <Image source={portrait} style={styles.spotlightPhoto} />
-          <View style={styles.spotlightIdentity}><DemoIdentity light /></View>
-        </View>
-        <View style={styles.spotlightBody}>
-          <Text style={[styles.demoBio, styles.lightText]}>Good ideas start with a conversation.</Text>
-          <DemoContacts light />
-          <DemoSocials light />
-          <DemoQr /><View style={styles.buttonArea}><DemoButton primaryColor={primaryColor} /></View>
-        </View>
-      </View>
-    );//return ends
-  };//if ends
+  const centered = layout === "centered";
+  const dark = layout === "spotlight";
+  const minimal = layout === "minimal";
+  const hasCover = layout === "modern" || centered;
 
   //Default Return
   return (
-    <View style={styles.minimal}>
-      <View style={styles.minimalHeader}>
-        <Image source={portrait} style={styles.minimalAvatar} />
-        <Text style={styles.demoBrand}>ACME{"\n"}STUDIO</Text>
+    <View style={styles.previewScreen}>
+      <View style={[styles.cardSurface, dark && styles.darkCard]}>
+        {layout === "modern" ? <View style={[styles.modernCover, { backgroundColor: primaryColor }]} /> : null}
+        {centered ? <View style={styles.coverHost}>
+          <Svg width="100%" height="100%" viewBox="0 0 600 160" preserveAspectRatio="none">
+            <Defs><ClipPath id="centeredCover"><Path d="M0 0H600V120Q300 200 0 120Z" /></ClipPath></Defs>
+            <Path d="M0 0H600V120Q300 200 0 120Z" fill={primaryColor} />
+            <Path d="M-40 15 C80 100 150 -35 270 35 S450 125 640 25 M-40 50 C80 135 150 0 270 70 S450 160 640 60 M-40 85 C80 170 150 35 270 105 S450 195 640 95" clipPath="url(#centeredCover)" fill="none" stroke={getPreviewPatternColor(primaryColor)} strokeWidth={2} opacity={0.65} />
+          </Svg>
+        </View> : null}
+        {dark ? <View style={[styles.spotlightAccent, { backgroundColor: primaryColor }]} /> : null}
+        <View style={[styles.cardBody, hasCover && styles.coverBody]}>
+          <Image source={portrait} style={[styles.demoAvatar, centered && styles.centeredAvatar, minimal && styles.minimalAvatar, dark && { borderColor: primaryColor }]} />
+          <View style={[styles.identityArea, minimal && { borderLeftWidth: 2, borderColor: primaryColor, paddingLeft: 6 }]}><DemoIdentity centered={centered} light={dark} /></View>
+          <Text style={[styles.demoBio, centered && styles.centeredText, dark && styles.lightMutedText]}>Making meaningful connections.</Text>
+          <DemoSocials primaryColor={primaryColor} centered={centered} light={dark} />
+          <View style={[styles.contactsArea, dark && styles.darkDivider]}><DemoContacts light={dark} /></View>
+        </View>
       </View>
-      <View style={[styles.minimalIdentity, { borderColor: primaryColor }]}><DemoIdentity /></View>
-      <Text style={styles.demoBio}>Designing thoughtful experiences.</Text>
-      <View style={styles.minimalDivider} />
-      <DemoContacts />
-      <View style={styles.minimalDivider} />
-      <DemoSocials />
-      <DemoQr /><View style={styles.buttonArea}><DemoButton primaryColor={primaryColor} outlined /></View>
+      <DemoFooter primaryColor={primaryColor} />
     </View>
   );//return ends
 };//func ends
 
-// Adds a sample QR to every layout option without using the user's unpublished destination.
-function DemoQr() {
-  const qr = QRCode.create("https://unoqr.com", { errorCorrectionLevel: "M" }).modules;
-  const size = qr.size + 8;
-  let path = "";
-  for (let row = 0; row < qr.size; row += 1) {
-    for (let column = 0; column < qr.size; column += 1) {
-      if (qr.get(row, column)) path += `M${column + 4} ${row + 4}h1v1h-1z`;
-    }
-  }
-  //Default Return
-  return <View style={styles.demoQr}><Svg width={44} height={44} viewBox={`0 0 ${size} ${size}`}><Rect width={size} height={size} fill={colors.white.main} /><Path d={path} fill={colors.black.main} /></Svg></View>;//return ends
-};//func ends
-
 /* ------------------ BREAK ------------------ */
+
+// Uses the same light-or-dark shade mixing as the frontend centered cover and OG image.
+function getPreviewPatternColor(primaryColor: string): string {
+  const channels = [1, 3, 5].map(offset => parseInt(primaryColor.slice(offset, offset + 2), 16));
+  const brightness = (channels[0] * 0.299 + channels[1] * 0.587 + channels[2] * 0.114) / 255;
+  const target = brightness < 0.5 ? 255 : 0;
+  return `rgb(${channels.map(value => Math.round(value + (target - value) * 0.3)).join(", ")})`;
+};//func ends
 
 // Displays the same sample identity so the layout arrangements are easy to compare.
 function DemoIdentity({ centered = false, light = false }: DemoIdentityProps) {
@@ -236,40 +192,37 @@ function DemoIdentity({ centered = false, light = false }: DemoIdentityProps) {
   );//return ends
 };//func ends
 
-// Displays sample contact rows that are visual previews rather than live contact actions.
+// Shows phone, email and address in the frontend's contact order.
 function DemoContacts({ light = false }: DemoContactsProps) {
   const color = light ? colors.neutral.light : colors.mute.main;
   //Default Return
   return (
     <View style={styles.demoContacts}>
-      <View style={styles.demoContactRow}><Mail size={9} strokeWidth={1.25} color={color} /><Text numberOfLines={1} style={[styles.demoContactText, light && styles.lightMutedText]}>john@example.com</Text></View>
       <View style={styles.demoContactRow}><Phone size={9} strokeWidth={1.25} color={color} /><Text numberOfLines={1} style={[styles.demoContactText, light && styles.lightMutedText]}>+1 (555) 010-2020</Text></View>
+      <View style={styles.demoContactRow}><Mail size={9} strokeWidth={1.25} color={color} /><Text numberOfLines={1} style={[styles.demoContactText, light && styles.lightMutedText]}>john@example.com</Text></View>
       <View style={styles.demoContactRow}><MapPin size={9} strokeWidth={1.25} color={color} /><Text numberOfLines={1} style={[styles.demoContactText, light && styles.lightMutedText]}>123 Market Street</Text></View>
     </View>
   );//return ends
 };//func ends
 
-// Shows neutral miniature link icons without adding interactive buttons inside a layout option.
-function DemoSocials({ light = false }: DemoContactsProps) {
-  const color = light ? colors.white.main : colors.primary.main;
+// Shows primary-colored Website and Calendly pills directly below the sample bio.
+function DemoSocials({ primaryColor, centered, light }: DemoSocialsProps) {
   //Default Return
   return (
-    <View style={styles.demoSocials}>
-      <View style={[styles.demoSocial, light && styles.darkSocial]}><Globe size={10} strokeWidth={1.25} color={color} /></View>
-      <View style={[styles.demoSocial, light && styles.darkSocial]}><Mail size={10} strokeWidth={1.25} color={color} /></View>
-      <View style={[styles.demoSocial, light && styles.darkSocial]}><Phone size={10} strokeWidth={1.25} color={color} /></View>
+    <View style={[styles.demoSocials, centered && styles.centeredSocials]}>
+      <View style={[styles.demoSocial, { borderColor: primaryColor }]}><Globe size={8} strokeWidth={1.25} color={primaryColor} /><Text style={[styles.demoSocialText, light && styles.lightText]}>Website</Text></View>
+      <View style={[styles.demoSocial, { borderColor: primaryColor }]}><CalendlyIcon width={8} height={8} color={primaryColor} /><Text style={[styles.demoSocialText, light && styles.lightText]}>Calendly</Text></View>
     </View>
   );//return ends
 };//func ends
 
-// Shows a compact noninteractive Save contact treatment in each card preview.
-function DemoButton({ primaryColor, outlined = false }: DemoButtonProps) {
-  const color = outlined ? colors.primary.main : colors.white.main;
+// Keeps Save contact and official UNOQR branding below the sample profile content.
+function DemoFooter({ primaryColor }: DemoFooterProps) {
   //Default Return
   return (
-    <View style={[styles.demoButton, { backgroundColor: primaryColor }, outlined && styles.outlinedDemoButton]}>
-      <Download size={9} strokeWidth={1.25} color={color} />
-      <Text style={[styles.demoButtonText, outlined && styles.outlinedDemoButtonText]}>Save contact</Text>
+    <View style={styles.demoFooter}>
+      <View style={[styles.demoButton, { backgroundColor: primaryColor }]}><Download size={9} strokeWidth={1.25} color={colors.white.main} /><Text style={styles.demoButtonText}>Save contact</Text></View>
+      <View style={styles.demoBrandRow}><Text style={styles.demoBrandText}>Made with</Text><UnoQrLogo width={33} /></View>
     </View>
   );//return ends
 };//func ends
@@ -294,47 +247,39 @@ const styles = StyleSheet.create({
   selectedOptionLabel: { color: colors.secondary.dark },
   selectedBadge: { position: "absolute", top: spacing.xs, right: spacing.xs, width: 24, height: 24, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.white.main, borderRadius: radii.pill, backgroundColor: colors.secondary.main, zIndex: 2 },
   errorText: { color: colors.error.main, fontFamily: fontFamilies.primaryRegular, fontSize: fontSizes.caption },
-  modern: { flex: 1, backgroundColor: colors.white.main },
-  modernCover: { height: 58, overflow: "hidden", backgroundColor: colors.primary.main },
-  coverCircle: { position: "absolute", width: 88, height: 88, borderRadius: radii.pill, right: -12, top: -42 },
-  coverRing: { position: "absolute", width: 60, height: 60, borderRadius: radii.pill, right: 28, top: 24, borderWidth: 1 },
-  modernBody: { flex: 1, gap: 6, padding: 10, paddingTop: 20 },
-  modernAvatar: { position: "absolute", top: -28, left: 10, width: 44, height: 44, borderRadius: radii.pill, borderWidth: 3, borderColor: colors.white.main },
+  previewScreen: { flex: 1, backgroundColor: colors.cream.main },
+  cardSurface: { flex: 1, margin: 5, marginBottom: 0, overflow: "hidden", borderWidth: 0.5, borderColor: colors.border.main, borderRadius: radii.lg, backgroundColor: colors.white.main },
+  darkCard: { backgroundColor: colors.primary.main, borderColor: colors.primary.light },
+  modernCover: { height: 49 },
+  coverHost: { height: 49 },
+  spotlightAccent: { height: 3 },
+  cardBody: { padding: 10, gap: 9 },
+  coverBody: { marginTop: -22, paddingTop: 0 },
+  demoAvatar: { width: 44, height: 44, borderRadius: radii.pill, borderWidth: 2, borderColor: colors.white.main, backgroundColor: colors.white.main },
+  centeredAvatar: { alignSelf: "center" },
+  minimalAvatar: { borderRadius: radii.sm, borderWidth: 0.5, borderColor: colors.border.main },
+  identityArea: { marginTop: 1 },
   demoIdentity: { gap: 1 },
   demoName: { color: colors.primary.main, fontFamily: fontFamilies.primaryBold, fontSize: fontSizes.subtitle2, lineHeight: 18 },
   demoPosition: { color: colors.mute.main, fontFamily: fontFamilies.primaryMedium, fontSize: 8, lineHeight: 10 },
   demoCompany: { color: colors.mute.main, fontFamily: fontFamilies.primaryRegular, fontSize: 7, lineHeight: 9 },
   demoBio: { color: colors.mute.main, fontFamily: fontFamilies.primaryRegular, fontSize: 7.5, lineHeight: 11 },
-  demoQr: { alignSelf: "center", backgroundColor: colors.white.main, borderRadius: radii.sm },
-  demoContacts: { gap: 5 },
+  contactsArea: { borderTopWidth: 0.5, borderColor: colors.border.light, paddingTop: 8 },
+  darkDivider: { borderColor: colors.primary.light },
+  demoContacts: { gap: 7 },
   demoContactRow: { flexDirection: "row", alignItems: "center", gap: 5 },
   demoContactText: { flex: 1, color: colors.mute.main, fontFamily: fontFamilies.primaryRegular, fontSize: 7, lineHeight: 10 },
-  demoSocials: { flexDirection: "row", gap: 5 },
-  demoSocial: { width: 23, height: 23, alignItems: "center", justifyContent: "center", borderRadius: radii.pill, backgroundColor: colors.line.light },
-  darkSocial: { backgroundColor: colors.primary.light },
-  buttonArea: { marginTop: "auto" },
-  demoButton: { minHeight: 25, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4, borderRadius: radii.pill },
+  demoSocials: { flexDirection: "row", flexWrap: "wrap", gap: 4 },
+  centeredSocials: { justifyContent: "center" },
+  demoSocial: { minHeight: 22, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 3, paddingHorizontal: 6, borderWidth: 0.5, borderRadius: radii.pill },
+  demoSocialText: { color: colors.primary.main, fontFamily: fontFamilies.primarySemiBold, fontSize: 6.5 },
+  demoFooter: { padding: 6, gap: 6, backgroundColor: colors.cream.main },
+  demoButton: { minHeight: 25, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4, borderRadius: radii.sm },
   demoButtonText: { color: colors.white.main, fontFamily: fontFamilies.primarySemiBold, fontSize: 7 },
-  outlinedDemoButton: { borderWidth: 1, borderColor: colors.primary.main, backgroundColor: colors.white.main },
-  outlinedDemoButtonText: { color: colors.primary.main },
-  centered: { flex: 1, alignItems: "center", gap: 4, padding: 12, paddingTop: 16, backgroundColor: colors.cream.main },
-  centeredHalo: { position: "absolute", top: -24, left: -20, right: -20, height: 105, borderBottomLeftRadius: 70, borderBottomRightRadius: 70 },
-  centeredAvatar: { width: 48, height: 48, borderRadius: radii.pill, borderWidth: 3, borderColor: colors.white.main },
+  demoBrandRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4 },
+  demoBrandText: { color: colors.mute.main, fontFamily: fontFamilies.primaryRegular, fontSize: 6 },
   centeredIdentity: { alignItems: "center" },
   centeredText: { textAlign: "center" },
-  centeredContacts: { width: "100%", padding: 6, borderRadius: radii.md, backgroundColor: colors.white.main },
-  centeredButtonArea: { marginTop: "auto", alignSelf: "stretch" },
-  spotlight: { flex: 1, backgroundColor: colors.primary.main },
-  spotlightHero: { height: "45%", overflow: "hidden" },
-  spotlightPhoto: { width: "100%", height: "100%" },
-  spotlightIdentity: { position: "absolute", bottom: 0, left: 0, right: 0, padding: 10, backgroundColor: colors.primary.main + "B8" },
-  spotlightBody: { flex: 1, gap: 5, padding: 10 },
   lightText: { color: colors.white.main },
-  lightMutedText: { color: colors.neutral.light },
-  minimal: { flex: 1, gap: 6, padding: 12, backgroundColor: colors.white.main },
-  minimalHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 2 },
-  minimalAvatar: { width: 40, height: 40, borderRadius: radii.md },
-  demoBrand: { color: colors.primary.main, fontFamily: fontFamilies.primaryBold, fontSize: 7, lineHeight: 9, letterSpacing: 1 },
-  minimalIdentity: { borderLeftWidth: 2, paddingLeft: 7 },
-  minimalDivider: { height: 1, backgroundColor: colors.line.main }
+  lightMutedText: { color: colors.neutral.light }
 });

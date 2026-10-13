@@ -9,6 +9,7 @@ import { Axios } from "@/utils/general/Axios";
 
 type CardPayload = Omit<DigitalCardDetails, "profilePicture" | "socialLinks"> & {
   uid: string;
+  name: string;
   url: string;
   status: DigitalCardSettingsValues["status"];
   photo_url: string | null;
@@ -41,7 +42,7 @@ export async function saveDigitalCard(card: AppDigitalCardQr, exists: boolean): 
   const payload: CardPayload = {
     ...details, phones: details.phones.filter((phone) => phone.value.trim()),
     emails: details.emails.filter((email) => email.value.trim()), uid: card.uid, url: `https://unoqr.com/dc/${card.uid}`,
-    status: card.cardSettings.status, photo_url: profilePicture?.url || null, social_links: socialLinks,
+    name: card.cardSettings.name, status: card.cardSettings.status, photo_url: profilePicture?.url || null, social_links: socialLinks,
     layout: card.layout, primary_color: card.primaryColor,
     qr_design: { dot, eye, frame, styles },
     seo: { title: card.cardSettings.seoTitle, description: card.cardSettings.seoDescription, allow_indexing: card.cardSettings.allowIndexing },
@@ -108,7 +109,7 @@ export async function saveDigitalCardLayout(uid: string, layout: AppDigitalCardQ
 export async function saveDigitalCardSettings(uid: string, settings: DigitalCardSettingsValues): Promise<RemoteCard> {
   try {
     const response = await Axios.put<CardResponse>(apiSettings.getApiUrl({ path: "/app/digital_cards" }).href, {
-      uid, status: settings.status,
+      uid, name: settings.name, status: settings.status,
       seo: { title: settings.seoTitle, description: settings.seoDescription, allow_indexing: settings.allowIndexing },
       allow_save_contact: settings.allowSaveContact
     }, { timeout: 15000 });
@@ -124,14 +125,15 @@ export function restoreDigitalCard(remote: RemoteCard, local: AppDigitalCardQr):
   return {
     ...local, id: remote.id, uid: remote.uid, userId: remote.user_id,
     details: {
-      profilePicture: remote.photo, name: remote.name, company: remote.company,
+      profilePicture: remote.photo,
+      fullname: remote.fullname || remote.name, company: remote.company,
       position: remote.position, phones: remote.phones.length ? remote.phones : [{ value: "" }],
       emails: remote.emails.length ? remote.emails : [{ value: "" }], socialLinks: remote.social_links,
       bio: remote.bio, address: remote.address
     },
     settings: { ...local.settings, ...remote.qr_design, name: "My Qr", hide_logo: false, logo: null, content: remote.url },
     layout: remote.layout, primaryColor: remote.primary_color,
-    cardSettings: { status: remote.status, seoTitle: remote.seo.title, seoDescription: remote.seo.description, allowIndexing: remote.seo.allow_indexing, allowSaveContact: remote.allow_save_contact }
+    cardSettings: { name: remote.fullname?.trim() ? remote.name || "My Card" : "My Card", status: remote.status, seoTitle: remote.seo.title, seoDescription: remote.seo.description, allowIndexing: remote.seo.allow_indexing, allowSaveContact: remote.allow_save_contact }
   };
 };//export ends
 
