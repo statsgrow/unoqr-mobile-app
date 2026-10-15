@@ -1,6 +1,6 @@
 import { SvgXml } from "react-native-svg";
 
-import { buildEye, type EyeStyle } from "@/helpers/qrcodes/modify/eye";
+import { buildEye, type EyeStyle } from "@/libraries/unoqr-create/eye";
 
 /* ------------------ BREAK ------------------ */
 

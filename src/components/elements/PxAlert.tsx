@@ -1,7 +1,7 @@
 import { StyleSheet, View } from "react-native";
-import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Text } from "react-native-paper";
 
+import { PxIcon, type PxIconName } from "@/components/elements/PxIcon";
 import { colors, sizes } from "@/theme/themeSettings";
 
 /* ------------------ TYPES ------------------ */
@@ -15,7 +15,7 @@ type PxAlertProps = {
 
 /* ------------------ COLOR MAP ------------------ */
 
-const colorMap: Record<PxAlertColor, { bg: string; border: string; text: string; icon: string }> = {
+const colorMap: Record<PxAlertColor, { bg: string; border: string; text: string; icon: PxIconName }> = {
 	error: {
 		bg: "#fff0f0",
 		border: colors.danger.main,
@@ -58,7 +58,7 @@ export function PxAlert({ messages, color = "default" }: PxAlertProps) {
 	return (
 		<View style={[styles.box, { backgroundColor: scheme.bg, borderColor: scheme.border }]}>
 			<View style={styles.row}>
-				<MaterialCommunityIcons name={scheme.icon as any} size={18} color={scheme.border} style={styles.icon} />
+				<PxIcon name={scheme.icon} size={18} color={scheme.border} style={styles.icon} />
 				<View style={styles.messages}>
 					{messages.map((msg, index) => (
 						<Text key={index} variant="bodyMedium" style={{ color: scheme.text }}>

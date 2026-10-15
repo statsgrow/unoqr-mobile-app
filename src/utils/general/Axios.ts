@@ -8,6 +8,14 @@ import { getUserTokens } from "@/utils/auth/AuthTokens";
 
 export const Axios = axios.create();
 
+// Exposes Axios error narrowing alongside the shared request client.
+export const isAxiosError = axios.isAxiosError;//export ends
+
+// Identifies a deferred request waiting for installation verification rather than an API failure.
+export function isInstallVerificationPending(error: unknown): boolean {
+  return axios.isAxiosError(error) && error.code === "INSTALL_VERIFICATION_PENDING";
+};//export ends
+
 /* ------------------ BREAK ------------------ */
 
 // Attaches stored auth tokens only to requests targeting the configured UnoQR API.

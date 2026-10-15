@@ -12,6 +12,7 @@ import { publishQrSaveStatus } from "./QrSaveStatus";
 
 // Inserts one QR form object into the local database after initializing its table.
 export async function insertQr(data: InsertQrInput): Promise<SQLiteRunResult | null> {
+  if (typeof data.content !== "string" || !data.content.trim()) throw new Error("Enter QR content before saving.");
   if (!db) return null;
 
   await initQrCodes();

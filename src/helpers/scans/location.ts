@@ -66,9 +66,17 @@ async function collectScanLocation(): Promise<ScanLocation | null> {
       pincode: null
     };
   } catch (error: unknown) {
-    console.warn("Unable to collect scan coordinates:", error);
+    if (!isLocationUnavailable(error)) console.warn("Unable to collect scan coordinates:", error);
     return null;
   };//try-catch ends
+};//func ends
+
+// Treats an unavailable native location fix as an expected scan without coordinates.
+function isLocationUnavailable(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const { code, message } = error as { code?: unknown; message?: unknown };
+  if (typeof code === "string" && ["ERR_LOCATION_UNAVAILABLE", "ERR_CURRENT_LOCATION_IS_UNAVAILABLE", "ERR_LOCATION_UNKNOWN"].includes(code)) return true;
+  return typeof message === "string" && /LocationUnavailable|Cannot obtain current location|kCLErrorDomain error 0\b/.test(message);
 };//func ends
 
 // Reuses an existing foreground grant or asks the user for one when needed.

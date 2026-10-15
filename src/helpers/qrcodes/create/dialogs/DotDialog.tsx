@@ -9,7 +9,7 @@ import DotsIcon from "@/helpers/qrcodes/assets/dot/dots";
 import RoundedDotIcon from "@/helpers/qrcodes/assets/dot/rounded";
 import SquareDotIcon from "@/helpers/qrcodes/assets/dot/square";
 import QrColorPicker from "@/helpers/qrcodes/create/QrColorPicker";
-import type { DotStyle } from "@/helpers/qrcodes/modify/dot";
+import type { DotStyle } from "@/libraries/unoqr-create/dot";
 import { colors, fontFamilies, fontSizes, radii, spacing } from "@/theme/tokens";
 
 import { selectedFirst } from "./selectedFirst";

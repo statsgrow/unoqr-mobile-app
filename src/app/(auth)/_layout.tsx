@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { Stack, usePathname } from "expo-router";
-import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { PxCircularProgress } from "@/components/elements/PxCircularProgress";
 import { redirect } from "@/utils/general/Redirect";
 import { colors, fontFamilies, fontSizes, radii, spacing } from "@/theme/tokens";
 import { insertAppInstall } from "@/utils/auth/AppInstall";
@@ -83,7 +84,7 @@ export default function AuthLayout() {
         </View>
       ) : (
         <View accessibilityLiveRegion="polite" style={styles.message}>
-          <ActivityIndicator color={colors.secondary.main} size="large" />
+          <PxCircularProgress color={colors.secondary.main} size={40} />
           <Text style={styles.messageBody}>Checking your account...</Text>
         </View>
       )}

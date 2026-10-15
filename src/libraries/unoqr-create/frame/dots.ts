@@ -1,4 +1,4 @@
-import { buildDot, type DotStyle } from "@/helpers/qrcodes/modify/dot";
+import { buildDot, type DotStyle } from "../dot";
 
 /* ------------------ BREAK ------------------ */
 
@@ -13,7 +13,7 @@ export type FrameDotOptions = {
   density: number;
   edgeClearance: number;
   isInside?: (col: number, row: number) => boolean;
-};
+};//export ends
 
 /* ------------------ BREAK ------------------ */
 
@@ -41,7 +41,8 @@ export function buildFrameDots({ value, outerSize, qrSize, inset, frame, dotStyl
 
   const selected = eligible.slice(0, Math.floor(eligible.length * density));
   const positions = new Set(selected.map(([col, row]) => `${col},${row}`));
-  const hasNeighbor = (col: number, row: number): boolean => positions.has(`${col},${row}`);
+  // Finds neighboring decorative modules for connected dot styles.
+  const hasNeighbor = (col: number, row: number): boolean => positions.has(`${col},${row}`);//func ends
 
   return selected.map(([col, row]) => buildDot(dotStyle, { x: col, y: row, col, row, color, hasNeighbor })).join("");
 };//export ends
@@ -64,5 +65,5 @@ function seededRandom(seed: number): () => number {
     let value = Math.imul(state ^ (state >>> 15), state | 1);
     value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
     return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
-  };
+  };//return ends
 };//func ends

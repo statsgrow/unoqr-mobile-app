@@ -17,11 +17,11 @@ import {
   useCameraPermissions,
   type BarcodeScanningResult
 } from "expo-camera";
-import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { IconButton, Text } from "react-native-paper";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Svg, { Defs, Mask, Rect } from "react-native-svg";
 
+import { PxIcon, type PxIconName } from "@/components/elements/PxIcon";
 import { scannerBarcodeTypes } from "@/helpers/scans/Barcode";
 import { BarcodeScanDialog, type BarcodeScanDetails } from "@/helpers/scans/dialogs/BarcodeScanDialog";
 import { PhoneScanDialog } from "@/helpers/scans/dialogs/PhoneScanDialog";
@@ -74,7 +74,7 @@ type ScannerAlertState = {
   message?: string;
   guidance: string;
   color: "danger" | "warning";
-  icon: keyof typeof MaterialCommunityIcons.glyphMap;
+  icon: PxIconName;
   actionLabel: string;
 };
 
@@ -287,7 +287,7 @@ export default function ScanScreen() {
       <SafeAreaView style={styles.permissionScreen}>
         <StatusBar style="dark" />
         <View style={styles.permissionIcon}>
-          <MaterialCommunityIcons name="camera-outline" size={38} color={colors.secondary.main} />
+          <PxIcon name="camera-outline" size={38} color={colors.secondary.main} />
         </View>
         <Text style={styles.permissionTitle}>Camera access needed</Text>
         <Text style={styles.permissionBody}>
@@ -428,7 +428,7 @@ function ScannerAlertDialog({ alert, onClose }: ScannerAlertDialogProps) {
         <>
           <View style={styles.alertGuidanceRow}>
             <View style={[styles.alertIconShell, { backgroundColor: accentBackground }]}>
-              <MaterialCommunityIcons name={alert.icon} size={24} color={accentColor} />
+              <PxIcon name={alert.icon} size={24} color={accentColor} />
             </View>
             <Text style={styles.alertGuidance}>{alert.guidance}</Text>
           </View>
@@ -511,11 +511,11 @@ function ScannerOverlay({
       <SafeAreaView pointerEvents="box-none" style={styles.controlsSafeArea}>
         <View style={styles.topControls}>
           <Pressable accessibilityLabel="Close scanner" onPress={onClose} style={styles.controlButton}>
-            <MaterialCommunityIcons name="close" size={26} color={colors.white.main} />
+            <PxIcon name="close" size={26} color={colors.white.main} />
           </Pressable>
           <Text style={styles.scannerTitle}>Scan QR code</Text>
           <Pressable accessibilityLabel="Toggle flashlight" onPress={onToggleTorch} style={styles.controlButton}>
-            <MaterialCommunityIcons
+            <PxIcon
               name={torchEnabled ? "flashlight" : "flashlight-off"}
               size={23}
               color={torchEnabled ? colors.secondary.main : colors.white.main}
@@ -565,7 +565,7 @@ function ScannerOverlay({
                 pressed && styles.testDestinationButtonPressed
               ]}
             >
-              <MaterialCommunityIcons name="arrow-right" size={20} color={colors.white.main} />
+              <PxIcon name="arrow-right" size={20} color={colors.white.main} />
             </Pressable>
           </View>
         ) : null}
@@ -603,7 +603,7 @@ function ScannerOverlay({
           <IconButton
             accessibilityLabel="Scan QR code from image"
             disabled={imageSelectionDisabled}
-            icon="image-outline"
+            icon={({ color, size }) => <PxIcon name="image-outline" color={color} size={size} />}
             iconColor={colors.white.main}
             size={26}
             onPress={onSelectImage}

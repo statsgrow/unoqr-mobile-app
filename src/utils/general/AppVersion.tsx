@@ -119,7 +119,15 @@ export function AppVersionDialog() {
 
   //Default Return
   return (
-    <PxModal visible={open} onRequestClose={() => void dismissUpdate()} name="App update available" height="auto" maxHeight={760}>
+    <PxModal
+      visible={open} onRequestClose={() => void dismissUpdate()} name="App update available" height="auto" maxHeight={760}
+      footerAction={(
+        <View style={styles.actions}>
+          <PxButton onPress={() => void updateApp()} fullWidth>Update Now</PxButton>
+          <PxButton onPress={() => void dismissUpdate()} mode="text" size="sm">Maybe later</PxButton>
+        </View>
+      )}
+    >
         <View style={styles.content}>
           <Text style={styles.message}>
             {release ? `Version ${release.version} (build ${release.build_version}) is available.` : ""}
@@ -127,8 +135,6 @@ export function AppVersionDialog() {
             {"\n\nUpdate Uno QR to get the latest features and improvements."}
           </Text>
           {storeError ? <Text style={styles.error}>{storeError}</Text> : null}
-          <PxButton onPress={() => void updateApp()} fullWidth>Update Now</PxButton>
-          <PxButton onPress={() => void dismissUpdate()} mode="text" size="sm">Maybe later</PxButton>
         </View>
     </PxModal>
   );//return ends
@@ -167,6 +173,7 @@ function compareVersion(latest: string, current: string): number {
 /* ------------------ BREAK ------------------ */
 
 const styles = StyleSheet.create({
+  actions: { gap: spacing.sm },
   content: { gap: spacing.md, paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
   message: { fontFamily: fontFamilies.primaryRegular, fontSize: fontSizes.body1, lineHeight: 24, color: colors.mute.dark, marginBottom: spacing.sm },
   error: { fontFamily: fontFamilies.primaryRegular, fontSize: fontSizes.body2, color: colors.error.main }

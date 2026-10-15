@@ -9,7 +9,7 @@ import FrameEyeIcon from "@/helpers/qrcodes/assets/eye/frame";
 import LeafEyeIcon from "@/helpers/qrcodes/assets/eye/leaf";
 import RoundedEyeIcon from "@/helpers/qrcodes/assets/eye/rounded";
 import SquareEyeIcon from "@/helpers/qrcodes/assets/eye/square";
-import type { EyeStyle } from "@/helpers/qrcodes/modify/eye";
+import type { EyeStyle } from "@/libraries/unoqr-create/eye";
 import { colors, fontFamilies, fontSizes, radii, spacing } from "@/theme/tokens";
 
 import { selectedFirst } from "./selectedFirst";

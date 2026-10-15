@@ -1,9 +1,9 @@
 import { Pressable, StyleSheet, View } from "react-native";
-import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { router, usePathname } from "expo-router";
 import { CloudAlert, CloudCheck } from "lucide-react-native";
 import { Text } from "react-native-paper";
 
+import { PxIcon } from "@/components/elements/PxIcon";
 import { redirect } from "@/utils/general/Redirect";
 import { HeaderBackButton } from "@/components/layout/HeaderBackButton";
 import { UnoQrLogo } from "@/components/brand/UnoQrLogo";
@@ -92,7 +92,7 @@ export function TopNav({
             pressed && styles.actionButtonPressed
           ]}
         >
-          <MaterialCommunityIcons
+          <PxIcon
             name={isHome ? "home" : "home-outline"}
             size={24}
             color={isHome ? colors.secondary.main : colors.mute.main}
@@ -104,7 +104,7 @@ export function TopNav({
           accessibilityRole="image"
           style={styles.actionButton}
         >
-          <MaterialCommunityIcons
+          <PxIcon
             name="bell-outline"
             size={24}
             color={colors.mute.main}

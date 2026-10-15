@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from "react-native";
-import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import * as WebBrowser from "expo-web-browser";
@@ -8,6 +7,8 @@ import { Text } from "react-native-paper";
 import { SafeAreaView } from "react-native-safe-area-context";
 import WebView, { type WebViewMessageEvent, type WebViewNavigation } from "react-native-webview";
 
+import { PxIcon } from "@/components/elements/PxIcon";
+import { PxCircularProgress } from "@/components/elements/PxCircularProgress";
 import { redirect } from "@/utils/general/Redirect";
 import { LinkCheckOverlay } from "@/helpers/scans/components/LinkCheckOverlay";
 import { getScanById } from "@/helpers/scans/db/getQueries";
@@ -257,7 +258,7 @@ export default function ScanWebViewScreen() {
     return (
       <SafeAreaView style={styles.invalidScreen}>
         <StatusBar style="dark" />
-        <MaterialCommunityIcons name="alert-circle-outline" size={42} color={colors.error.main} />
+        <PxIcon name="alert-circle-outline" size={42} color={colors.error.main} />
         <Text style={styles.invalidTitle}>Unable to open this scan</Text>
         <Text style={styles.invalidBody}>A valid HTTP or HTTPS destination was not provided.</Text>
         <Pressable onPress={handleClose} style={styles.invalidButton}>
@@ -273,23 +274,23 @@ export default function ScanWebViewScreen() {
       <StatusBar style="dark" />
       <View style={styles.header}>
         <Pressable accessibilityLabel="Close web preview" onPress={handleClose} style={styles.headerButton}>
-          <MaterialCommunityIcons name="close" size={24} color={colors.primary.main} />
+          <PxIcon name="close" size={24} color={colors.primary.main} />
         </Pressable>
         <View style={styles.addressWrap}>
-          <MaterialCommunityIcons
+          <PxIcon
             name={currentUrl.startsWith("https://") ? "lock-outline" : "lock-open-alert-outline"}
             size={16}
             color={currentUrl.startsWith("https://") ? colors.success.main : colors.warning.dark}
           />
           <Text numberOfLines={1} style={styles.addressText}>{getHostname(currentUrl)}</Text>
-          {isLoading ? <ActivityIndicator size="small" color={colors.secondary.main} /> : null}
+          {isLoading ? <PxCircularProgress size={20} color={colors.secondary.main} /> : null}
         </View>
         <Pressable
           accessibilityLabel="Open in external browser"
           onPress={handleOpenExternal}
           style={styles.headerButton}
         >
-          <MaterialCommunityIcons name="open-in-new" size={22} color={colors.secondary.main} />
+          <PxIcon name="open-in-new" size={22} color={colors.secondary.main} />
         </Pressable>
       </View>
 
@@ -312,7 +313,7 @@ export default function ScanWebViewScreen() {
         />
       ) : (
         <View style={styles.closedPreview}>
-          <MaterialCommunityIcons name="shield-check-outline" size={40} color={colors.success.main} />
+          <PxIcon name="shield-check-outline" size={40} color={colors.success.main} />
           <Text style={styles.closedPreviewTitle}>Web preview closed</Text>
           <Text style={styles.closedPreviewBody}>The temporary resolver was removed after collecting metadata.</Text>
         </View>

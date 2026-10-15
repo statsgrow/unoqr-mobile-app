@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import { Image, Pressable, ScrollView, StyleSheet, View } from "react-native";
-import { MaterialCommunityIcons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
 import * as WebBrowser from "expo-web-browser";
 
 import { Text } from "react-native-paper";
 
+import { PxIcon, type PxIconName } from "@/components/elements/PxIcon";
 import { redirect } from "@/utils/general/Redirect";
 import { PxButton } from "@/components/elements/PxButton";
 import { GeneralLayout } from "@/components/layout/GeneralLayout";
@@ -23,7 +23,7 @@ type InstallInfo = {
 };
 
 type GroupedLinkProps = {
-  icon: keyof typeof MaterialCommunityIcons.glyphMap;
+  icon: PxIconName;
   label: string;
   description: string;
   onPress: () => void;
@@ -108,7 +108,7 @@ export default function MoreScreen() {
         ) : isAuthResolved ? (
           <View style={styles.accountCard}>
             <View style={styles.accountIcon}>
-              <MaterialCommunityIcons name="cloud-sync-outline" size={28} color={colors.secondary.main} />
+              <PxIcon name="cloud-sync-outline" size={28} color={colors.secondary.main} />
             </View>
             <View style={styles.accountCopy}>
               <Text style={styles.accountTitle}>Take your scans everywhere</Text>
@@ -169,7 +169,7 @@ export default function MoreScreen() {
             onPress={() => void handleLogout()}
             style={({ pressed }) => [styles.logoutButton, pressed && styles.pressedButton]}
           >
-            <MaterialCommunityIcons name="logout" size={20} color={colors.error.main} />
+            <PxIcon name="logout" size={20} color={colors.error.main} />
             <Text style={styles.logoutText}>Log out</Text>
           </Pressable>
         ) : null}
@@ -187,7 +187,7 @@ export default function MoreScreen() {
                   onPress={() => void handleCopyInstallId()}
                   style={({ pressed }) => [styles.copyInstallIdButton, pressed && styles.pressedButton]}
                 >
-                  <MaterialCommunityIcons
+                  <PxIcon
                     name={installIdCopied ? "check" : "content-copy"}
                     size={15}
                     color={installIdCopied ? colors.success.main : colors.mute.main}
@@ -217,14 +217,14 @@ function GroupedLink({ icon, label, description, onPress, showDivider = false }:
       style={({ pressed }) => [styles.groupedLink, pressed && styles.pressedButton]}
     >
       <View style={styles.groupedLinkIcon}>
-        <MaterialCommunityIcons name={icon} size={21} color={colors.primary.light} />
+        <PxIcon name={icon} size={21} color={colors.primary.light} />
       </View>
       <View style={[styles.groupedLinkCopy, showDivider && styles.groupedLinkDivider]}>
         <View style={styles.groupedLinkText}>
           <Text style={styles.groupedLinkLabel}>{label}</Text>
           <Text style={styles.groupedLinkDescription}>{description}</Text>
         </View>
-        <MaterialCommunityIcons name="chevron-right" size={22} color={colors.mute.light} />
+        <PxIcon name="chevron-right" size={22} color={colors.mute.light} />
       </View>
     </Pressable>
   );//return ends

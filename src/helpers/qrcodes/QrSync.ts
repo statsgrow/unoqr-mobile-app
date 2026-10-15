@@ -104,6 +104,7 @@ async function restoreQrHistory({ force = false, signal, onPage, onProgress }: R
   await initQrCodes();
   let from = 0;
   let total = 0;
+  const emptyDraftIds = new Set<string>();
 
   do {
     if (isSyncPaused || signal.aborted) return false;
@@ -119,6 +120,13 @@ async function restoreQrHistory({ force = false, signal, onPage, onProgress }: R
     sqliteDB.withTransactionSync(() => {
       for (const row of rows) {
         const local = db!.select().from(qrCodesTable).where(eq(qrCodesTable.id, row.id)).get();
+        // Keep populated local work; queue empty cloud drafts for deletion after pagination ends.
+        if (!row.content?.trim()) {
+          if (!local?.content?.trim()) {
+            emptyDraftIds.add(row.id);
+          };//if ends
+          continue;
+        };//if ends
         const deletion = db!.select().from(qrCodeDeletionsTable).where(eq(qrCodeDeletionsTable.id, row.id)).get();
         if (deletion || local?.sync_status === "pending") continue;
         const logoExists = isLocalLogoAvailable(row.logo_device_path);
@@ -144,6 +152,18 @@ async function restoreQrHistory({ force = false, signal, onPage, onProgress }: R
     await onPage();
   } while (from < total);
   if (isSyncPaused || signal.aborted) return false;
+  // Deleting during offset pagination would shift later pages and skip saved QRs.
+  let removedDrafts = 0;
+  for (const id of emptyDraftIds) {
+    if (isSyncPaused || signal.aborted) return false;
+    const local = await getQrById(id);
+    if (local?.content?.trim()) continue;
+    await db.insert(qrCodeDeletionsTable).values({ id, user_id: user.id }).onConflictDoNothing().run();
+    await syncQrCode(id);
+    removedDrafts += 1;
+  };//for ends
+  total -= removedDrafts;
+  onProgress(total, total);
   historySyncs.set(user.id, { syncedAt: Date.now(), total });
   return true;
 };//func ends
@@ -185,7 +205,7 @@ async function synchronizeQrCode(id: string): Promise<void> {
     };//if ends
 
     const row = await getQrById(id);
-    if (!row) return;
+    if (!row || !row.content?.trim()) return;
     if (row.user_id && row.user_id !== user.id) throw new Error("This QR belongs to another account.");
     if (row.sync_status === "completed") return;
 

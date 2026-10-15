@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
-import { MaterialCommunityIcons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
 import * as WebBrowser from "expo-web-browser";
 import { Text } from "react-native-paper";
 
+import { PxIcon } from "@/components/elements/PxIcon";
 import { PxButton } from "@/components/elements/PxButton";
 import { PxDialog } from "@/components/elements/PxDialog";
 import { colors, fontFamilies, fontSizes, radii, spacing } from "@/theme/tokens";
@@ -85,7 +85,7 @@ export function BarcodeScanDialog({ details, onClose }: BarcodeScanDialogProps) 
       {details ? (
         <>
           <View style={styles.formatCard}>
-            <MaterialCommunityIcons name="barcode-scan" size={30} color={colors.neutral.main} />
+            <PxIcon name="barcode-scan" size={30} color={colors.neutral.main} />
             <View style={styles.formatText}>
               <Text style={styles.label}>Format</Text>
               <Text style={styles.format}>{details.kind.toUpperCase()}</Text>

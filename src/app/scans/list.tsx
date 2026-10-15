@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   FlatList,
   Animated,
@@ -14,13 +14,18 @@ import {
   type NativeScrollEvent,
   type NativeSyntheticEvent
 } from "react-native";
-import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
-import { CloudAlert, CloudCheck } from "lucide-react-native";
+import {
+  Barcode, CalendarDays, ChevronLeft, ChevronRight, CircleAlert, CircleX, CloudAlert, CloudCheck,
+  ContactRound, File, FileText, Globe2, History, Link, ListFilter, Mail, MapPin, MessageSquare,
+  Phone, Puzzle, Search, ShieldKeyhole, Wallet, Wifi, X, type LucideIcon
+} from "lucide-react-native";
 import moment from "moment";
-import { ActivityIndicator, Text } from "react-native-paper";
+import { Text } from "react-native-paper";
 import Svg, { Defs, LinearGradient as SvgLinearGradient, Rect, Stop } from "react-native-svg";
 
+import { PxCircularProgress } from "@/components/elements/PxCircularProgress";
+import { UnoQrLogo } from "@/components/brand/UnoQrLogo";
 import { redirect } from "@/utils/general/Redirect";
 import { GeneralLayout } from "@/components/layout/GeneralLayout";
 import { TopNav } from "@/components/layout/TopNav";
@@ -29,7 +34,8 @@ import { PxButton } from "@/components/elements/PxButton";
 import { UpiPaymentIcon } from "@/helpers/scans/components/UpiPaymentIcon";
 import { getAllScans } from "@/helpers/scans/db/getQueries";
 import { getScanTypeInit, normalizeScanType } from "@/helpers/scans/identifiers";
-import { getScanCrawlError, getScanStatusColor, getScanStatusLabel } from "@/helpers/scans/status";
+import { getUnoQrDigitalCardUid } from "@/helpers/scans/identifiers/DigitalCard";
+import { getScanCrawlError } from "@/helpers/scans/status";
 import { SCAN_HISTORY_SYNC_WINDOW_MS, restoreUserScans } from "@/helpers/scans/scanSync";
 import { colors, fontFamilies, fontSizes, radii, spacing } from "@/theme/tokens";
 import { scansSettings } from "@/settings";
@@ -56,7 +62,6 @@ type CloudHistoryState = {
 type ScanTypeFilter = {
   type: string;
   label: string;
-  icon: ComponentProps<typeof MaterialCommunityIcons>["name"];
   count: number;
 };
 
@@ -250,7 +255,7 @@ export default function ScansListScreen() {
             onPress={() => setIsCloudDialogOpen(true)}
             style={styles.cloudStatus}
           >
-            {cloudState.status === "loading" ? <ActivityIndicator size="small" color={colors.secondary.main} />
+            {cloudState.status === "loading" ? <PxCircularProgress size={20} color={colors.secondary.main} />
               : cloudState.status === "completed" ? <CloudCheck size={22} strokeWidth={1.25} color={colors.success.dark} />
                 : <CloudAlert size={22} strokeWidth={1.25} color={colors.warning.dark} />}
           </Pressable>
@@ -259,7 +264,7 @@ export default function ScansListScreen() {
 
         <View style={styles.filterControls}>
           <View style={styles.searchShell}>
-            <MaterialCommunityIcons name="magnify" size={22} color={colors.mute.main} />
+            <Search size={22} strokeWidth={1.25} color={colors.mute.main} />
             <TextInput
               accessibilityLabel="Search saved scans"
               value={searchText}
@@ -272,14 +277,9 @@ export default function ScansListScreen() {
               style={styles.searchInput}
             />
             {searchText ? (
-              <MaterialCommunityIcons
-                accessibilityLabel="Clear search"
-                accessibilityRole="button"
-                name="close-circle"
-                size={20}
-                color={colors.mute.main}
-                onPress={() => setSearchText("")}
-              />
+              <Pressable accessibilityLabel="Clear search" accessibilityRole="button" hitSlop={spacing.xs} onPress={() => setSearchText("")}>
+                <CircleX size={20} strokeWidth={1.25} color={colors.mute.main} />
+              </Pressable>
             ) : null}
           </View>
 
@@ -294,7 +294,7 @@ export default function ScansListScreen() {
 
         {listState.loading ? (
           <View style={styles.centerState}>
-            <ActivityIndicator size="large" color={colors.secondary.main} />
+            <PxCircularProgress size={40} color={colors.secondary.main} />
             <Text style={styles.stateText}>Loading your scans…</Text>
           </View>
         ) : (
@@ -445,11 +445,7 @@ function TypeScrollButton({
         onPress={onPress}
         style={({ pressed }) => [styles.typeScrollButton, pressed && styles.typeScrollButtonPressed]}
       >
-        <MaterialCommunityIcons
-        name={direction === "left" ? "chevron-left" : "chevron-right"}
-        size={21}
-        color={colors.mute.main}
-        />
+        {direction === "left" ? <ChevronLeft size={21} strokeWidth={1.25} color={colors.mute.main} /> : <ChevronRight size={21} strokeWidth={1.25} color={colors.mute.main} />}
       </Pressable>
     </View>
   );//return ends
@@ -519,7 +515,7 @@ function TypeFilterChip({ filter, selected }: { filter: ScanTypeFilter; selected
         {filter.label}
       </Text>
       {selected ? (
-        <MaterialCommunityIcons name="close" size={16} color={colors.secondary.main} />
+        <X size={16} strokeWidth={1.25} color={colors.secondary.main} />
       ) : null}
     </Pressable>
   );//return ends
@@ -540,7 +536,7 @@ function createAvailableTypeFilters(records: ScanRecord[]): ScanTypeFilter[] {
     .sort((firstEntry, secondEntry) => secondEntry[1] - firstEntry[1])
     .map(([type, count]) => {
       const typeInit = getScanTypeInit(type);
-      return { type, count, label: typeInit.label, icon: typeInit.icon };
+      return { type, count, label: typeInit.label };
     });
 };//func ends
 
@@ -574,39 +570,57 @@ function filterScans(records: ScanRecord[], searchText: string, typeFilter: stri
 
 /* ------------------ BREAK ------------------ */
 
+// Maps stored scan types to Lucide icons while official payment logos retain their brand artwork.
+function getScanIcon(type: string | null): LucideIcon {
+  const icons: Record<string, LucideIcon> = {
+    url: Globe2, file: File, text: FileText, email: Mail, phone: Phone, sms: MessageSquare,
+    wifi: Wifi, contact: ContactRound, "digital-card": ContactRound, location: MapPin,
+    calendar: CalendarDays, payment: Wallet, upi_payment: Wallet, product: Barcode,
+    barcode: Barcode, auth: ShieldKeyhole, deep_link: Link, custom: Puzzle
+  };
+  return icons[normalizeScanType(type)] || Puzzle;
+};//func ends
+
+/* ------------------ BREAK ------------------ */
+
 // Renders one saved scan as a compact history card.
 function renderScanItem({ item }: ListRenderItemInfo<ScanRecord>) {
   const scanTypeInit = getScanTypeInit(item.type);
+  const Icon = getScanIcon(item.type);
+  const digitalCardUid = item.type === "digital-card" ? getUnoQrDigitalCardUid(item.value) : null;
   const isUpiPayment = item.type === "upi_payment" || /^upi:\/\/pay(?:\?|$)/i.test(item.value);
   const displayTitle = item.metadata?.title
     || (item.type === "url" || item.type === "file"
       ? getDisplayUrl(item.final_url || item.input_url || item.value)
       : scanTypeInit.label);
   const location = getLocationText(item.location);
-  const crawlError = getScanCrawlError(item.crawl_status, item.metadata?.error);
-  const status = crawlError ? "failed" : item.status || "pending";
-  const statusColor = getScanStatusColor(status);
+  const crawlError = digitalCardUid ? null : getScanCrawlError(item.crawl_status, item.metadata?.error);
 
   //Default Return
   return (
     <Pressable
-      accessibilityHint="Shows all metadata collected for this scan"
+      accessibilityHint={digitalCardUid ? "Opens this UnoQR digital card" : "Shows all metadata collected for this scan"}
       accessibilityLabel={`Open scan ${displayTitle}`}
       accessibilityRole="button"
-      onPress={() => redirect("push", `/scans/${item.id}/view`)}
+      onPress={() => digitalCardUid
+        ? redirect("push", { pathname: "/scans/digital-card/[uid]", params: { uid: digitalCardUid } })
+        : redirect("push", `/scans/${item.id}/view`)}
       style={({ pressed }) => [styles.scanCard, pressed && styles.scanCardPressed]}
     >
       {isUpiPayment ? (
         <UpiPaymentIcon size={46} />
       ) : (
         <View style={styles.scanIcon}>
-          <MaterialCommunityIcons name={scanTypeInit.icon} size={24} color={colors.primary.main} />
+          <Icon size={24} strokeWidth={1.25} color={colors.primary.main} />
         </View>
       )}
       <View style={styles.scanContent}>
         <Text numberOfLines={1} style={styles.scanTitle}>{displayTitle}</Text>
         <View style={styles.scanMetaRow}>
           <Text style={styles.scanDate}>{formatScanDate(item.created_at)}</Text>
+          {digitalCardUid ? <View accessible accessibilityLabel="UnoQR digital card" style={styles.unoQrBadge}>
+            <UnoQrLogo width={44} color={colors.secondary.dark} />
+          </View> : null}
           {location ? (
             <>
               <View style={styles.metaDot} />
@@ -618,12 +632,7 @@ function renderScanItem({ item }: ListRenderItemInfo<ScanRecord>) {
           <Text numberOfLines={2} style={styles.scanError}>{crawlError}</Text>
         ) : null}
       </View>
-      <View
-        accessible
-        accessibilityLabel={`Status: ${getScanStatusLabel(status)}`}
-        style={[styles.statusDot, { backgroundColor: statusColor }]}
-      />
-      <MaterialCommunityIcons name="chevron-right" size={22} color={colors.mute.light} />
+      <ChevronRight size={22} strokeWidth={1.25} color={colors.mute.light} />
     </Pressable>
   );//return ends
 };//func ends
@@ -640,7 +649,7 @@ function EmptyScansState({
   typeLabel: string | null;
   error: string | null;
 }) {
-  const icon = error ? "alert-circle-outline" : hasSearch ? "magnify" : typeLabel ? "filter-outline" : "history";
+  const Icon = error ? CircleAlert : hasSearch ? Search : typeLabel ? ListFilter : History;
   const title = error
     ? "Unable to load scans"
     : hasSearch
@@ -659,7 +668,7 @@ function EmptyScansState({
   return (
     <View style={styles.centerState}>
       <View style={styles.emptyIcon}>
-        <MaterialCommunityIcons name={icon} size={30} color={colors.secondary.main} />
+        <Icon size={30} strokeWidth={1.25} color={colors.secondary.main} />
       </View>
       <Text style={styles.emptyTitle}>{title}</Text>
       <Text style={styles.stateText}>{message}</Text>
@@ -879,6 +888,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
     flex: 1
   },
+  unoQrBadge: { marginLeft: spacing.xs, paddingHorizontal: spacing.xs, paddingVertical: spacing.xxs, borderRadius: radii.sm, backgroundColor: colors.secondary.light },
   scanTitle: {
     color: colors.primary.main,
     fontFamily: fontFamilies.primarySemiBold,
@@ -914,11 +924,6 @@ const styles = StyleSheet.create({
     color: colors.error.main,
     fontFamily: fontFamilies.primaryRegular,
     fontSize: fontSizes.caption
-  },
-  statusDot: {
-    width: 9,
-    height: 9,
-    borderRadius: radii.pill
   },
   centerState: {
     flex: 1,

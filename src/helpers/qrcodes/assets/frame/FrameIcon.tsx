@@ -1,6 +1,6 @@
 import { SvgXml } from "react-native-svg";
 
-import { squirclePath, type FrameStyle } from "@/helpers/qrcodes/modify/frame";
+import { squirclePath, type FrameStyle } from "@/libraries/unoqr-create/frame";
 
 /* ------------------ BREAK ------------------ */
 

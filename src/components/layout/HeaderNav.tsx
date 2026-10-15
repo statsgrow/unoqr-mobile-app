@@ -1,7 +1,8 @@
-import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 import { useRouter, type Href } from "expo-router";
 import { House, User } from "lucide-react-native";
 
+import { PxCircularProgress } from "@/components/elements/PxCircularProgress";
 import { redirect } from "@/utils/general/Redirect";
 import { HeaderBackButton } from "@/components/layout/HeaderBackButton";
 import { UnoQrLogo } from "@/components/brand/UnoQrLogo";
@@ -14,12 +15,13 @@ import { colors as themeColors, spacing } from "@/theme/tokens";
 type HeaderNavProps = {
   showProfile?: boolean;
   showBack?: boolean;
+  showHome?: boolean;
 };
 
 /* ------------------ BREAK ------------------ */
 
 // Renders the branded app header with home and profile actions.
-export function HeaderNav({ showProfile = true, showBack = false }: HeaderNavProps) {
+export function HeaderNav({ showProfile = true, showBack = false, showHome = true }: HeaderNavProps) {
   const router = useRouter();
   const isSessionRefreshPending = useSessionRefreshPending();
 
@@ -55,7 +57,7 @@ export function HeaderNav({ showProfile = true, showBack = false }: HeaderNavPro
       </View>
 
       <View style={styles.actions}>
-        <Pressable
+        {showHome ? <Pressable
           accessibilityLabel="Go to home"
           accessibilityRole="button"
           hitSlop={spacing.xs}
@@ -63,7 +65,7 @@ export function HeaderNav({ showProfile = true, showBack = false }: HeaderNavPro
           style={({ pressed }) => [styles.actionButton, pressed && styles.pressedButton]}
         >
           <House color={colors.secondary.main} size={24} strokeWidth={1.25} />
-        </Pressable>
+        </Pressable> : null}
 
         {showProfile ? <Pressable
           accessibilityLabel={isSessionRefreshPending ? "Checking account" : "Open profile"}
@@ -75,7 +77,7 @@ export function HeaderNav({ showProfile = true, showBack = false }: HeaderNavPro
           style={({ pressed }) => [styles.actionButton, pressed && styles.pressedButton]}
         >
           {isSessionRefreshPending ? (
-            <ActivityIndicator color={colors.secondary.main} size="small" />
+            <PxCircularProgress color={colors.secondary.main} size={20} />
           ) : (
             <User color={colors.secondary.main} size={24} strokeWidth={1.25} />
           )}

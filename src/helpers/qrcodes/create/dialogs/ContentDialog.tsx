@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { ContactRound, Globe2, Phone, Type } from "lucide-react-native";
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View, type KeyboardTypeOptions } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View, type KeyboardTypeOptions } from "react-native";
 
+import { PxTextInput } from "@/components/form/PxTextInput";
+import { PxTextArea } from "@/components/form/PxTextArea";
 import { PxModal } from "@/components/elements/PxModal";
 import { EMPTY_CONTENT_DATA, encodeQrContent, type QrContentData, type QrContentSelection, type QrContentType } from "@/helpers/qrcodes/create/QrContent";
 import { MAX_QR_CHARACTERS } from "@/helpers/qrcodes/create/QrQuality";
@@ -84,16 +86,19 @@ export default function ContentDialog({ visible, onClose, selection, onSave }: C
       name="Content"
       height={680}
       keyboardAvoiding
-      footer={
-        <Pressable
-          accessibilityRole="button"
-          accessibilityState={{ disabled: !canSaveContent }}
-          disabled={!canSaveContent}
-          onPress={handleSave}
-          style={[styles.saveButton, !canSaveContent && styles.disabledSaveButton]}
-        >
-          <Text style={[styles.saveText, !canSaveContent && styles.disabledSaveText]}>Save content</Text>
-        </Pressable>
+      hideFooterOnKeyboard
+      footerAction={
+        <View>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ disabled: !canSaveContent }}
+            disabled={!canSaveContent}
+            onPress={handleSave}
+            style={[styles.saveButton, !canSaveContent && styles.disabledSaveButton]}
+          >
+            <Text style={[styles.saveText, !canSaveContent && styles.disabledSaveText]}>Save content</Text>
+          </Pressable>
+        </View>
       }
     >
       <View style={styles.content}>
@@ -107,7 +112,7 @@ export default function ContentDialog({ visible, onClose, selection, onSave }: C
               onPress={() => { setType(option); setError(""); }}
               style={[styles.option, type === option && styles.selectedOption]}
             >
-              <Icon color={colors.primary.main} size={26} strokeWidth={1.5} />
+              <Icon color={colors.primary.main} size={26} strokeWidth={1.25} />
               <Text style={[styles.optionLabel, type === option && styles.selectedOptionLabel]}>{label}</Text>
             </Pressable>
           ))}
@@ -154,28 +159,11 @@ function validateContent(selection: QrContentSelection): ContentValidation {
   };//try-catch ends
 };//func ends
 
-// Shows one labeled input in the content sheet.
+// Uses the shared form inputs for each controlled QR content field.
 function Field({ label, value, onChangeText, placeholder, keyboardType, multiline = false, maxLength }: FieldProps) {
+  const Input = multiline ? PxTextArea : PxTextInput;
   //Default Return
-  return (
-    <View style={styles.field}>
-      <Text style={styles.fieldLabel}>{label}</Text>
-      <TextInput
-        accessibilityLabel={label}
-        autoCapitalize={keyboardType === "email-address" || keyboardType === "url" ? "none" : "sentences"}
-        autoCorrect={false}
-        keyboardType={keyboardType}
-        maxLength={maxLength}
-        multiline={multiline}
-        onChangeText={onChangeText}
-        placeholder={placeholder}
-        placeholderTextColor={colors.mute.light}
-        selectionColor={colors.secondary.main}
-        style={[styles.input, multiline && styles.multilineInput]}
-        value={value}
-      />
-    </View>
-  );//return ends
+  return <Input label={label} value={value} onChangeText={onChangeText} placeholder={placeholder} keyboardType={keyboardType} maxLength={maxLength} autoCapitalize={keyboardType === "email-address" || keyboardType === "url" ? "none" : "sentences"} autoCorrect={false} />;//return ends
 };//func ends
 
 /* ------------------ BREAK ------------------ */
@@ -199,21 +187,6 @@ const styles = StyleSheet.create({
   optionLabel: { color: colors.mute.main, fontFamily: fontFamilies.primaryRegular, fontSize: fontSizes.caption },
   selectedOptionLabel: { color: colors.primary.main, fontFamily: fontFamilies.primarySemiBold },
   fields: { gap: spacing.sm },
-  field: { gap: spacing.xxs },
-  fieldLabel: { color: colors.primary.main, fontFamily: fontFamilies.primarySemiBold, fontSize: fontSizes.body2 },
-  input: {
-    minHeight: 50,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderWidth: 1,
-    borderColor: colors.border.main,
-    borderRadius: radii.lg,
-    backgroundColor: colors.white.main,
-    color: colors.primary.main,
-    fontFamily: fontFamilies.primaryRegular,
-    fontSize: fontSizes.body1
-  },
-  multilineInput: { minHeight: 112, textAlignVertical: "top" },
   error: { color: colors.secondary.main, fontFamily: fontFamilies.primaryRegular, fontSize: fontSizes.body2 },
   saveButton: { minHeight: 52, alignItems: "center", justifyContent: "center", borderRadius: radii.lg, backgroundColor: colors.secondary.main },
   saveText: { color: colors.white.main, fontFamily: fontFamilies.primarySemiBold, fontSize: fontSizes.body1 },

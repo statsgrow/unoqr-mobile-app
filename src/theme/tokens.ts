@@ -69,6 +69,10 @@ export const colors = {
     main: "#FAF7F2",
     light: "#FFFFFF",
     dark: "#E6E1D6",
+    card: "#F8F3EA",
+    cardLight: "#FFFDFA",
+    sand: "#EFE5D6",
+    contour: "#DDC9AA",
     contrast: "#191414",
     text: "#191414"
   },

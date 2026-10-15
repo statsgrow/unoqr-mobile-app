@@ -1,5 +1,8 @@
 import type { BarcodeType } from "expo-camera";
 
+import { redirect } from "@/utils/general/Redirect";
+
+import { getUnoQrDigitalCardUid } from "./identifiers/DigitalCard";
 import { getPhoneNumber } from "./identifiers/PhoneNumber";
 
 import { getBarcodeFormat, getBarcodeKind } from "./Barcode";
@@ -22,6 +25,7 @@ export type ScanType =
   | "sms"
   | "wifi"
   | "contact"
+  | "digital-card"
   | "location"
   | "calendar"
   | "upi_payment"
@@ -79,6 +83,12 @@ export async function processPreparedScan(scan: PreparedScan): Promise<Processed
 
   if (!storedScan) return { scanId: null, textValue: null };
 
+  if (scan.type === "digital-card") {
+    const uid = getUnoQrDigitalCardUid(scan.value);
+    if (uid) redirect("push", { pathname: "/scans/digital-card/[uid]", params: { uid } });
+    return { scanId: storedScan.id, textValue: null };
+  };//if ends
+
   if (scan.type === "url") {
     await processWebsiteScan(storedScan);
     return { scanId: storedScan.id, textValue: null };
@@ -101,6 +111,7 @@ export async function processPreparedScan(scan: PreparedScan): Promise<Processed
 
 // Identifies the supported QR payload category after trimming its value.
 export function identifyScanType(value: string): ScanType {
+  if (getUnoQrDigitalCardUid(value)) return "digital-card";
   if (isContactScan(value)) return "contact";
   if (isCalendarScan(value)) return "calendar";
   if (isAuthScan(value)) return "auth";

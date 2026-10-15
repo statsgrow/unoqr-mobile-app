@@ -2,6 +2,7 @@ import { getInit as calendarEventInit } from "./CalendarEvent";
 import { getInit as contactCardInit } from "./ContactCard";
 import { getInit as customSchemeInit } from "./CustomScheme";
 import { getInit as deepLinkInit } from "./DeepLink";
+import { getInit as digitalCardInit } from "./DigitalCard";
 import { getInit as emailAddressInit } from "./EmailAddress";
 import { getInit as fileInit } from "./File";
 import { getInit as genericPaymentInit } from "./GenericPayment";
@@ -23,6 +24,7 @@ const scanTypeInitializers: ScanTypeInit[] = [
   contactCardInit,
   customSchemeInit,
   deepLinkInit,
+  digitalCardInit,
   emailAddressInit,
   fileInit,
   genericPaymentInit,

@@ -1,5 +1,7 @@
-import { Pressable, StyleSheet, Switch, Text, TextInput, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
+import { PxSwitch } from "@/components/form/PxSwitch";
+import { PxTextInput } from "@/components/form/PxTextInput";
 import { PxModal } from "@/components/elements/PxModal";
 import { colors, fontFamilies, fontSizes, radii, spacing } from "@/theme/tokens";
 
@@ -22,40 +24,25 @@ type SettingsDialogProps = {
 export default function SettingsDialog({ visible, onClose, name, hideLogo, onChangeName, onChangeHideLogo, onDelete, isDeleting = false }: SettingsDialogProps) {
   //Default Return
   return (
-    <PxModal visible={visible} onRequestClose={onClose} name="Settings" height="auto" maxHeight={440} keyboardAvoiding>
+    <PxModal
+      visible={visible} onRequestClose={onClose} name="Settings" height="auto" maxHeight={440} keyboardAvoiding
+      footerAction={onDelete ? (
+        <View>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ disabled: isDeleting }}
+            disabled={isDeleting}
+            onPress={onDelete}
+            style={styles.deleteButton}
+          >
+            <Text style={styles.deleteText}>{isDeleting ? "Deleting..." : "Delete"}</Text>
+          </Pressable>
+        </View>
+      ) : null}
+    >
       <View style={styles.content}>
-        <View style={styles.nameField}>
-          <Text style={styles.label}>Name</Text>
-          <TextInput
-            accessibilityLabel="QR name"
-            onChangeText={onChangeName}
-            placeholder="Enter QR name"
-            placeholderTextColor={colors.mute.main}
-            returnKeyType="done"
-            selectionColor={colors.secondary.main}
-            style={styles.input}
-            value={name}
-          />
-        </View>
-        <View style={styles.toggleRow}>
-          <Text style={[styles.label, styles.toggleLabel]}>Hide Uno QR logo</Text>
-          <Switch
-            accessibilityLabel="Hide Uno QR logo"
-            onValueChange={onChangeHideLogo}
-            thumbColor={colors.white.main}
-            trackColor={{ false: colors.neutral.light, true: colors.secondary.main }}
-            value={hideLogo}
-          />
-        </View>
-        {onDelete ? <Pressable
-          accessibilityRole="button"
-          accessibilityState={{ disabled: isDeleting }}
-          disabled={isDeleting}
-          onPress={onDelete}
-          style={styles.deleteButton}
-        >
-          <Text style={styles.deleteText}>{isDeleting ? "Deleting..." : "Delete"}</Text>
-        </Pressable> : null}
+        <PxTextInput value={name} onChangeText={onChangeName} label="Name" accessibilityLabel="QR name" placeholder="Enter QR name" returnKeyType="done" />
+        <PxSwitch value={hideLogo} onValueChange={onChangeHideLogo} label="Hide Uno QR logo" />
       </View>
     </PxModal>
   );//return ends
@@ -65,21 +52,6 @@ export default function SettingsDialog({ visible, onClose, name, hideLogo, onCha
 
 const styles = StyleSheet.create({
   content: { gap: spacing.lg, paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
-  nameField: { gap: spacing.xs },
-  label: { color: colors.primary.main, fontFamily: fontFamilies.primarySemiBold, fontSize: fontSizes.body1 },
-  input: {
-    minHeight: 48,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderWidth: 1,
-    borderColor: colors.border.main,
-    borderRadius: radii.lg,
-    color: colors.primary.main,
-    fontFamily: fontFamilies.primaryRegular,
-    fontSize: fontSizes.body1
-  },
-  toggleRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md },
-  toggleLabel: { flex: 1 },
   deleteButton: {
     width: "100%",
     minHeight: 48,

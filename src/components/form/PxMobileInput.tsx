@@ -3,8 +3,8 @@ import { useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { Controller, type FieldPath, type FieldValues, type RegisterOptions, type UseFormReturn } from "react-hook-form";
 import { HelperText, Modal, Portal, Text, TextInput } from "react-native-paper";
-import { MaterialCommunityIcons } from "@expo/vector-icons";
 
+import { PxIcon } from "@/components/elements/PxIcon";
 import { phoneCountries } from "@/assets/data/countries";
 import { colors } from "@/theme/themeSettings";
 
@@ -214,7 +214,7 @@ function CountriesDialog({ selectedCountry, onSelect, disabled, isActive, hasErr
       >
          <Text style={styles.emojiText}>{selectedCountry.emoji}</Text>
          <Text style={styles.prefixText}>+{selectedCountry.code}</Text>
-         <MaterialCommunityIcons name="chevron-down" size={16} color={colors.grey[500]} />
+         <PxIcon name="chevron-down" size={16} color={colors.grey[500]} />
       </Pressable>
 
       <Portal>
@@ -228,7 +228,7 @@ function CountriesDialog({ selectedCountry, onSelect, disabled, isActive, hasErr
                placeholder="Search country or code"
                style={styles.searchInput}
                outlineStyle={styles.searchOutline}
-               left={<TextInput.Icon icon="magnify" />}
+               left={<TextInput.Icon icon={({ color, size }) => <PxIcon name="magnify" color={color} size={size} />} />}
             />
 
             <ScrollView style={styles.countryList} contentContainerStyle={styles.countryListContent}>

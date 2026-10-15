@@ -3,7 +3,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { PxModal } from "@/components/elements/PxModal";
 import { FrameIcon } from "@/helpers/qrcodes/assets/frame/FrameIcon";
 import QrColorPicker from "@/helpers/qrcodes/create/QrColorPicker";
-import type { FrameStyle } from "@/helpers/qrcodes/modify/frame";
+import type { FrameStyle } from "@/libraries/unoqr-create/frame";
 import { colors, fontFamilies, fontSizes, radii, spacing } from "@/theme/tokens";
 
 import { selectedFirst } from "./selectedFirst";

@@ -1,9 +1,10 @@
-import { ActivityIndicator, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { CloudAlert } from "lucide-react-native";
 import { Text } from "react-native-paper";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { PxCircularProgress } from "@/components/elements/PxCircularProgress";
 import { UnoQrLogo } from "@/components/brand/UnoQrLogo";
 import { PxButton } from "@/components/elements/PxButton";
 import { colors, fontFamilies, fontSizes, radii, spacing } from "@/theme/tokens";
@@ -37,7 +38,7 @@ export function PxPageLoader({
       <View style={styles.content}>
         <View style={[styles.indicatorShell, error && styles.errorShell]}>
           {error ? <CloudAlert size={40} strokeWidth={1.25} color={colors.error.main} />
-            : <ActivityIndicator size="large" color={colors.secondary.main} />}
+            : <PxCircularProgress size={40} color={colors.secondary.main} />}
         </View>
         <Text style={styles.title}>{title}</Text>
         <Text accessibilityRole={error ? "alert" : undefined} style={styles.description}>{error || description}</Text>

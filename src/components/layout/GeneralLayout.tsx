@@ -1,26 +1,30 @@
-import { useEffect, useState, type ReactNode, type RefObject } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactElement, type ReactNode, type RefObject } from "react";
 import {
+	Animated,
+	Easing,
 	Keyboard,
 	KeyboardAvoidingView,
 	Platform,
 	RefreshControl,
 	StyleSheet,
-	View, ScrollView,
+	ScrollView,
+	TextInput,
+	View,
+	type KeyboardEvent,
 	type StyleProp,
 	type ViewStyle
 } from "react-native";
-import { router } from "expo-router";
 import { SafeAreaView, type Edge } from "react-native-safe-area-context";
-import { ActivityIndicator, Text } from "react-native-paper";
 
-import { colors, sizes } from "@/theme/themeSettings";
+import { PxCircularProgress } from "@/components/elements/PxCircularProgress";
+import { colors, spacing } from "@/theme/tokens";
+import { insertAppInstall } from "@/utils/auth/AppInstall";
 import { getUser } from "@/utils/auth/AuthUser";
 import type { UserType } from "@/utils/auth/UserTypes";
 import { Toast, ToastProvider } from "@/utils/general/Toast";
 
 import { BottomNav } from "./BottomNav";
 import { HeaderNav } from "./HeaderNav";
-import { insertAppInstall } from "@/utils/auth/AppInstall";
 
 /* ------------------ BREAK ------------------ */
 
@@ -31,6 +35,8 @@ type GeneralLayoutProps = {
 	fixedFooter?: ReactNode;
 	topView?: ReactNode;
 	bottomView?: ReactNode;
+	bottomNav?: ReactElement | null;
+	floatingAction?: ReactElement;
 	scroll?: boolean;
 	scrollRef?: RefObject<ScrollView | null>;
 	scrollEnabled?: boolean;
@@ -43,16 +49,20 @@ type GeneralLayoutProps = {
 	hideBottomMenu?: boolean;
 	protectRoute?: boolean;
 	onRefresh?: () => void | Promise<void>;
+	refreshing?: boolean;
 	pullToRefreshEnabled?: boolean;
 };
 
 /* ------------------ BREAK ------------------ */
 
+// Renders shared page scrolling, keyboard clearance and one consistent bottom navigation slot.
 export function GeneralLayout({
 	children,
 	fixedFooter,
 	topView,
 	bottomView,
+	bottomNav,
+	floatingAction,
 	scroll = true,
 	scrollRef,
 	scrollEnabled = true,
@@ -65,19 +75,26 @@ export function GeneralLayout({
 	hideBottomMenu = false,
 	protectRoute = false,
 	onRefresh,
+	refreshing,
 	pullToRefreshEnabled = true
 }: GeneralLayoutProps) {
-	const BASE_SCROLL_PADDING = 50;
+	const internalScrollRef = useRef<ScrollView | null>(null);
+	const resolvedScrollRef = scrollRef ?? internalScrollRef;
+	const focusedInput = useRef<ReturnType<typeof TextInput.State.currentlyFocusedInput>>(null);
+	const keyboardTop = useRef<number | null>(null);
+	const scrollOffset = useRef(0);
+	const contentHeight = useRef(0);
+	const viewportHeight = useRef(0);
+	const keyboardSpace = useRef(new Animated.Value(0)).current;
 	//Keyboard visibility state
 	const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
-	const [bottomPadding, setBottomPadding] = useState(BASE_SCROLL_PADDING);
 	const [isRefreshing, setIsRefreshing] = useState(false);
 	const [refreshKey, setRefreshKey] = useState(0);
 	//Auth state
 	const [isAuthResolved, setIsAuthResolved] = useState(!protectRoute);
 	const [authUser, setAuthUser] = useState<UserType | null>(null);
 
-	/* ++++++++++ BREAK ++++++++++ */
+	/* ------------------ BREAK ------------------ */
 
 	//insert app install info on mount
 	useEffect(() => {
@@ -92,8 +109,8 @@ export function GeneralLayout({
 	}, []);//useEffect ends
 
 	// Runs the page refresh callback or refreshes the layout data while maintaining the native refresh indicator.
-	const handleRefresh = async () => {
-		if (isRefreshing) return;
+	const handleRefresh = async (): Promise<void> => {
+		if (isRefreshing || refreshing) return;
 
 		setIsRefreshing(true);
 
@@ -151,172 +168,158 @@ export function GeneralLayout({
 	}, [protectRoute]);//useEffect ends
 
 
-	// Animate extra scroll padding based on keyboard height.
+	// Scrolls only the focused field that extends below the visible keyboard boundary.
+	const scrollFocusedInput = useCallback((): void => {
+		requestAnimationFrame(() => {
+			if (!scroll || keyboardTop.current === null || !focusedInput.current || focusedInput.current !== TextInput.State.currentlyFocusedInput()) return;
+			focusedInput.current.measureInWindow((_x, y, _width, height) => {
+				if (keyboardTop.current === null || height === 0) return;
+				const overlap = y + height + spacing.md - keyboardTop.current;
+				if (overlap > 0) {
+					resolvedScrollRef.current?.scrollTo({ y: scrollOffset.current + overlap, animated: true });
+				};//if ends
+			});//measure ends
+		});//frame ends
+	}, [scroll, resolvedScrollRef]);//callback ends
+
+	// Returns scrolling to the content bounds after keyboard clearance is removed.
+	const restoreScrollPosition = useCallback((remainingKeyboardSpace: number = 0): void => {
+		if (!scroll) return;
+		const maximumOffset = Math.max(0, contentHeight.current - remainingKeyboardSpace - viewportHeight.current);
+		if (scrollOffset.current > maximumOffset) {
+			resolvedScrollRef.current?.scrollTo({ y: maximumOffset, animated: true });
+		};//if ends
+	}, [scroll, resolvedScrollRef]);//callback ends
+
+	// Adds keyboard clearance and animates its removal using each platform's supported events.
 	useEffect(() => {
-		const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
-		const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
-
-		const showSub = Keyboard.addListener(showEvent, (event) => {
-			const keyboardHeight = Math.max(0, event.endCoordinates?.height || 0);
-			const nextPadding = BASE_SCROLL_PADDING + keyboardHeight;
+		// Records keyboard clearance before scrolling the focused input into view.
+		const handleKeyboardShow = (event: KeyboardEvent): void => {
+			keyboardTop.current = event.endCoordinates.screenY;
+			keyboardSpace.stopAnimation();
+			keyboardSpace.setValue(event.endCoordinates.height);
 			setIsKeyboardVisible(true);
-			setBottomPadding(nextPadding);
-		});
-
-		const hideSub = Keyboard.addListener(hideEvent, (event) => {
+			scrollFocusedInput();
+		};//func ends
+		// Restores bottom navigation and collapses the extra scroll space on dismissal.
+		const handleKeyboardHide = (event: KeyboardEvent): void => {
+			if (keyboardTop.current === null) return;
+			keyboardTop.current = null;
+			focusedInput.current = null;
 			setIsKeyboardVisible(false);
-			setBottomPadding(BASE_SCROLL_PADDING);
-		});
-
+			keyboardSpace.stopAnimation((height: number) => {
+				restoreScrollPosition(height);
+				Animated.timing(keyboardSpace, {
+					toValue: 0,
+					duration: event.duration > 0 ? event.duration : 250,
+					easing: Easing.out(Easing.cubic),
+					useNativeDriver: false
+				}).start(({ finished }) => {
+					if (finished) requestAnimationFrame(() => restoreScrollPosition());
+				});//animation ends
+			});//stopAnimation ends
+		};//func ends
+		const subscriptions = [
+			Keyboard.addListener(Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow", handleKeyboardShow),
+			Keyboard.addListener("keyboardDidShow", scrollFocusedInput),
+			Keyboard.addListener("keyboardDidHide", handleKeyboardHide)
+		];
+		if (Platform.OS === "ios") {
+			subscriptions.push(Keyboard.addListener("keyboardWillHide", handleKeyboardHide));
+		};//if ends
 		return () => {
-			showSub.remove();
-			hideSub.remove();
-		};
-	}, []);
+			subscriptions.forEach((subscription) => subscription.remove());
+			keyboardSpace.stopAnimation();
+		};//cleanup ends
+	}, [keyboardSpace, restoreScrollPosition, scrollFocusedInput]);//useEffect ends
 
-	//Resolve top and bottom views
-	const resolvedTopView = topView ?? <HeaderNav />;
-	const resolvedBottomView = bottomView ?? <BottomNav />;
+	// Tracks focus within this page, including switching fields while the keyboard stays open.
+	const handleInputFocus = (): void => {
+		focusedInput.current = TextInput.State.currentlyFocusedInput();
+		scrollFocusedInput();
+	};//func ends
+
+	const resolvedTopView = topView === undefined ? <HeaderNav /> : topView;
+	const customBottomNav = bottomNav !== undefined ? bottomNav : fixedFooter ?? bottomView;
+	const hasCustomBottomNav = customBottomNav != null;
+	const resolvedBottomNav = hasCustomBottomNav
+		? <BottomNav hideMenu footerAction={customBottomNav} />
+		: bottomNav === null || hideBottomMenu ? null : <BottomNav />;
+	const resolvedEdges = hasCustomBottomNav ? edges.filter((edge) => edge !== "bottom") : edges;
 
 	//If auth is not resolved, show loader
 	if (!isAuthResolved) {
 		return (
 			<SafeAreaView style={styles.root} edges={edges}>
 				<View style={styles.authLoader}>
-					<ActivityIndicator size="large" color={colors.primary} />
+					<PxCircularProgress size={40} color={colors.primary.main} />
 				</View>
 				<ToastProvider />
 			</SafeAreaView>
-		);
+		);//return ends
 	};//if ends
 
 	//Set authUser to children after auth is resolved
 	const resolvedChildren = typeof children === "function" ? children(authUser) : children;
 
-	//Content of the layout
-	const content = scroll ? (
-	<ScrollView
-		ref={scrollRef}
-		style={styles.scrollView}
-		contentContainerStyle={[
-			styles.content,
-			contentContainerStyle,
-			{ paddingBottom: 0 },
-		]}
-		scrollEnabled={scrollEnabled}
-		keyboardShouldPersistTaps="handled"
-		showsVerticalScrollIndicator
-		bounces
-		alwaysBounceVertical
-		overScrollMode="always"
-		refreshControl={Platform.OS !== "web" ? (
-			<RefreshControl
-				refreshing={isRefreshing}
-				onRefresh={handleRefresh}
-				enabled={pullToRefreshEnabled}
-			/>
-		) : undefined}
-	>
-		{resolvedTopView}
-
-		<View key={refreshKey} style={[styles.body, bodyStyle]}>
-			{resolvedChildren}
-		</View>
-
-		{bottomView && !fixedFooter ? <View style={styles.footer}>{bottomView}</View> : null }
-		<View style={{ height: bottomPadding }} />
-	</ScrollView>
-) : (
-	<KeyboardAvoidingView
-		behavior={Platform.OS === "ios" ? "padding" : "height"}
-		keyboardVerticalOffset={keyboardVerticalOffset}
-		style={styles.keyboardView}
-	>
-		<View style={[styles.content, styles.staticContent, contentContainerStyle]}>
-			{resolvedTopView}
-
-			<View style={[styles.body, styles.staticBody, bodyStyle]}>
-				{resolvedChildren}
-			</View>
-
-			{bottomView && !fixedFooter ? <View style={styles.footer}>{bottomView}</View> : null}
-		</View>
-	</KeyboardAvoidingView>
-);
-
-	//Default return
+	//Default Return
 	return (
-		<SafeAreaView style={[styles.root, style]} edges={edges}>
-			{content}
-			{fixedFooter ? <View style={styles.fixedFooter}>{fixedFooter}</View> : null}
-			{!hideBottomMenu && !fixedFooter && !(hideBottomViewOnKeyboard && isKeyboardVisible) ? <View>{resolvedBottomView}</View> : null}
+		<SafeAreaView style={[styles.root, style]} edges={resolvedEdges}>
+			<View style={styles.viewport}>
+			{scroll ? <ScrollView
+				ref={resolvedScrollRef}
+				style={styles.scrollView}
+				contentContainerStyle={[styles.content, contentContainerStyle]}
+				scrollEnabled={scrollEnabled}
+				keyboardShouldPersistTaps="handled"
+				keyboardDismissMode="on-drag"
+				showsVerticalScrollIndicator={false}
+				scrollEventThrottle={16}
+				onScroll={(event) => { scrollOffset.current = event.nativeEvent.contentOffset.y; }}
+				onLayout={(event) => { viewportHeight.current = event.nativeEvent.layout.height; }}
+				onContentSizeChange={(_width, height) => {
+					contentHeight.current = height;
+					scrollFocusedInput();
+				}}
+				refreshControl={Platform.OS !== "web" && pullToRefreshEnabled ? <RefreshControl
+					refreshing={refreshing ?? isRefreshing}
+					onRefresh={handleRefresh}
+					tintColor={colors.secondary.main}
+					colors={[colors.secondary.main]}
+				/> : undefined}
+			>
+				{resolvedTopView}
+				<View key={refreshKey} onFocus={handleInputFocus} style={[styles.body, bodyStyle]}>{resolvedChildren}</View>
+				<Animated.View style={{ height: keyboardSpace }} />
+			</ScrollView> : <KeyboardAvoidingView
+				behavior={Platform.OS === "ios" ? "padding" : "height"}
+				keyboardVerticalOffset={keyboardVerticalOffset}
+				style={styles.keyboardView}
+			>
+				<View style={[styles.content, styles.staticContent, contentContainerStyle]}>
+					{resolvedTopView}
+					<View style={[styles.body, styles.staticBody, bodyStyle]}>{resolvedChildren}</View>
+				</View>
+			</KeyboardAvoidingView>}
+			{floatingAction && !isKeyboardVisible ? <View pointerEvents="box-none" style={styles.floatingAction}>{floatingAction}</View> : null}
+			</View>
+			{hideBottomViewOnKeyboard && isKeyboardVisible ? null : resolvedBottomNav}
 			<ToastProvider />
 		</SafeAreaView>
 	);//return ends
-};//func ends
+};//export ends
 
 /* ------------------ BREAK ------------------ */
 
 const styles = StyleSheet.create({
-	root: {
-		flex: 1,
-		backgroundColor: colors.surface
-	},
-	keyboardView: {
-		flex: 1,
-		backgroundColor: colors.background
-	},
-	content: {
-		flexGrow: 1,
-		gap: 0,
-		backgroundColor: colors.background
-	},
-	staticContent: {
-		flex: 1
-	},
-	header: {
-		gap: sizes.spacing.xs
-	},
-	title: {
-		color: colors.black
-	},
-	subtitle: {
-		maxWidth: 560,
-		color: colors.grey[500]
-	},
-	headerContent: {
-		marginTop: sizes.spacing.sm
-	},
-	body: {
-		gap: sizes.spacing.lg
-	},
-	staticBody: {
-		flex: 1
-	},
-	scrollView: {
-		flex: 1,
-		backgroundColor: colors.background
-	},
-	footer: {
-		marginTop: sizes.spacing.sm
-	},
-	authLoader: {
-		flex: 1,
-		alignItems: "center",
-		justifyContent: "center"
-	},
-	fixedFooter: {
-		position: "absolute",
-		left: 0,
-		right: 0,
-		bottom: 0,
-		zIndex: 20,
-		elevation: 20,
-		paddingHorizontal: sizes.spacing.lg,
-		paddingTop: sizes.spacing.sm,
-		paddingBottom: sizes.spacing["2xl"],
-		backgroundColor: "rgba(255, 255, 255, 0.96)",
-		borderTopWidth: 1,
-		borderTopColor: colors.border.main
-	}
+	root: { flex: 1, backgroundColor: colors.white.main },
+	viewport: { flex: 1, minHeight: 0 },
+	floatingAction: { position: "absolute", bottom: spacing.md, left: spacing.md, right: spacing.md, alignItems: "center" },
+	keyboardView: { flex: 1, backgroundColor: colors.cream.main },
+	content: { flexGrow: 1, backgroundColor: colors.cream.main },
+	staticContent: { flex: 1 },
+	body: { gap: spacing.lg },
+	staticBody: { flex: 1 },
+	scrollView: { flex: 1, backgroundColor: colors.cream.main },
+	authLoader: { flex: 1, alignItems: "center", justifyContent: "center" }
 });

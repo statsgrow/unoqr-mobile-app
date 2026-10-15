@@ -1,6 +1,6 @@
 import { SvgXml } from "react-native-svg";
 
-import { buildDot, type DotStyle } from "@/helpers/qrcodes/modify/dot";
+import { buildDot, type DotStyle } from "@/libraries/unoqr-create/dot";
 
 /* ------------------ BREAK ------------------ */
 

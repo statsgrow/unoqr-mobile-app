@@ -1,8 +1,8 @@
 import { Pressable, StyleSheet, View } from "react-native";
 import { type Href } from "expo-router";
-import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Text } from "react-native-paper";
 
+import { PxIcon, type PxIconName } from "@/components/elements/PxIcon";
 import { redirect } from "@/utils/general/Redirect";
 import { PxModal } from "@/components/elements/PxModal";
 import { colors, fontFamilies, fonts, sizes } from "@/theme/themeSettings";
@@ -13,7 +13,7 @@ type MoreMenuItem = {
   id: string;
   title: string;
   subtitle?: string;
-  icon: keyof typeof MaterialCommunityIcons.glyphMap;
+  icon: PxIconName;
   href?: string;
 };
 
@@ -58,7 +58,7 @@ export function MoreMenu({ visible, onClose, onItemPress }: MoreMenuProps) {
                 }}
               >
                 <View style={styles.leadingIconWrap}>
-                  <MaterialCommunityIcons name={item.icon} size={20} color={colors.primary} />
+                  <PxIcon name={item.icon} size={20} color={colors.primary} />
                 </View>
 
                 <View style={styles.textWrap}>
@@ -66,7 +66,7 @@ export function MoreMenu({ visible, onClose, onItemPress }: MoreMenuProps) {
                   {item.subtitle ? <Text style={styles.rowSubtitle}>{item.subtitle}</Text> : null}
                 </View>
 
-                <MaterialCommunityIcons name="chevron-right" size={22} color={colors.grey[400]} />
+                <PxIcon name="chevron-right" size={22} color={colors.grey[400]} />
               </Pressable>
             ))}
           </View>

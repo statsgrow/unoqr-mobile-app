@@ -92,6 +92,7 @@ async function createQrCodesTable(): Promise<void> {
   await db.run("CREATE TABLE IF NOT EXISTS static_qrcode_deletions (id TEXT PRIMARY KEY NOT NULL, user_id TEXT NOT NULL);");
 
   migrateQrCodesColumns();
+  removeEmptyQrDrafts();
 
 };//func ends
 
@@ -126,5 +127,25 @@ function migrateQrCodesColumns(): void {
       connection.execSync("ALTER TABLE static_qrcodes DROP COLUMN bg_color;");
       connection.execSync("ALTER TABLE static_qrcodes DROP COLUMN fg_color;");
     };//if ends
+  });
+};//func ends
+
+/* ------------------ BREAK ------------------ */
+
+// Removes empty local drafts while retaining their owned IDs for durable API deletion.
+function removeEmptyQrDrafts(): void {
+  if (!sqliteDB) return;
+  const connection = sqliteDB;
+  connection.withTransactionSync(() => {
+    const rows = connection.getAllSync<{ id: string; user_id: string | null; content: string | null }>(
+      "SELECT id, user_id, content FROM static_qrcodes"
+    );
+    for (const row of rows) {
+      if (row.content?.trim()) continue;
+      if (row.user_id) {
+        connection.runSync("INSERT OR IGNORE INTO static_qrcode_deletions (id, user_id) VALUES (?, ?)", row.id, row.user_id);
+      };//if ends
+      connection.runSync("DELETE FROM static_qrcodes WHERE id = ?", row.id);
+    };//for ends
   });
 };//func ends

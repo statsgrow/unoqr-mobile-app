@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useFocusEffect } from "expo-router";
 import { ChevronLeft, ChevronRight, CloudAlert, CloudCheck, ContactRound, Globe2, Phone, Plus, QrCode as QrCodeIcon, Search, Type, X, type LucideIcon } from "lucide-react-native";
-import { ActivityIndicator, Animated, AppState, FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View, type ListRenderItemInfo, type NativeScrollEvent, type NativeSyntheticEvent } from "react-native";
+import { Animated, AppState, FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View, type ListRenderItemInfo, type NativeScrollEvent, type NativeSyntheticEvent } from "react-native";
 
+import { PxCircularProgress } from "@/components/elements/PxCircularProgress";
 import { redirect } from "@/utils/general/Redirect";
 import { GeneralLayout } from "@/components/layout/GeneralLayout";
 import { TopNav } from "@/components/layout/TopNav";
@@ -190,7 +191,7 @@ export default function QrCodesListScreen() {
             onPress={() => setIsCloudDialogOpen(true)}
             style={styles.cloudStatus}
           >
-            {cloudState.status === "loading" ? <ActivityIndicator size="small" color={colors.secondary.main} />
+            {cloudState.status === "loading" ? <PxCircularProgress size={20} color={colors.secondary.main} />
               : cloudState.status === "completed" ? <CloudCheck size={22} strokeWidth={1.25} color={colors.success.dark} />
                 : <CloudAlert size={22} strokeWidth={1.25} color={colors.warning.dark} />}
           </Pressable>
@@ -209,7 +210,7 @@ export default function QrCodesListScreen() {
         </Animated.View>
         {state.loading ? (
           <View style={styles.center}>
-            <ActivityIndicator size="large" color={colors.secondary.main} />
+            <PxCircularProgress size={40} color={colors.secondary.main} />
             <Text style={styles.description}>Loading your QR codes...</Text>
           </View>
         ) : (

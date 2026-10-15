@@ -86,7 +86,7 @@ export default function QrColorPicker({
         style={[styles.colorOption, selected && styles.selectedColorOption]}
       >
         <View style={[styles.colorSwatch, { backgroundColor: preset }]}>
-          {selected ? <Check color={preset === colors.white.main || preset === colors.cream.main ? colors.primary.main : colors.white.main} size={20} strokeWidth={2.5} /> : null}
+          {selected ? <Check color={preset === colors.white.main || preset === colors.cream.main ? colors.primary.main : colors.white.main} size={20} strokeWidth={1.25} /> : null}
         </View>
       </Pressable>
     );//return ends
@@ -124,7 +124,7 @@ export default function QrColorPicker({
               onPress={applyCustomColor}
               style={[styles.applyButton, !validHex && styles.disabledButton]}
             >
-              <ArrowRight color={colors.white.main} size={24} />
+              <ArrowRight color={colors.white.main} size={24} strokeWidth={1.25} />
             </Pressable>
           </View>
           {!validHex ? <Text style={styles.colorHint}>Enter a six-digit hex color, such as #FF5528.</Text> : null}
@@ -142,7 +142,7 @@ export default function QrColorPicker({
               </Defs>
               <Circle cx={21} cy={21} r={17} stroke="url(#customColorRainbow)" strokeWidth={8} fill={colors.white.main} />
             </Svg>
-            <Plus color={colors.primary.main} size={24} strokeWidth={2} />
+            <Plus color={colors.primary.main} size={24} strokeWidth={1.25} />
           </Pressable>
           {customColor ? (
             <Pressable accessibilityLabel={`Selected custom ${name.toLowerCase()} color ${color}`} accessibilityRole="button" accessibilityState={{ selected: true }} onPress={openPicker} style={[styles.colorOption, styles.selectedColorOption]}>

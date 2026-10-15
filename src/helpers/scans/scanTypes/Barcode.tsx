@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
-import { MaterialCommunityIcons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
 import * as WebBrowser from "expo-web-browser";
 import { Text } from "react-native-paper";
 
+import { PxIcon } from "@/components/elements/PxIcon";
 import { PxButton } from "@/components/elements/PxButton";
 import type { getScanById } from "@/helpers/scans/db/getQueries";
 import { colors, fontFamilies, fontSizes, radii, spacing } from "@/theme/tokens";
@@ -56,7 +56,7 @@ export function BarcodeScan({ record }: BarcodeScanProps) {
       <View style={styles.card}>
         <View style={styles.summaryRow}>
           <View style={styles.icon}>
-            <MaterialCommunityIcons name="barcode-scan" size={28} color={colors.neutral.main} />
+            <PxIcon name="barcode-scan" size={28} color={colors.neutral.main} />
           </View>
           <View style={styles.summaryText}>
             <Text style={styles.label}>Barcode format</Text>
@@ -64,7 +64,7 @@ export function BarcodeScan({ record }: BarcodeScanProps) {
           </View>
         </View>
         <View style={styles.timestampRow}>
-          <MaterialCommunityIcons name="calendar-clock" size={16} color={colors.mute.main} />
+          <PxIcon name="calendar-clock" size={16} color={colors.mute.main} />
           <Text style={styles.label}>{new Date(record.created_at).toLocaleString()}</Text>
         </View>
       </View>
@@ -79,7 +79,7 @@ export function BarcodeScan({ record }: BarcodeScanProps) {
             onPress={() => void handleCopy()}
             style={styles.copyButton}
           >
-            <MaterialCommunityIcons name={copied ? "check" : "content-copy"} size={22} color={colors.neutral.main} />
+            <PxIcon name={copied ? "check" : "content-copy"} size={22} color={colors.neutral.main} />
           </Pressable>
         </View>
         <PxButton fullWidth color="secondary" startIcon="magnify" loading={searching} disabled={searching} onPress={() => void handleSearch()}>

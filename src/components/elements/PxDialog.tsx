@@ -1,8 +1,8 @@
 import type { ReactNode } from "react";
-import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Modal, Pressable, StyleSheet, View } from "react-native";
 import { Text } from "react-native-paper";
 
+import { PxIcon } from "@/components/elements/PxIcon";
 import { colors, fontFamilies, fonts, sizes } from "@/theme/themeSettings";
 
 /* ------------------ TYPES ------------------ */
@@ -75,7 +75,7 @@ export function PxDialog({
 							accessibilityRole="button"
 							accessibilityLabel="Close dialog"
 						>
-							<MaterialCommunityIcons name="close" size={20} color={colors.grey[500]} />
+							<PxIcon name="close" size={20} color={colors.grey[500]} />
 						</Pressable> : null}
 					</View>
 					{children ? <View style={styles.body}>{children}</View> : null}

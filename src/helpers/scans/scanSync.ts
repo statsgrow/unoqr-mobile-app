@@ -2,12 +2,13 @@ import { and, eq } from "drizzle-orm";
 
 import { apiSettings, installSettings, scansSettings } from "@/settings";
 import { getInstallLinkHeaders, insertAppInstall } from "@/utils/auth/AppInstall";
-import { Axios } from "@/utils/general/Axios";
+import { Axios, isInstallVerificationPending } from "@/utils/general/Axios";
 import { getStorageUser } from "@/utils/auth/AuthUser";
 import { getData, setData } from "@/utils/general/Storage";
 import { db, sqliteDB } from "@/utils/sqlite/db";
 
 import { getScanById } from "./db/getQueries";
+import { getUnoQrDigitalCardUid } from "./identifiers/DigitalCard";
 import { appendScanError, waitForInitialScanSync, waitForInitialScanSyncs } from "./db/insertQueries";
 import {
   initScansTable,
@@ -174,14 +175,18 @@ async function restoreScanHistory({ force = false, signal, onPage, onProgress }:
         const local = db!.select().from(scansTable).where(eq(scansTable.id, row.id)).get();
         if (local?.sync_status === "pending") continue;
         if (!local?.notes_pending && Date.parse(local?.updated_at ?? "") > Date.parse(row.updated_at ?? "")) continue;
+        const isLegacyDigitalCard = (row.type === "url" || row.type === "website") && Boolean(getUnoQrDigitalCardUid(row.value));
         const values: InsertScanInput = {
           id: row.id, created_at: row.created_at, updated_at: row.updated_at ?? null,
           value: row.value, input_url: row.input_url ?? null, final_url: row.final_url ?? null,
-          type: row.type ?? null, kind: row.kind ?? null, status: row.status ?? null,
+          type: isLegacyDigitalCard ? "digital-card" : row.type ?? null,
+          kind: isLegacyDigitalCard ? "digital-card" : row.kind ?? null,
+          status: isLegacyDigitalCard ? "completed" : row.status ?? null,
           user_ip: row.user_ip ?? null, location: row.location ?? null, user_id: user.id,
           website_id: row.website_id ?? null, install_id: row.install_id ?? null,
-          sync_status: "synced", crawl_status: row.crawl_status === "cached" ? "completed" : row.crawl_status,
-          error: row.error ?? null, metadata: row.metadata ?? null,
+          sync_status: isLegacyDigitalCard ? "pending" : "synced",
+          crawl_status: isLegacyDigitalCard ? "not_needed" : row.crawl_status === "cached" ? "completed" : row.crawl_status,
+          error: isLegacyDigitalCard ? null : row.error ?? null, metadata: row.metadata ?? null,
           comment: local?.notes_pending ? local.comment : row.comment ?? null,
           tags: local?.notes_pending ? local.tags : row.tags ?? [],
           notes_pending: local?.notes_pending ?? false
@@ -332,6 +337,7 @@ async function synchronizePendingScan(scan: InsertScanInput): Promise<void> {
       sync_status: "synced"
     });
   } catch (error: unknown) {
+    if (isInstallVerificationPending(error)) return;
     console.error(`Unable to synchronize pending scan ${scan.id}:`, error);
   };//try-catch ends
 };//func ends

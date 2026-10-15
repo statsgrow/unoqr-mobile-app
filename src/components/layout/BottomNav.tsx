@@ -1,12 +1,11 @@
 import type { ReactNode } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import { usePathname, type Href } from "expo-router";
-import { Grip, House, QrCode, ScanText, type LucideIcon } from "lucide-react-native";
+import { ContactRound, Grip, History, House, ScanLine, type LucideIcon } from "lucide-react-native";
 import { Text } from "react-native-paper";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { redirect } from "@/utils/general/Redirect";
-import { UnoQrLogo } from "@/components/brand/UnoQrLogo";
 import { colors, fontFamilies, fontSizes, radii, spacing } from "@/theme/tokens";
 
 /* ------------------ BREAK ------------------ */
@@ -31,16 +30,16 @@ const homeItem: StandardNavItem = {
 
 const scansItem: StandardNavItem = {
   label: "My Scans",
-  icon: ScanText,
+  icon: History,
   href: "/scans/list" as Href,
   matchingPath: "/scans"
 };
 
-const qrCodesItem: StandardNavItem = {
-  label: "My QRs",
-  icon: QrCode,
-  href: "/qrcodes/list" as Href,
-  matchingPath: "/qrcodes"
+const cardItem: StandardNavItem = {
+  label: "My Cards",
+  icon: ContactRound,
+  href: "/digital_cards/modify" as Href,
+  matchingPath: "/digital_cards"
 };
 
 const moreItem: StandardNavItem = {
@@ -59,15 +58,15 @@ export function BottomNav({ footerAction, hideMenu = false }: BottomNavProps) {
 
   //Default Return
   return (
-    <View style={[styles.root, footerAction != null && { paddingTop: 0, paddingBottom: insets.bottom }]}>
+    <View style={[styles.root, footerAction != null && [styles.actionFooter, { paddingBottom: Math.max(spacing.md, insets.bottom) }]]}>
       {footerAction}
       {!hideMenu ? <View style={styles.container}>
         <NavItem item={homeItem} isActive={pathname === homeItem.matchingPath} />
         <NavItem
-          item={scansItem}
+          item={cardItem}
           isActive={
-            pathname === scansItem.matchingPath
-            || pathname.startsWith(`${scansItem.matchingPath}/`)
+            pathname === cardItem.matchingPath
+            || pathname.startsWith(`${cardItem.matchingPath}/`)
           }
         />
 
@@ -78,17 +77,17 @@ export function BottomNav({ footerAction, hideMenu = false }: BottomNavProps) {
             onPress={() => redirect("push", "/scans/scanner")}
             style={({ pressed }) => [styles.scanButton, pressed && styles.pressedButton]}
           >
-            <UnoQrLogo variant="icon" width={32} color={colors.white.main} />
+            <ScanLine size={30} strokeWidth={1.25} color={colors.white.main} />
           </Pressable>
         </View>
 
         <NavItem
-          item={qrCodesItem}
-          isActive={pathname === qrCodesItem.matchingPath || pathname.startsWith(`${qrCodesItem.matchingPath}/`)}
+          item={scansItem}
+          isActive={pathname === scansItem.matchingPath || pathname.startsWith(`${scansItem.matchingPath}/`)}
         />
         <NavItem
           item={moreItem}
-          isActive={pathname === moreItem.matchingPath}
+          isActive={pathname === moreItem.matchingPath || pathname.startsWith("/qrcodes/")}
         />
       </View> : null}
     </View>
@@ -128,8 +127,9 @@ const styles = StyleSheet.create({
     borderTopColor: colors.border.main,
     backgroundColor: colors.white.main
   },
+  actionFooter: { paddingHorizontal: spacing.md, paddingTop: spacing.md },
   container: {
-    height: 50,
+    height: 58,
     flexDirection: "row",
     alignItems: "flex-end",
     paddingHorizontal: spacing.xs,
@@ -138,7 +138,7 @@ const styles = StyleSheet.create({
   itemButton: {
     width: "20%",
     minWidth: 0,
-    height: 46,
+    height: 54,
     alignItems: "center",
     justifyContent: "center",
     gap: spacing.xxs,
@@ -156,7 +156,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: "50%",
     marginLeft: -32,
-    bottom: 0,
+    bottom: 18,
     width: 64,
     height: 64,
     alignItems: "center",

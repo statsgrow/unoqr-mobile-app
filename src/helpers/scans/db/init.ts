@@ -3,6 +3,7 @@ import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { db, sqliteDB } from "@/utils/sqlite/db";
 
 import { getBarcodeFormat, getBarcodeKind } from "../Barcode";
+import { getUnoQrDigitalCardUid } from "../identifiers/DigitalCard";
 
 /* ------------------ BREAK ------------------ */
 
@@ -269,6 +270,23 @@ async function initializeScansTable() {
   await migrateScanUrlColumns();
   await migrateScanKindColumn();
   await migrateScanNotesColumns();
+  migrateDigitalCardScans();
+};//func ends
+
+// Reclassifies existing UnoQR card URLs while preserving scan history, metadata and notes.
+function migrateDigitalCardScans(): void {
+  if (!sqliteDB) return;
+  const connection = sqliteDB;
+  connection.withTransactionSync(() => {
+    const rows = connection.getAllSync<{ id: string; value: string }>("SELECT id, value FROM scans WHERE type IN ('url', 'website')");
+    for (const row of rows) {
+      if (!getUnoQrDigitalCardUid(row.value)) continue;
+      connection.runSync(
+        "UPDATE scans SET type = 'digital-card', kind = 'digital-card', status = 'completed', crawl_status = 'not_needed', sync_status = 'pending', error = NULL, updated_at = ? WHERE id = ?",
+        new Date().toISOString(), row.id
+      );
+    };//for ends
+  });
 };//func ends
 
 // Adds note fields without changing existing scan rows or their synchronization state.

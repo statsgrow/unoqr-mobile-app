@@ -39,29 +39,35 @@ export default function LogoDialog({ visible, onClose, logo, onChangeLogo }: Log
 
   //Default Return
   return (
-    <PxModal visible={visible} onRequestClose={onClose} name="Logo" height="auto" maxHeight={500}>
+    <PxModal
+      visible={visible} onRequestClose={onClose} name="Logo" height="auto" maxHeight={500}
+      footerAction={(
+        <View style={styles.actions}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ disabled: isPicking }}
+            disabled={isPicking}
+            onPress={() => void handlePick()}
+            style={styles.uploadButton}
+          >
+            <ImagePlus color={colors.white.main} size={20} strokeWidth={1.25} />
+            <Text style={styles.uploadText}>{isPicking ? "Opening photos..." : logo ? "Replace logo" : "Upload logo"}</Text>
+          </Pressable>
+          {logo ? (
+            <Pressable accessibilityRole="button" onPress={() => onChangeLogo(null)} style={styles.removeButton}>
+              <Trash2 color={colors.secondary.main} size={18} strokeWidth={1.25} />
+              <Text style={styles.removeText}>Remove logo</Text>
+            </Pressable>
+          ) : null}
+        </View>
+      )}
+    >
       <View style={styles.content}>
         <View style={styles.preview}>
           {logo ? <Image accessibilityLabel="Selected QR logo" source={{ uri: logo.dataUrl ?? getFile(logo.uri).uri }} resizeMode="contain" style={styles.image} />
-            : <ImagePlus color={colors.mute.main} size={48} strokeWidth={1.5} />}
+            : <ImagePlus color={colors.mute.main} size={48} strokeWidth={1.25} />}
         </View>
         <Text style={styles.description}>Add an image to the center of your QR code.</Text>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityState={{ disabled: isPicking }}
-          disabled={isPicking}
-          onPress={() => void handlePick()}
-          style={styles.uploadButton}
-        >
-          <ImagePlus color={colors.white.main} size={20} />
-          <Text style={styles.uploadText}>{isPicking ? "Opening photos..." : logo ? "Replace logo" : "Upload logo"}</Text>
-        </Pressable>
-        {logo ? (
-          <Pressable accessibilityRole="button" onPress={() => onChangeLogo(null)} style={styles.removeButton}>
-            <Trash2 color={colors.secondary.main} size={18} />
-            <Text style={styles.removeText}>Remove logo</Text>
-          </Pressable>
-        ) : null}
       </View>
     </PxModal>
   );//return ends
@@ -70,6 +76,7 @@ export default function LogoDialog({ visible, onClose, logo, onChangeLogo }: Log
 /* ------------------ BREAK ------------------ */
 
 const styles = StyleSheet.create({
+  actions: { alignItems: "center", gap: spacing.sm },
   content: { alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.lg, paddingBottom: spacing.md },
   preview: {
     width: 112,

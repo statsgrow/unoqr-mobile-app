@@ -2,13 +2,13 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { yupResolver } from "@hookform/resolvers/yup";
 import { router } from "expo-router";
 import { ChevronRight, CloudAlert, CloudCheck, ExternalLink, Eye, FileCode2, FileImage, FileText, Grip, ImagePlus, Palette, Pencil, Plus, QrCode, Settings, VectorSquare } from "lucide-react-native";
-import { ActivityIndicator, Alert, Keyboard, KeyboardAvoidingView, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Alert, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { useForm } from "react-hook-form";
 import Svg, { SvgXml } from "react-native-svg";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as yup from "yup";
 
-import { BottomNav } from "@/components/layout/BottomNav";
+import { PxCircularProgress } from "@/components/elements/PxCircularProgress";
+import { GeneralLayout } from "@/components/layout/GeneralLayout";
 import { HeaderBackButton } from "@/components/layout/HeaderBackButton";
 import { PxModal } from "@/components/elements/PxModal";
 import { fileDownload, openDownloadedFile, type DownloadedFile } from "@/components/files/FileDownload";
@@ -142,29 +142,28 @@ export default function CreateQrScreen({ qrId, digitalCard }: CreateQrScreenProp
   const cardToolsDismissRef = useRef<(() => void) | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isContentDialogOpen, setIsContentDialogOpen] = useState(false);
-  const [isQrCreated, setIsQrCreated] = useState(false);
+  const [isFormReady, setIsFormReady] = useState(false);
   const [savedKey, setSavedKey] = useState("");
   const [syncStatus, setSyncStatus] = useState<QrSyncStatus | null>(null);
   const [isSaveStatusDialogOpen, setIsSaveStatusDialogOpen] = useState(false);
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
-  const insets = useSafeAreaInsets();
   const svgRef = useRef<Svg | null>(null);
   const downloadModalDismissRef = useRef<(() => void) | null>(null);
   const generationRef = useRef(0);
   const initializationPromiseRef = useRef<Promise<QrCreateFormValues> | null>(null);
   const qrIdRef = useRef<string | null>(null);
+  const hasStoredQrRef = useRef(false);
   const savedKeyRef = useRef("");
   const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const deletingRef = useRef(false);
   const settingsKey = JSON.stringify(settings);
-  const isSaved = isQrCreated && savedKey === settingsKey;
+  const isSaved = isFormReady && savedKey === settingsKey;
   const isSavedInCloud = isSaved && syncStatus === "completed";
   const previewKey = getQrPreviewKey(settings);
   // Subscribe before the saved content loads so async validation updates the download button.
   const { isValid } = form.formState;
   const hasValue = checkContentLength(content).canCreate && isValid;
 
-  // Loads the selected QR or inserts one initial row before displaying the form.
+  // Loads an existing QR or keeps a new form in memory until its content is saved.
   useEffect(() => {
     let isMounted = true;
     if (!digitalCard) qrIdRef.current ??= qrId || getUUIDv4();
@@ -173,27 +172,22 @@ export default function CreateQrScreen({ qrId, digitalCard }: CreateQrScreenProp
       if (qrId) {
         const record = await getQrById(qrId);
         if (!record) throw new Error("This QR code could not be found on this device.");
+        hasStoredQrRef.current = true;
         const { id, created_at, updated_at, user_id, sync_status, last_download_type, last_download_at, ...values } = record;
         return values;
       };//if ends
 
-      const result = await insertQr({
-        ...QR_DEFAULTS,
-        id: qrIdRef.current!,
-        created_at: new Date().toISOString()
-      });
-      if (!result) throw new Error("Unable to create a QR entry on this device.");
       return QR_DEFAULTS;
     })();
 
     void initializationPromiseRef.current.then((values) => {
       if (isMounted) {
         form.reset(values);
-        savedKeyRef.current = JSON.stringify(values);
+        savedKeyRef.current = digitalCard || hasStoredQrRef.current ? JSON.stringify(values) : "";
         setSavedKey(savedKeyRef.current);
-        setIsQrCreated(true);
+        setIsFormReady(true);
         // Ask for content immediately when opening a QR that has not been filled in yet.
-        if (!values.content.trim()) setIsContentDialogOpen(true);
+        if (!values.content?.trim()) setIsContentDialogOpen(true);
         void form.trigger();
         updateQrPreview();
       };//if ends
@@ -214,6 +208,7 @@ export default function CreateQrScreen({ qrId, digitalCard }: CreateQrScreenProp
     if (deletingRef.current) return Promise.resolve();
     const key = JSON.stringify(form.getValues());
     const snapshot: QrCreateFormValues = JSON.parse(key);
+    if (!saveCardQr && !snapshot.content?.trim()) return Promise.resolve();
     const operation = saveQueueRef.current.catch(() => undefined).then(async () => {
       if (deletingRef.current) return;
       if (savedKeyRef.current === key) return;
@@ -227,8 +222,11 @@ export default function CreateQrScreen({ qrId, digitalCard }: CreateQrScreenProp
         };//for ends
       } else {
         if (!qrIdRef.current) throw new Error("The QR entry is not ready.");
-        const result = await updateQrcode({ ...snapshot, id: qrIdRef.current });
+        const result = hasStoredQrRef.current
+          ? await updateQrcode({ ...snapshot, id: qrIdRef.current })
+          : await insertQr({ ...snapshot, id: qrIdRef.current, created_at: new Date().toISOString() });
         if (!result || result.changes !== 1) throw new Error("Your QR changes could not be saved.");
+        hasStoredQrRef.current = true;
       };//if ends
       savedKeyRef.current = key;
       setSavedKey(key);
@@ -260,25 +258,25 @@ export default function CreateQrScreen({ qrId, digitalCard }: CreateQrScreenProp
 
   // Saves form changes after a short pause while leaving pending or failed changes marked unsaved.
   useEffect(() => {
-    if (!isQrCreated || saveCardQr) return;
+    if (!isFormReady || saveCardQr) return;
     const timeout = setTimeout(() => {
       void saveQrChanges().catch((error: unknown) => console.error("Unable to save QR changes:", error));
     }, 500);
     return () => clearTimeout(timeout);
-  }, [isQrCreated, settingsKey, saveQrChanges]);
+  }, [isFormReady, settingsKey, saveQrChanges]);
 
   // Flushes the final form values when the user leaves through system navigation.
   useEffect(() => {
-    if (!isQrCreated || saveCardQr) return;
+    if (!isFormReady || saveCardQr) return;
     return () => {
       void saveQrChanges().catch((error: unknown) => console.error("Unable to save QR changes on exit:", error));
     };//return ends
-  }, [isQrCreated, saveQrChanges]);
+  }, [isFormReady, saveQrChanges]);
 
   // Reads the persisted status once and follows committed writes without polling the database.
   useEffect(() => {
     const id = qrIdRef.current;
-    if (!isQrCreated || !id) return;
+    if (!isFormReady || !id) return;
     let isMounted = true;
     let receivedStatus = false;
     const unsubscribe = subscribeQrSaveStatus(id, (status) => {
@@ -293,22 +291,7 @@ export default function CreateQrScreen({ qrId, digitalCard }: CreateQrScreenProp
       isMounted = false;
       unsubscribe();
     };//return ends
-  }, [isQrCreated]);
-
-  // Keeps the download footer clear of the modal keyboard.
-  useEffect(() => {
-    const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
-    const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
-    const showSubscription = Keyboard.addListener(showEvent, (event) => {
-      setKeyboardHeight(event.endCoordinates.height);
-    });
-    const hideSubscription = Keyboard.addListener(hideEvent, () => setKeyboardHeight(0));
-
-    return () => {
-      showSubscription.remove();
-      hideSubscription.remove();
-    };
-  }, []);
+  }, [isFormReady]);
 
   // Renders the latest submitted content or style change and discards older results.
   function updateQrPreview() {
@@ -364,8 +347,10 @@ export default function CreateQrScreen({ qrId, digitalCard }: CreateQrScreenProp
     setIsDeleting(true);
     try {
       await saveQueueRef.current.catch(() => undefined);
-      const result = await deleteQr(qrIdRef.current);
-      if (!result || result.changes !== 1) throw new Error("This QR code could not be deleted.");
+      if (hasStoredQrRef.current) {
+        const result = await deleteQr(qrIdRef.current);
+        if (!result || result.changes !== 1) throw new Error("This QR code could not be deleted.");
+      };//if ends
       const logo = form.getValues("logo");
       if (logo && !logo.dataUrl) {
         await deleteFile(logo.uri).catch((error: unknown) => console.error("Unable to remove QR logo file:", error));
@@ -522,10 +507,10 @@ export default function CreateQrScreen({ qrId, digitalCard }: CreateQrScreenProp
         </View>
   );
 
-  if (!isQrCreated) {
+  if (!isFormReady) {
     return (
       <View style={styles.loading}>
-        <ActivityIndicator color={colors.secondary.main} size="large" />
+        <PxCircularProgress color={colors.secondary.main} size={40} />
         <Text style={styles.emptyPreviewText}>{qrId ? "Loading QR..." : "Creating QR..."}</Text>
       </View>
     );//return ends
@@ -533,11 +518,8 @@ export default function CreateQrScreen({ qrId, digitalCard }: CreateQrScreenProp
 
   //Default Return
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-      style={styles.root}
-    >
-      {!digitalCard ? <View style={styles.header}>
+    <GeneralLayout
+      topView={!digitalCard ? <View style={styles.header}>
         <HeaderBackButton accessibilityLabel="Back to More" onPress={() => void handleBackPress()} />
         <Text style={styles.headerTitle}>{qrId ? "Edit QR code" : "Create QR code"}</Text>
         <Pressable
@@ -550,65 +532,21 @@ export default function CreateQrScreen({ qrId, digitalCard }: CreateQrScreenProp
           {isSavedInCloud ? <CloudCheck size={19} strokeWidth={1.25} color={colors.primary.main} /> : <CloudAlert size={19} strokeWidth={1.25} color={colors.warning.dark} />}
         </Pressable>
       </View> : null}
-
-      <ScrollView
-        refreshControl={digitalCard?.onRefresh ? <RefreshControl refreshing={digitalCard.refreshing ?? false} onRefresh={digitalCard.onRefresh} tintColor={colors.secondary.main} colors={[colors.secondary.main]} /> : undefined}
-        contentContainerStyle={[styles.content, { paddingBottom: spacing.lg + keyboardHeight }]}
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="on-drag"
-        showsVerticalScrollIndicator={false}
-      >
-        {digitalCard?.renderPreview ? digitalCard.renderPreview(settings) : <View style={styles.previewArea}>
-          {qrSvg ? (
-            <View style={styles.qrFrame}>
-              <SvgXml xml={qrSvg} override={{ ref: svgRef, width: "100%", height: "100%" }} />
-            </View>
-          ) : (
-            <View style={styles.emptyPreview}>
-              <QrCode color={colors.mute.light} size={88} strokeWidth={1.15} />
-              <Text style={styles.emptyPreviewText}>{previewError || "Add content to preview your QR"}</Text>
-            </View>
-          )}
-        </View>}
-
-        {!digitalCard ? <QrQuality
-          content={settledSettings.content}
-          backgroundColor={settledSettings.styles.bg_color}
-          foregroundColor={settledSettings.styles.fg_color}
-          dotColor={settledSettings.dot.color}
-          eyeColor={settledSettings.eye.color}
-        /> : null}
-
-        {!digitalCard ? contentSelection && content ? (
-          <Pressable accessibilityLabel="Edit QR content" accessibilityRole="button" onPress={() => setIsContentDialogOpen(true)} style={styles.inputCard}>
-            <View style={styles.inputContent}>
-              <Text style={styles.inputLabel}>{content_type === "vcard" ? "vCard" : content_type === "website" ? "Website" : content_type === "phone" ? "Phone" : "Text"}</Text>
-              <Text numberOfLines={2} style={styles.inputValue}>{describeQrContent(contentSelection)}</Text>
-            </View>
-            <Pencil color={colors.mute.main} size={20} strokeWidth={1.75} />
-          </Pressable>
-        ) : (
-          <Pressable accessibilityLabel="Add QR content" accessibilityRole="button" onPress={() => setIsContentDialogOpen(true)} style={styles.addContentButton}>
-            <Plus color={colors.secondary.main} size={22} strokeWidth={1.75} />
-            <Text style={styles.addContentText}>Add Content</Text>
-          </Pressable>
-        ) : null}
-
-        {!digitalCard ? qrTools : null}
-
-      </ScrollView>
-
-      {keyboardHeight === 0 ? <BottomNav hideMenu={true} footerAction={<View style={styles.footer}>
+      edges={["bottom"]}
+      style={styles.root}
+      bodyStyle={[styles.content, digitalCard && styles.cardContent]}
+      onRefresh={digitalCard?.onRefresh}
+      refreshing={digitalCard?.refreshing}
+      pullToRefreshEnabled={!!digitalCard?.onRefresh}
+      floatingAction={digitalCard ? <Pressable accessibilityLabel="QR Card settings" accessibilityRole="button" disabled={savingCardQr || digitalCard.refreshing} onPress={() => setIsCardToolsOpen(true)} style={styles.cardSettingsButton}>
+        <Settings color={colors.primary.main} size={24} strokeWidth={1.25} />
+        <Text style={styles.cardSettingsText}>Settings</Text>
+      </Pressable> : undefined}
+      bottomNav={digitalCard && !isDirty && !savingCardQr && !cardSaveError ? null : <View style={styles.footer}>
         {digitalCard ? <>
-          <View pointerEvents="box-none" style={styles.cardSettingsPosition}>
-            <Pressable accessibilityLabel="QR Card settings" accessibilityRole="button" disabled={savingCardQr || digitalCard.refreshing} onPress={() => setIsCardToolsOpen(true)} style={styles.cardSettingsButton}>
-              <Settings color={colors.primary.main} size={24} strokeWidth={1.25} />
-              <Text style={styles.cardSettingsText}>Settings</Text>
-            </Pressable>
-          </View>
           {cardSaveError ? <Text accessibilityRole="alert" style={styles.cardSaveError}>{cardSaveError}</Text> : null}
           {isDirty || savingCardQr ? <Pressable accessibilityRole="button" disabled={savingCardQr || digitalCard.refreshing} onPress={() => void form.handleSubmit(handleSaveCardQr)()} style={styles.cardSaveButton}>
-            {savingCardQr ? <ActivityIndicator color={colors.white.main} /> : null}
+            {savingCardQr ? <PxCircularProgress color={colors.white.main} /> : null}
             <Text style={styles.downloadText}>{savingCardQr ? "Saving…" : "Save Now"}</Text>
           </Pressable> : null}
         </> : <Pressable
@@ -620,7 +558,46 @@ export default function CreateQrScreen({ qrId, digitalCard }: CreateQrScreenProp
         >
           <Text style={styles.downloadText}>{isDownloading ? "Saving..." : "Download QR"}</Text>
         </Pressable>}
-      </View>} /> : null}
+      </View>}
+    >
+
+      {digitalCard?.renderPreview ? digitalCard.renderPreview(settings) : <View style={styles.previewArea}>
+        {qrSvg ? (
+          <View style={styles.qrFrame}>
+            <SvgXml xml={qrSvg} override={{ ref: svgRef, width: "100%", height: "100%" }} />
+          </View>
+        ) : (
+          <View style={styles.emptyPreview}>
+            <QrCode color={colors.mute.light} size={88} strokeWidth={1.25} />
+            <Text style={styles.emptyPreviewText}>{previewError || "Add content to preview your QR"}</Text>
+          </View>
+        )}
+      </View>}
+
+      {!digitalCard ? <QrQuality
+        content={settledSettings.content}
+        backgroundColor={settledSettings.styles.bg_color}
+        foregroundColor={settledSettings.styles.fg_color}
+        dotColor={settledSettings.dot.color}
+        eyeColor={settledSettings.eye.color}
+      /> : null}
+
+      {!digitalCard ? contentSelection && content ? (
+        <Pressable accessibilityLabel="Edit QR content" accessibilityRole="button" onPress={() => setIsContentDialogOpen(true)} style={styles.inputCard}>
+          <View style={styles.inputContent}>
+            <Text style={styles.inputLabel}>{content_type === "vcard" ? "vCard" : content_type === "website" ? "Website" : content_type === "phone" ? "Phone" : "Text"}</Text>
+            <Text numberOfLines={2} style={styles.inputValue}>{describeQrContent(contentSelection)}</Text>
+          </View>
+          <Pencil color={colors.mute.main} size={20} strokeWidth={1.25} />
+        </Pressable>
+      ) : (
+        <Pressable accessibilityLabel="Add QR content" accessibilityRole="button" onPress={() => setIsContentDialogOpen(true)} style={styles.addContentButton}>
+          <Plus color={colors.secondary.main} size={22} strokeWidth={1.25} />
+          <Text style={styles.addContentText}>Add Content</Text>
+        </Pressable>
+      ) : null}
+
+      {!digitalCard ? qrTools : null}
 
       {digitalCard ? <PxModal
         visible={isCardToolsOpen}
@@ -643,10 +620,10 @@ export default function CreateQrScreen({ qrId, digitalCard }: CreateQrScreenProp
         maxHeight={500}
       >
         <View style={styles.exportOptions}>
-          <ExportRow label="SVG" description="Scalable vector file" icon={<FileCode2 color={colors.secondary.main} size={24} />} loading={downloadingFormat === "svg"} disabled={isDownloading} onPress={() => void handleDownload("svg")} />
-          <ExportRow label="PNG" description="High-resolution image" icon={<FileImage color={colors.secondary.main} size={24} />} loading={downloadingFormat === "png"} disabled={isDownloading} onPress={() => void handleDownload("png")} />
-          <ExportRow label="JPEG" description="Standard image file" icon={<FileImage color={colors.secondary.main} size={24} />} loading={downloadingFormat === "jpeg"} disabled={isDownloading} onPress={() => void handleDownload("jpeg")} />
-          <ExportRow label="PDF" description="Ready for printing" icon={<FileText color={colors.secondary.main} size={24} />} loading={downloadingFormat === "pdf"} disabled={isDownloading} onPress={() => void handleDownload("pdf")} />
+          <ExportRow label="SVG" description="Scalable vector file" icon={<FileCode2 color={colors.secondary.main} size={24} strokeWidth={1.25} />} loading={downloadingFormat === "svg"} disabled={isDownloading} onPress={() => void handleDownload("svg")} />
+          <ExportRow label="PNG" description="High-resolution image" icon={<FileImage color={colors.secondary.main} size={24} strokeWidth={1.25} />} loading={downloadingFormat === "png"} disabled={isDownloading} onPress={() => void handleDownload("png")} />
+          <ExportRow label="JPEG" description="Standard image file" icon={<FileImage color={colors.secondary.main} size={24} strokeWidth={1.25} />} loading={downloadingFormat === "jpeg"} disabled={isDownloading} onPress={() => void handleDownload("jpeg")} />
+          <ExportRow label="PDF" description="Ready for printing" icon={<FileText color={colors.secondary.main} size={24} strokeWidth={1.25} />} loading={downloadingFormat === "pdf"} disabled={isDownloading} onPress={() => void handleDownload("pdf")} />
         </View>
       </PxModal>
 
@@ -656,17 +633,19 @@ export default function CreateQrScreen({ qrId, digitalCard }: CreateQrScreenProp
         name="Download complete"
         height="auto"
         maxHeight={300}
-        footer={downloadedFile ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityState={{ disabled: isOpeningFile }}
-            disabled={isOpeningFile}
-            onPress={() => void handleOpenDownloadedFile()}
-            style={styles.openFileButton}
-          >
-            <ExternalLink color={colors.white.main} size={20} strokeWidth={1.8} />
-            <Text style={styles.openFileText}>Open file</Text>
-          </Pressable>
+        footerAction={downloadedFile ? (
+          <View>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityState={{ disabled: isOpeningFile }}
+              disabled={isOpeningFile}
+              onPress={() => void handleOpenDownloadedFile()}
+              style={styles.openFileButton}
+            >
+              <ExternalLink color={colors.white.main} size={20} strokeWidth={1.25} />
+              <Text style={styles.openFileText}>Open file</Text>
+            </Pressable>
+          </View>
         ) : undefined}
       >
         <View style={styles.downloadComplete}>
@@ -763,7 +742,7 @@ export default function CreateQrScreen({ qrId, digitalCard }: CreateQrScreenProp
         onChangeName={(value) => form.setValue("name", value, { shouldValidate: true, shouldDirty: true })}
         onChangeHideLogo={(value) => updateQrSetting(() => form.setValue("hide_logo", value, { shouldValidate: true, shouldDirty: true }))}
       /> : null}
-    </KeyboardAvoidingView>
+    </GeneralLayout>
   );//return ends
 };//export ends
 
@@ -785,7 +764,7 @@ function ExportRow({ label, description, icon, onPress, disabled, loading = fals
         <Text style={styles.exportLabel}>{label}</Text>
         <Text style={styles.exportDescription}>{loading ? "Preparing download..." : description}</Text>
       </View>
-      {loading ? <ActivityIndicator color={colors.secondary.main} size="small" /> : <ChevronRight color={colors.mute.main} size={21} strokeWidth={1.75} />}
+      {loading ? <PxCircularProgress color={colors.secondary.main} size={20} /> : <ChevronRight color={colors.mute.main} size={21} strokeWidth={1.25} />}
     </Pressable>
   );//return ends
 };//func ends
@@ -827,6 +806,7 @@ const styles = StyleSheet.create({
     paddingTop: spacing.sm,
     paddingBottom: spacing.lg
   },
+  cardContent: { paddingBottom: 52 + spacing.md * 2 },
   previewArea: {
     minHeight: 280,
     alignItems: "center",
@@ -886,24 +866,22 @@ const styles = StyleSheet.create({
   },
   toolLabel: { color: colors.mute.main, fontFamily: fontFamilies.primaryRegular, fontSize: fontSizes.body2 },
   footer: {
-    padding: spacing.md,
-    backgroundColor: colors.white.main
+    gap: spacing.xs
   },
   cardSaveError: { color: colors.error.main, fontFamily: fontFamilies.primaryRegular, fontSize: fontSizes.caption, marginBottom: spacing.xs },
   cardToolsContent: { paddingHorizontal: spacing.lg, paddingBottom: spacing.md },
-  cardSettingsPosition: { position: "absolute", bottom: "100%", left: 0, right: 0, marginBottom: spacing.md + 25, alignItems: "center" },
   cardSettingsText: { color: colors.primary.main, fontFamily: fontFamilies.primarySemiBold, fontSize: fontSizes.button },
   cardSettingsButton: { width: 140, height: 52, flexDirection: "row", gap: spacing.xs, alignItems: "center", justifyContent: "center", borderRadius: radii.pill, borderWidth: 1, borderColor: colors.primary.main, backgroundColor: colors.white.main, elevation: 3, shadowColor: colors.primary.main, shadowOpacity: 0.12, shadowRadius: 6, shadowOffset: { width: 0, height: 2 } },
   cardSaveButton: { minHeight: 50, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.xs, borderRadius: radii.lg, backgroundColor: colors.secondary.main },
   downloadButton: {
-    minHeight: 56,
+    minHeight: 50,
     alignItems: "center",
     justifyContent: "center",
     borderRadius: radii.lg,
     backgroundColor: colors.secondary.main
   },
   downloadButtonDisabled: { opacity: 0.45 },
-  downloadText: { color: colors.white.main, fontFamily: fontFamilies.primaryBold, fontSize: fontSizes.body1 },
+  downloadText: { color: colors.white.main, fontFamily: fontFamilies.primarySemiBold, fontSize: fontSizes.button },
   exportOptions: { gap: spacing.sm, paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
   exportRow: {
     minHeight: 68,

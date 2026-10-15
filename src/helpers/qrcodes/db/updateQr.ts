@@ -19,7 +19,9 @@ export async function updateQrcode({ id, ...data }: UpdateQrInput): Promise<SQLi
   if (!db) return null;
 
   await initQrCodes();
-  const previous = await db.select({ updated_at: qrCodesTable.updated_at }).from(qrCodesTable).where(eq(qrCodesTable.id, id)).get();
+  const previous = await db.select({ updated_at: qrCodesTable.updated_at, content: qrCodesTable.content }).from(qrCodesTable).where(eq(qrCodesTable.id, id)).get();
+  const content = "content" in data ? data.content : previous?.content;
+  if (typeof content !== "string" || !content.trim()) throw new Error("Enter QR content before saving.");
   // Commit each local edit and its pending synchronization marker together.
   const result = await db.update(qrCodesTable).set({
     ...data, updated_at: getQrUpdatedAt(previous?.updated_at), sync_status: "pending"

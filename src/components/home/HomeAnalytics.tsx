@@ -1,10 +1,11 @@
 import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
-import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { ContactRound, Globe2, Phone, QrCode as QrCodeIcon, Type, type LucideIcon } from "lucide-react-native";
 import { useFocusEffect } from "expo-router";
-import { ActivityIndicator, Text } from "react-native-paper";
+import { Text } from "react-native-paper";
 
+import { PxIcon, type PxIconName } from "@/components/elements/PxIcon";
+import { PxCircularProgress } from "@/components/elements/PxCircularProgress";
 import { redirect } from "@/utils/general/Redirect";
 import { PxCard } from "@/components/elements/PxCard";
 import { UpiPaymentIcon } from "@/helpers/scans/components/UpiPaymentIcon";
@@ -26,7 +27,7 @@ type ScanTypeSummary = {
   label: string;
   count: number;
   percentage: number;
-  icon: keyof typeof MaterialCommunityIcons.glyphMap;
+  icon: PxIconName;
   color: string;
   backgroundColor: string;
 };
@@ -135,7 +136,7 @@ export function HomeAnalytics({ topContent }: HomeAnalyticsProps) {
         <ScanCardPattern />
 
         <View style={styles.totalIconWrap}>
-          <MaterialCommunityIcons name="qrcode-scan" size={28} color={colors.white.main} />
+          <PxIcon name="qrcode-scan" size={28} color={colors.white.main} />
         </View>
 
         <View style={styles.totalCopy}>
@@ -154,7 +155,7 @@ export function HomeAnalytics({ topContent }: HomeAnalyticsProps) {
 
       {loading ? (
         <View style={styles.loadingTypes}>
-          <ActivityIndicator size="small" color={colors.secondary.main} />
+          <PxCircularProgress size={20} color={colors.secondary.main} />
           <Text style={styles.emptyMessage}>Loading scan types…</Text>
         </View>
       ) : visibleTypeSummaries.length > 0 ? (
@@ -168,7 +169,7 @@ export function HomeAnalytics({ topContent }: HomeAnalyticsProps) {
       ) : (
         <View style={styles.emptyTypes}>
           <View style={styles.emptyIcon}>
-            <MaterialCommunityIcons name="qrcode-scan" size={28} color={colors.secondary.main} />
+            <PxIcon name="qrcode-scan" size={28} color={colors.secondary.main} />
           </View>
           <Text style={styles.emptyTitle}>No scans available</Text>
           <Text style={styles.emptyMessage}>Start scanning to see magic</Text>
@@ -265,14 +266,14 @@ function RecentScanCard({ record }: { record: ScanRecord }) {
         <UpiPaymentIcon size={42} />
       ) : (
         <View style={styles.recentIcon}>
-          <MaterialCommunityIcons name={typeInit.icon} size={21} color={colors.primary.main} />
+          <PxIcon name={typeInit.icon} size={21} color={colors.primary.main} />
         </View>
       )}
       <View style={styles.recentContent}>
         <Text numberOfLines={1} style={styles.recentTitle}>{title}</Text>
         <Text style={styles.recentTimestamp}>{formatRecentScanDate(record.updated_at || record.created_at)}</Text>
       </View>
-      <MaterialCommunityIcons name="chevron-right" size={21} color={colors.mute.light} />
+      <PxIcon name="chevron-right" size={21} color={colors.mute.light} />
     </Pressable>
   );//return ends
 };//func ends
@@ -302,7 +303,7 @@ function RecentQrCard({ record }: { record: QrCode }) {
         <Text numberOfLines={1} style={styles.recentTitle}>{title}</Text>
         <Text style={styles.recentTimestamp}>{typeInfo.label} · {formatRecentScanDate(record.updated_at || record.created_at)}</Text>
       </View>
-      <MaterialCommunityIcons name="chevron-right" size={21} color={colors.mute.light} />
+      <PxIcon name="chevron-right" size={21} color={colors.mute.light} />
     </Pressable>
   );//return ends
 };//func ends
@@ -367,7 +368,7 @@ function TypeCard({ summary }: TypeCardProps) {
           <UpiPaymentIcon size={46} backgroundColor={colors.cream.main} />
         ) : (
           <View style={styles.typeIconWrap}>
-            <MaterialCommunityIcons name={summary.icon} size={24} color={colors.secondary.main} />
+            <PxIcon name={summary.icon} size={24} color={colors.secondary.main} />
           </View>
         )}
         <Text style={styles.typePercentage}>{summary.percentage}%</Text>

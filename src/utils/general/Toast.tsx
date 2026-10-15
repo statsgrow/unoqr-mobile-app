@@ -1,4 +1,3 @@
-import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { StyleSheet, View, type TextStyle, type ViewStyle } from "react-native";
 import NativeToast, {
   BaseToast,
@@ -7,6 +6,7 @@ import NativeToast, {
   type ToastPosition
 } from "react-native-toast-message";
 
+import { PxIcon, type PxIconName } from "@/components/elements/PxIcon";
 import { colors, fontFamilies, fontSizes, radii, spacing } from "@/theme/tokens";
 
 /* ------------------ BREAK ------------------ */
@@ -24,7 +24,7 @@ type ProjectToastType = "success" | "error" | "warning" | "info";
 type ProjectToastStyle = {
   color: string;
   backgroundColor: string;
-  icon: keyof typeof MaterialCommunityIcons.glyphMap;
+  icon: PxIconName;
 };
 
 /* ------------------ BREAK ------------------ */
@@ -132,7 +132,7 @@ function renderProjectToast(
       text2NumberOfLines={6}
       renderLeadingIcon={() => (
         <View style={[styles.icon, { backgroundColor: toastStyle.backgroundColor }]}>
-          <MaterialCommunityIcons
+          <PxIcon
             name={toastStyle.icon}
             size={23}
             color={toastStyle.color}

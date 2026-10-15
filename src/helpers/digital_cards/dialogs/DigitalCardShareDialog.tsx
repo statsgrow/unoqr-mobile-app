@@ -1,9 +1,10 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as Clipboard from "expo-clipboard";
 import { File, Paths } from "expo-file-system";
-import { ActivityIndicator, Platform, Pressable, Share, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { Platform, Pressable, Share, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { CheckCircle2, ChevronRight, Copy, Download, QrCode, Share2 } from "lucide-react-native";
 
+import { PxCircularProgress } from "@/components/elements/PxCircularProgress";
 import { PxModal } from "@/components/elements/PxModal";
 import { fileDownload } from "@/components/files/FileDownload";
 import { fileShare } from "@/components/files/FileSharing";
@@ -13,15 +14,19 @@ import { colors, fontFamilies, fontSizes, radii, spacing } from "@/theme/tokens"
 
 /* ------------------ BREAK ------------------ */
 
-type Props = { card: AppDigitalCardQr; open: boolean; setOpen: (open: boolean) => void; onPublish: () => Promise<AppDigitalCardQr | null> };
+type Props = { open: boolean; setOpen: (open: boolean) => void; initialTab?: "qr" | "social" } & (
+  | { card: AppDigitalCardQr; onPublish: () => Promise<AppDigitalCardQr | null>; publicLink?: never }
+  | { publicLink: { url: string; fullname: string }; card?: never; onPublish?: never }
+);
 type ShareAction = "share-image" | "save-image" | "share-link" | "copy-link";
 
 /* ------------------ BREAK ------------------ */
 
-// Previews a portrait QR card and shares its image or public link after publication succeeds.
-export default function DigitalCardShareDialog({ card, open, setOpen, onPublish }: Props) {
+// Shares an owner QR card or an already published scanned card through the same modal.
+export default function DigitalCardShareDialog({ card, publicLink, open, setOpen, onPublish, initialTab }: Props) {
   const { height: windowHeight } = useWindowDimensions();
   const [tab, setTab] = useState<"qr" | "social">("qr");
+  const activeTab = publicLink ? "social" : tab;
   const [previewReady, setPreviewReady] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [downloadLocation, setDownloadLocation] = useState<"Downloads" | "Files" | null>(null);
@@ -31,6 +36,12 @@ export default function DigitalCardShareDialog({ card, open, setOpen, onPublish 
   const previewRef = useRef<DigitalCardQrPreviewHandle | null>(null);
   const locked = useRef(false);
   const dismissResolve = useRef<(() => void) | null>(null);
+
+  // Opens the sharing option selected by the Home card action.
+  useEffect(() => {
+    if (open && initialTab) setTab(initialTab);
+  }, [open, initialTab]);
+
   // Waits for the iOS sheet to close before presenting another native share or Files sheet.
   const closeSheet = (): Promise<void> => {
     // Closes the currently visible sheet before presenting the next native modal.
@@ -59,7 +70,7 @@ export default function DigitalCardShareDialog({ card, open, setOpen, onPublish 
     };//try-catch ends
   };//func ends
 
-  // Publishes first and only exposes a link or image after the server confirms the published card.
+  // Shares public links directly and publishes owner cards before exposing their link or image.
   const handleShare = async (action: ShareAction): Promise<void> => {
     if (locked.current || ((action === "share-image" || action === "save-image") && !imageRef.current)) return;
     locked.current = true;
@@ -69,17 +80,17 @@ export default function DigitalCardShareDialog({ card, open, setOpen, onPublish 
     try {
       // Reuses the captured image after the original preview sheet has closed.
       const imageBase64 = imageRef.current;
-      const published = card.cardSettings.status === "published" ? card : await onPublish();
-      if (!published || published.cardSettings.status !== "published") throw new Error("Publish your card before sharing it.");
-      const url = published.settings.content;
+      const published = card ? (card.cardSettings.status === "published" ? card : await onPublish()) : null;
+      if (!publicLink && (!published || published.cardSettings.status !== "published")) throw new Error("Publish your card before sharing it.");
+      const url = publicLink?.url ?? published!.settings.content;
+      const fullname = publicLink?.fullname ?? published!.details.fullname;
       if (action === "copy-link") {
         await Clipboard.setStringAsync(url);
-        setMessage("Link copied.");
       } else if (action === "share-link") {
         await closeSheet();
-        await Share.share(Platform.OS === "ios" ? { message: `${published.details.fullname}'s digital business card`, url } : { message: `${published.details.fullname}'s digital business card\n${url}` });
+        await Share.share(Platform.OS === "ios" ? { message: `${fullname}'s digital business card`, url } : { message: `${fullname}'s digital business card\n${url}` });
       } else {
-        if (!imageBase64) throw new Error("The QR card image is not ready yet.");
+        if (!imageBase64 || !published) throw new Error("The QR card image is not ready yet.");
         file = new File(Paths.cache, `unoqr-card-${published.uid}.png`);
         file.create({ overwrite: true });
         file.write(imageBase64, { encoding: "base64" });
@@ -102,58 +113,99 @@ export default function DigitalCardShareDialog({ card, open, setOpen, onPublish 
     };//try-catch ends
   };//func ends
 
-  const ready = !busy && (tab === "social" || previewReady);
-  const needsPublish = card.cardSettings.status !== "published";
+  const ready = !busy && (activeTab === "social" || previewReady);
+  const needsPublish = card != null && card.cardSettings.status !== "published";
 
   //Default Return
-  return <><PxModal open={open} setOpen={value => { if (!busy) setOpen(value); }} name="Share digital card" height="auto" maxHeight={windowHeight} onDismiss={() => { dismissResolve.current?.(); dismissResolve.current = null; }}>
-    <View style={styles.body}>
-      <View style={styles.tabs}>
-        {(["qr", "social"] as const).map(value => <Pressable key={value} accessibilityRole="tab" accessibilityLabel={value === "qr" ? "My QR Card" : "Social"} accessibilityState={{ selected: tab === value }} disabled={busy} onPress={() => setTab(value)} style={[styles.tab, tab === value && styles.selectedTab]}><View>{value === "qr" ? <QrCode size={24} strokeWidth={1.25} color={tab === value ? colors.white.main : colors.black.main} /> : <Share2 size={24} strokeWidth={1.25} color={tab === value ? colors.white.main : colors.black.main} />}</View></Pressable>)}
-      </View>
-      {open ? <View style={tab === "qr" ? styles.portrait : styles.hidden}>
-        <DigitalCardQrPreview card={card} exportRef={previewRef} onReadyChange={setPreviewReady} />
-      </View> : null}
-      {needsPublish ? <Text style={styles.hint}>Your card is unpublished. Sharing will publish it first.</Text> : null}
-      {busy || (tab === "qr" && !previewReady) ? <ActivityIndicator color={colors.secondary.main} /> : null}
-      {message ? <Text accessibilityRole="alert" style={styles.hint}>{message}</Text> : null}
-      {tab === "qr" ? <View style={styles.actions}>
-        <Pressable accessibilityRole="button" disabled={!ready} onPress={() => void openQrOptions()} style={[styles.action, !ready && styles.disabled]}><Text style={styles.actionText}>Share QR Card</Text></Pressable>
-      </View> : <View style={styles.linkMenu}>
-        {(["copy-link", "share-link"] as const).map((action, index) => (
-          <Pressable key={action} accessibilityRole="button" disabled={!ready} onPress={() => void handleShare(action)} style={({ pressed }) => [styles.linkRow, (pressed || !ready) && styles.disabled]}>
-            <View style={styles.linkIcon}>{action === "copy-link" ? <Copy size={21} strokeWidth={1.25} color={colors.primary.light} /> : <Share2 size={21} strokeWidth={1.25} color={colors.primary.light} />}</View>
-            <View style={[styles.linkCopy, index === 0 && styles.linkDivider]}>
-              <View style={styles.linkText}>
-                <Text style={styles.linkLabel}>{action === "copy-link" ? "Copy Link" : "Share Link"}</Text>
-                <Text style={styles.linkDescription}>{action === "copy-link" ? "Copy your card link to clipboard" : "Send your card link to others"}</Text>
-              </View>
-              <ChevronRight size={22} strokeWidth={1.25} color={colors.mute.light} />
+  return (
+    <>
+      <PxModal
+        open={open}
+        setOpen={value => { if (!busy) setOpen(value); }}
+        name="Share digital card"
+        height="auto"
+        maxHeight={windowHeight}
+        onDismiss={() => { dismissResolve.current?.(); dismissResolve.current = null; }}
+        footerAction={activeTab === "qr" ? (
+          <View style={styles.actions}>
+            <Pressable accessibilityRole="button" disabled={!ready} onPress={() => void openQrOptions()} style={[styles.action, !ready && styles.disabled]}>
+              <Text style={styles.actionText}>Share QR Card</Text>
+            </Pressable>
+          </View>
+        ) : (
+          <View>
+            <View style={styles.linkMenu}>
+              {(["copy-link", "share-link"] as const).map((action, index) => (
+                <Pressable key={action} accessibilityRole="button" disabled={!ready} onPress={() => void handleShare(action)} style={({ pressed }) => [styles.linkRow, (pressed || !ready) && styles.disabled]}>
+                  <View style={styles.linkIcon}>{action === "copy-link" ? <Copy size={21} strokeWidth={1.25} color={colors.primary.light} /> : <Share2 size={21} strokeWidth={1.25} color={colors.primary.light} />}</View>
+                  <View style={[styles.linkCopy, index === 0 && styles.linkDivider]}>
+                    <View style={styles.linkText}>
+                      <Text style={styles.linkLabel}>{action === "copy-link" ? "Copy Link" : "Share Link"}</Text>
+                      <Text style={styles.linkDescription}>{action === "copy-link" ? (publicLink ? "Copy this card link to clipboard" : "Copy your card link to clipboard") : (publicLink ? "Send this card link to others" : "Send your card link to others")}</Text>
+                    </View>
+                    <ChevronRight size={22} strokeWidth={1.25} color={colors.mute.light} />
+                  </View>
+                </Pressable>
+              ))}
             </View>
-          </Pressable>
-        ))}
-      </View>}
-    </View>
-  </PxModal>
-  <PxModal open={optionsOpen} setOpen={value => { if (!busy) setOptionsOpen(value); }} name={downloadLocation ? "Download complete" : "Share QR Card"} height="auto" onDismiss={() => { dismissResolve.current?.(); dismissResolve.current = null; }}>
-    <View style={styles.body}>
-      {downloadLocation ? <View style={styles.success}>
-        <CheckCircle2 size={48} strokeWidth={1.25} color={colors.success.main} />
-        <Text accessibilityRole="header" style={styles.title}>QR card downloaded</Text>
-        <Text style={styles.hint}>{downloadLocation === "Downloads" ? "Your QR card image was saved to Downloads." : "Your QR card image was saved to your chosen Files folder."}</Text>
-        <Pressable accessibilityRole="button" onPress={() => setOptionsOpen(false)} style={[styles.action, styles.doneAction]}><Text style={styles.actionText}>Done</Text></Pressable>
-      </View> : <>
-        <Text style={styles.hint}>Share your QR card image or download a copy to your device.</Text>
-        {needsPublish ? <Text style={styles.hint}>Your card will be published before sharing or downloading.</Text> : null}
-        {message ? <Text accessibilityRole="alert" style={styles.error}>{message}</Text> : null}
-        {busy ? <ActivityIndicator color={colors.secondary.main} /> : null}
-        <View style={styles.actions}>
-          <Pressable accessibilityRole="button" disabled={busy} onPress={() => void handleShare("share-image")} style={[styles.action, busy && styles.disabled]}><Share2 size={20} strokeWidth={1.25} color={colors.white.main} /><Text style={styles.actionText}>Share Image</Text></Pressable>
-          <Pressable accessibilityRole="button" disabled={busy} onPress={() => void handleShare("save-image")} style={[styles.secondaryAction, busy && styles.disabled]}><Download size={20} strokeWidth={1.25} color={colors.primary.main} /><Text style={styles.secondaryText}>Download Image</Text></Pressable>
+            <View style={styles.linkBottomSpace} />
+          </View>
+        )}
+      >
+        {!publicLink || busy || message ? <View style={styles.body}>
+          {!publicLink ? <View style={styles.tabs}>
+            {(["qr", "social"] as const).map(value => <Pressable key={value} accessibilityRole="tab" accessibilityLabel={value === "qr" ? "My QR Card" : "Social"} accessibilityState={{ selected: tab === value }} disabled={busy} onPress={() => setTab(value)} style={[styles.tab, tab === value && styles.selectedTab]}><View>{value === "qr" ? <QrCode size={24} strokeWidth={1.25} color={tab === value ? colors.white.main : colors.black.main} /> : <Share2 size={24} strokeWidth={1.25} color={tab === value ? colors.white.main : colors.black.main} />}</View></Pressable>)}
+          </View> : null}
+          {open && card ? <View style={activeTab === "qr" ? styles.portrait : styles.hidden}>
+            <DigitalCardQrPreview card={card} exportRef={previewRef} onReadyChange={setPreviewReady} />
+          </View> : null}
+          {needsPublish ? <Text style={styles.hint}>Your card is unpublished. Sharing will publish it first.</Text> : null}
+          {busy ? <PxCircularProgress color={colors.secondary.main} /> : null}
+          {message ? <Text accessibilityRole="alert" style={styles.hint}>{message}</Text> : null}
+        </View> : null}
+      </PxModal>
+      <PxModal
+        open={optionsOpen}
+        setOpen={value => { if (!busy) setOptionsOpen(value); }}
+        name={downloadLocation ? "Download complete" : "Share QR Card"}
+        height="auto"
+        onDismiss={() => { dismissResolve.current?.(); dismissResolve.current = null; }}
+        footerAction={(
+          <View style={styles.actions}>
+            {downloadLocation ? (
+              <Pressable accessibilityRole="button" onPress={() => setOptionsOpen(false)} style={styles.action}>
+                <Text style={styles.actionText}>Done</Text>
+              </Pressable>
+            ) : (
+              <>
+                <Pressable accessibilityRole="button" disabled={busy} onPress={() => void handleShare("share-image")} style={[styles.action, busy && styles.disabled]}>
+                  <Share2 size={20} strokeWidth={1.25} color={colors.white.main} />
+                  <Text style={styles.actionText}>Share Image</Text>
+                </Pressable>
+                <Pressable accessibilityRole="button" disabled={busy} onPress={() => void handleShare("save-image")} style={[styles.secondaryAction, busy && styles.disabled]}>
+                  <Download size={20} strokeWidth={1.25} color={colors.primary.main} />
+                  <Text style={styles.secondaryText}>Download Image</Text>
+                </Pressable>
+              </>
+            )}
+          </View>
+        )}
+      >
+        <View style={styles.body}>
+          {downloadLocation ? <View style={styles.success}>
+            <CheckCircle2 size={48} strokeWidth={1.25} color={colors.success.main} />
+            <Text accessibilityRole="header" style={styles.title}>QR card downloaded</Text>
+            <Text style={styles.hint}>{downloadLocation === "Downloads" ? "Your QR card image was saved to Downloads." : "Your QR card image was saved to your chosen Files folder."}</Text>
+          </View> : <>
+            <Text style={styles.hint}>Share your QR card image or download a copy to your device.</Text>
+            {needsPublish ? <Text style={styles.hint}>Your card will be published before sharing or downloading.</Text> : null}
+            {message ? <Text accessibilityRole="alert" style={styles.error}>{message}</Text> : null}
+            {busy ? <PxCircularProgress color={colors.secondary.main} /> : null}
+          </>}
         </View>
-      </>}
-    </View>
-  </PxModal></>;//return ends
+      </PxModal>
+    </>
+  );//return ends
 };//export ends
 
 /* ------------------ BREAK ------------------ */
@@ -167,9 +219,9 @@ const styles = StyleSheet.create({
   hidden: { position: "absolute", opacity: 0, pointerEvents: "none" },
   title: { fontFamily: fontFamilies.primaryBold, fontSize: fontSizes.h6, color: colors.primary.main },
   hint: { color: colors.mute.main, fontFamily: fontFamilies.primaryRegular, fontSize: fontSizes.body2, textAlign: "center" },
-  doneAction: { alignSelf: "stretch" },
   success: { alignItems: "center", gap: spacing.md },
   error: { color: colors.error.main, fontFamily: fontFamilies.primaryRegular, fontSize: fontSizes.body2, textAlign: "center" },
+  linkBottomSpace: { height: 72 },
   linkMenu: { borderWidth: 1, borderColor: colors.border.main, borderRadius: radii.xl, backgroundColor: colors.white.main, overflow: "hidden" },
   linkRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingLeft: spacing.md },
   linkIcon: { width: 38, height: 38, alignItems: "center", justifyContent: "center", borderRadius: radii.lg, backgroundColor: colors.cream.main },

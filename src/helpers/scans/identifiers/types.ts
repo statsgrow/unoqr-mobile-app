@@ -1,9 +1,8 @@
-import type { ComponentProps } from "react";
-import type { MaterialCommunityIcons } from "@expo/vector-icons";
+import type { PxIconName } from "@/components/elements/PxIcon";
 
 /* ------------------ BREAK ------------------ */
 
-export type ScanTypeIcon = ComponentProps<typeof MaterialCommunityIcons>["name"];
+export type ScanTypeIcon = PxIconName;
 
 export type ScanTypeInit = {
   label: string;

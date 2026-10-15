@@ -5,7 +5,7 @@ import { roundedEye } from "./rounded";
 import { squareEye } from "./square";
 import type { EyeShapeBuilder, EyeStyle } from "./types";
 
-export type { EyeStyle } from "./types";
+export type { EyeStyle } from "./types";//export ends
 
 /* ------------------ BREAK ------------------ */
 

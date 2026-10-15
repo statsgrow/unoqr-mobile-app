@@ -11,6 +11,8 @@ import {
   resumeTokenRefresh,
   setUserTokens
 } from "@/utils/auth/AuthTokens";
+import { pauseQrCardImageRequests, resumeQrCardImageRequests } from "@/helpers/digital_cards/qrcards/image";
+import { initDigitalCardsTable } from "@/helpers/digital_cards/db/init";
 import { initQrCodes } from "@/helpers/qrcodes/db/initQrCodes";
 import { initScansTable } from "@/helpers/scans/db/init";
 import { sqliteDB } from "@/utils/sqlite/db";
@@ -142,14 +144,16 @@ export async function processUserLogout({ installationConfirmed = false, onInsta
 // Resets account tables while retaining their schema and the shared SQLite connection.
 async function resetLocalUserSession(logoutInstall = false, onInstallationConfirmed?: () => void): Promise<void> {
   // Load reset controls after session modules initialize to avoid circular startup imports.
-  const [{ pauseScanSync, resumeScanSync }, { pauseQrCodeSync, resumeQrCodeSync }] = await Promise.all([
+  const [{ pauseScanSync, resumeScanSync }, { pauseQrCodeSync, resumeQrCodeSync }, { pauseDigitalCardRequests, resumeDigitalCardRequests }] = await Promise.all([
     import("@/helpers/scans/scanSync"),
-    import("@/helpers/qrcodes/QrSync")
+    import("@/helpers/qrcodes/QrSync"),
+    import("@/helpers/digital_cards/api/cards")
   ]);
+  pauseQrCardImageRequests();
   await pauseTokenRefresh();
   try {
     // Finish old requests before new credentials can be used by background synchronization.
-    await Promise.all([pauseQrCodeSync(), pauseScanSync()]);
+    await Promise.all([pauseQrCodeSync(), pauseScanSync(), pauseDigitalCardRequests()]);
     if (logoutInstall) {
       await disconnectUserAppInstall();
       onInstallationConfirmed?.();
@@ -168,13 +172,16 @@ async function resetLocalUserSession(logoutInstall = false, onInstallationConfir
     };//if ends
     await initScansTable();
     await initQrCodes();
+    await initDigitalCardsTable();
     // Clear all account records together so the next login starts with empty tables.
     connection.withTransactionSync(() => {
-      connection.execSync("DELETE FROM scans; DELETE FROM static_qrcodes; DELETE FROM static_qrcode_deletions;");
+      connection.execSync("DELETE FROM scans; DELETE FROM static_qrcodes; DELETE FROM static_qrcode_deletions; DELETE FROM digital_card_photos; DELETE FROM digital_cards;");
     });
     // Retain authentication until cleanup succeeds so the logout page can retry failures.
     await clearStoredUserSession();
   } finally {
+    resumeQrCardImageRequests();
+    resumeDigitalCardRequests();
     resumeQrCodeSync();
     resumeScanSync();
     resumeTokenRefresh();
@@ -183,6 +190,8 @@ async function resetLocalUserSession(logoutInstall = false, onInstallationConfir
 
 // Removes app-owned QR logos and temporary QR exports without touching installation credentials.
 function clearLocalAccountFiles(): void {
+  const cardDirectory = new Directory(Paths.cache, "digital-card-qrcards");
+  if (cardDirectory.exists) cardDirectory.delete();
   const qrDirectory = new Directory(Paths.document, "qrcodes");
   if (qrDirectory.exists) qrDirectory.delete();
   for (const name of ["unoqr-code.svg", "unoqr-code.pdf"]) {

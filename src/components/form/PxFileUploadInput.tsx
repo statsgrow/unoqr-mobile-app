@@ -1,13 +1,15 @@
 import { useEffect, useState } from "react";
 import { Image, Platform, Pressable, StyleSheet, View } from "react-native";
-import { ActivityIndicator, HelperText, Text } from "react-native-paper";
-import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { HelperText, Text } from "react-native-paper";
 import * as DocumentPicker from "expo-document-picker";
 import * as LegacyFileSystem from "expo-file-system/legacy";
 import * as ImagePicker from "expo-image-picker";
 import type { MediaType } from "expo-image-picker";
 import type { UseFormReturn } from "react-hook-form";
 
+import { PxIcon, type PxIconName } from "@/components/elements/PxIcon";
+import { colors as tokenColors } from "@/theme/tokens";
+import { PxCircularProgress } from "@/components/elements/PxCircularProgress";
 import { PxButton } from "@/components/elements/PxButton";
 import { apiSettings } from "@/settings";
 import { colors, fontFamilies, fonts, sizes } from "@/theme/themeSettings";
@@ -43,7 +45,7 @@ export type PxFileUploadInputProps = {
 	disabled?: boolean;
 	type?: "image" | "pdf" | "csv";
 	leftAdornment?: {
-		icon?: keyof typeof MaterialCommunityIcons.glyphMap;
+		icon?: PxIconName;
 		text?: string;
 	};
 };
@@ -171,7 +173,7 @@ export default function PxFileUploadInput({
 
 					{hasFile && type !== "image" ? (
 						<View style={styles.filePlaceholder}>
-							<MaterialCommunityIcons
+							<PxIcon
 								name={type === "pdf" ? "file-pdf-box" : "file-delimited-outline"}
 								size={34}
 								color={colors.primary}
@@ -183,7 +185,7 @@ export default function PxFileUploadInput({
 					{!hasFile && !isBusy ? (
 						<View style={styles.emptyStateWrap}>
 							{leftAdornment?.icon ? (
-								<MaterialCommunityIcons name={leftAdornment.icon} size={24} color={colors.grey[400]} />
+								<PxIcon name={leftAdornment.icon} size={24} color={colors.grey[400]} />
 							) : null}
 							{leftAdornment?.text ? (
 								<Text style={styles.emptyStateAdornmentText}>{leftAdornment.text}</Text>
@@ -194,7 +196,7 @@ export default function PxFileUploadInput({
 
 					{isBusy ? (
 						<View style={styles.loadingOverlay}>
-							<ActivityIndicator color={colors.primary} />
+							<PxCircularProgress color={tokenColors.primary.main} />
 						</View>
 					) : null}
 				</Pressable>

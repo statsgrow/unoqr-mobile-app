@@ -1,9 +1,12 @@
 import { useEffect, useState } from "react";
 import { Pencil, Plus, Trash2 } from "lucide-react-native";
-import { Controller, useFieldArray, useForm, type FieldPathByValue, type UseFormReturn } from "react-hook-form";
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View, type KeyboardTypeOptions } from "react-native";
+import { useFieldArray, useForm, type FieldPathByValue, type UseFormReturn } from "react-hook-form";
+import { Pressable, StyleSheet, Text, View, type KeyboardTypeOptions } from "react-native";
 
-import { BottomNav } from "@/components/layout/BottomNav";
+import { PxCircularProgress } from "@/components/elements/PxCircularProgress";
+import { PxTextInput } from "@/components/form/PxTextInput";
+import { PxTextArea } from "@/components/form/PxTextArea";
+import { GeneralLayout } from "@/components/layout/GeneralLayout";
 import { uploadCardPhoto, deleteCardPhoto } from "@/helpers/digital_cards/api/files";
 import PxFileInput from "@/components/form/PxFileInput";
 import type { DigitalCardDetails, DigitalCardSocialLink } from "@/helpers/digital_cards/model";
@@ -74,88 +77,16 @@ export default function DigitalCardForm({ refreshing, onRefresh, details, onDraf
 
   //Default Return
   return (
-    <View style={styles.root}>
-      <ScrollView refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} enabled={!isSubmitting} tintColor={colors.secondary.main} colors={[colors.secondary.main]} />} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" contentContainerStyle={styles.formContent}>
-        <View style={styles.formSection}>
-          <Text style={styles.sectionTitle}>Personal details</Text>
-          <PxFileInput
-            RHF={form}
-            name="profilePicture"
-            label="Profile picture"
-            type="image"
-            filename="profile-photo"
-            placeholder="Add photo"
-            onUpload={uploadCardPhoto}
-            onRemove={deleteCardPhoto}
-            disabled={isSubmitting}
-          />
-          <CardField form={form} name="fullname" label="Full name *" placeholder="Your full name" required disabled={isSubmitting} />
-          <CardField form={form} name="company" label="Company" placeholder="Company name" disabled={isSubmitting} />
-          <CardField form={form} name="position" label="Position" placeholder="Job title" disabled={isSubmitting} />
-        </View>
-
-        <View style={styles.formSection}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Phone numbers</Text>
-            <Text style={styles.sectionCount}>{phones.fields.length}/2</Text>
-          </View>
-          {phones.fields.map((phone, index) => (
-            <View key={phone.id} style={styles.contactRow}>
-              <View style={styles.fieldColumn}>
-                <CardField form={form} name={"phones." + index + ".value" as CardFieldName} label={"Phone " + (index + 1)} placeholder="+91 98765 43210" keyboardType="phone-pad" disabled={isSubmitting} />
-              </View>
-              {phones.fields.length > 1 ? <RemoveFieldButton label={"Remove phone " + (index + 1)} onPress={() => phones.remove(index)} disabled={isSubmitting} /> : null}
-            </View>
-          ))}
-          {errors.phones?.root?.message ? <Text accessibilityRole="alert" style={styles.fieldError}>{errors.phones.root.message}</Text> : null}
-          {phones.fields.length < 2 ? <AddFieldButton label="Add phone" onPress={() => phones.append({ value: "" })} disabled={isSubmitting} /> : null}
-        </View>
-
-        <View style={styles.formSection}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Email addresses</Text>
-            <Text style={styles.sectionCount}>{emails.fields.length}/2</Text>
-          </View>
-          {emails.fields.map((email, index) => (
-            <View key={email.id} style={styles.contactRow}>
-              <View style={styles.fieldColumn}>
-                <CardField form={form} name={"emails." + index + ".value" as CardFieldName} label={"Email " + (index + 1)} placeholder="you@example.com" keyboardType="email-address" disabled={isSubmitting} />
-              </View>
-              {emails.fields.length > 1 ? <RemoveFieldButton label={"Remove email " + (index + 1)} onPress={() => emails.remove(index)} disabled={isSubmitting} /> : null}
-            </View>
-          ))}
-          {errors.emails?.root?.message ? <Text accessibilityRole="alert" style={styles.fieldError}>{errors.emails.root.message}</Text> : null}
-          {emails.fields.length < 2 ? <AddFieldButton label="Add email" onPress={() => emails.append({ value: "" })} disabled={isSubmitting} /> : null}
-        </View>
-
-        <View style={styles.formSection}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Social links</Text>
-            <Text style={styles.sectionCount}>{socialLinks.fields.length}/4</Text>
-          </View>
-          {socialLinks.fields.map((link, index) => (
-            <View key={link.id} style={styles.socialLink}>
-              <Pressable accessibilityRole="button" accessibilityLabel={"Edit " + (link.label || "social") + " link"} disabled={isSubmitting} onPress={() => setSocialLinkIndex(index)} style={styles.linkDetails}>
-                <View style={styles.linkHeading}>
-                  <Text style={styles.linkTitle}>{link.label || "Social link"}</Text>
-                  <Pencil size={16} strokeWidth={1.25} color={colors.mute.main} />
-                </View>
-                <Text numberOfLines={1} style={styles.linkUrl}>{link.url || "Add a profile URL"}</Text>
-              </Pressable>
-              <RemoveFieldButton label={"Remove social link " + (index + 1)} onPress={() => socialLinks.remove(index)} disabled={isSubmitting} />
-            </View>
-          ))}
-          {errors.socialLinks?.root?.message ? <Text accessibilityRole="alert" style={styles.fieldError}>{errors.socialLinks.root.message}</Text> : null}
-          {socialLinks.fields.length < 4 ? <AddFieldButton label="Add social link" onPress={() => setSocialLinkIndex(-1)} disabled={isSubmitting} /> : null}
-        </View>
-
-        <View style={styles.formSection}>
-          <Text style={styles.sectionTitle}>About you</Text>
-          <CardField form={form} name="bio" label="Bio" placeholder="A little about you and what you do" multiline disabled={isSubmitting} />
-          <CardField form={form} name="address" label="Address" placeholder="Office, city, or full address" multiline disabled={isSubmitting} />
-        </View>
-      </ScrollView>
-      <BottomNav hideMenu={true} footerAction={<View style={styles.formFooter}>
+    <GeneralLayout
+      topView={null}
+      edges={["bottom"]}
+      style={styles.root}
+      bodyStyle={styles.formContent}
+      onRefresh={onRefresh}
+      refreshing={refreshing}
+      pullToRefreshEnabled={!isSubmitting}
+      hideBottomViewOnKeyboard
+      bottomNav={isDirty || isSubmitting || errors.root?.save?.message ? <View style={styles.formFooter}>
         {errors.root?.save?.message ? <Text accessibilityRole="alert" style={styles.fieldError}>{errors.root.save.message}</Text> : null}
         {isDirty || isSubmitting ? <Pressable
           accessibilityRole="button"
@@ -164,50 +95,104 @@ export default function DigitalCardForm({ refreshing, onRefresh, details, onDraf
           onPress={() => void form.handleSubmit(handleSaveDetails)()}
           style={({ pressed }) => [styles.saveButton, (pressed || isSubmitting) && styles.disabledButton]}
         >
-          {isSubmitting ? <ActivityIndicator color={colors.white.main} /> : null}
+          {isSubmitting ? <PxCircularProgress color={colors.white.main} /> : null}
           <Text style={styles.saveText}>{isSubmitting ? "Saving…" : "Save Now"}</Text>
         </Pressable> : null}
-      </View>} />
+      </View> : null}
+    >
+      <View style={styles.formSection}>
+        <Text style={styles.sectionTitle}>Personal details</Text>
+        <PxFileInput
+          RHF={form}
+          name="profilePicture"
+          label="Profile picture"
+          type="image"
+          filename="profile-photo"
+          placeholder="Add photo"
+          onUpload={uploadCardPhoto}
+          onRemove={deleteCardPhoto}
+          disabled={isSubmitting}
+        />
+        <CardField form={form} name="fullname" label="Full name *" placeholder="Your full name" required disabled={isSubmitting} />
+        <CardField form={form} name="company" label="Company" placeholder="Company name" disabled={isSubmitting} />
+        <CardField form={form} name="position" label="Position" placeholder="Job title" disabled={isSubmitting} />
+      </View>
+
+      <View style={styles.formSection}>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Phone numbers</Text>
+          <Text style={styles.sectionCount}>{phones.fields.length}/2</Text>
+        </View>
+        {phones.fields.map((phone, index) => (
+          <View key={phone.id} style={styles.contactRow}>
+            <View style={styles.fieldColumn}>
+              <CardField form={form} name={"phones." + index + ".value" as CardFieldName} label={"Phone " + (index + 1)} placeholder="+91 98765 43210" keyboardType="phone-pad" disabled={isSubmitting} />
+            </View>
+            {phones.fields.length > 1 ? <RemoveFieldButton label={"Remove phone " + (index + 1)} onPress={() => phones.remove(index)} disabled={isSubmitting} /> : null}
+          </View>
+        ))}
+        {errors.phones?.root?.message ? <Text accessibilityRole="alert" style={styles.fieldError}>{errors.phones.root.message}</Text> : null}
+        {phones.fields.length < 2 ? <AddFieldButton label="Add phone" onPress={() => phones.append({ value: "" })} disabled={isSubmitting} /> : null}
+      </View>
+
+      <View style={styles.formSection}>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Email addresses</Text>
+          <Text style={styles.sectionCount}>{emails.fields.length}/2</Text>
+        </View>
+        {emails.fields.map((email, index) => (
+          <View key={email.id} style={styles.contactRow}>
+            <View style={styles.fieldColumn}>
+              <CardField form={form} name={"emails." + index + ".value" as CardFieldName} label={"Email " + (index + 1)} placeholder="you@example.com" keyboardType="email-address" disabled={isSubmitting} />
+            </View>
+            {emails.fields.length > 1 ? <RemoveFieldButton label={"Remove email " + (index + 1)} onPress={() => emails.remove(index)} disabled={isSubmitting} /> : null}
+          </View>
+        ))}
+        {errors.emails?.root?.message ? <Text accessibilityRole="alert" style={styles.fieldError}>{errors.emails.root.message}</Text> : null}
+        {emails.fields.length < 2 ? <AddFieldButton label="Add email" onPress={() => emails.append({ value: "" })} disabled={isSubmitting} /> : null}
+      </View>
+
+      <View style={styles.formSection}>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Social links</Text>
+          <Text style={styles.sectionCount}>{socialLinks.fields.length}/4</Text>
+        </View>
+        {socialLinks.fields.map((link, index) => (
+          <View key={link.id} style={styles.socialLink}>
+            <Pressable accessibilityRole="button" accessibilityLabel={"Edit " + (link.label || "social") + " link"} disabled={isSubmitting} onPress={() => setSocialLinkIndex(index)} style={styles.linkDetails}>
+              <Text style={styles.linkTitle}>{link.label || "Social link"}</Text>
+              <Text numberOfLines={1} style={styles.linkUrl}>{link.url || "Add a profile URL"}</Text>
+            </Pressable>
+            <View style={styles.linkActions}>
+              <Pressable accessibilityRole="button" accessibilityLabel={"Edit " + (link.label || "social") + " link"} disabled={isSubmitting} onPress={() => setSocialLinkIndex(index)} style={({ pressed }) => [styles.fieldActionButton, (pressed || isSubmitting) && styles.disabledButton]}>
+                <Pencil size={18} strokeWidth={1.25} color={colors.mute.main} />
+              </Pressable>
+              <RemoveFieldButton label={"Remove social link " + (index + 1)} onPress={() => socialLinks.remove(index)} disabled={isSubmitting} />
+            </View>
+          </View>
+        ))}
+        {errors.socialLinks?.root?.message ? <Text accessibilityRole="alert" style={styles.fieldError}>{errors.socialLinks.root.message}</Text> : null}
+        {socialLinks.fields.length < 4 ? <AddFieldButton label="Add social link" onPress={() => setSocialLinkIndex(-1)} disabled={isSubmitting} /> : null}
+      </View>
+
+      <View style={styles.formSection}>
+        <Text style={styles.sectionTitle}>About you</Text>
+        <CardField form={form} name="bio" label="Bio" placeholder="A little about you and what you do" multiline disabled={isSubmitting} />
+        <CardField form={form} name="address" label="Address" placeholder="Office, city, or full address" multiline disabled={isSubmitting} />
+      </View>
+
       {socialLinkIndex !== null ? <SocialLinkDialog link={socialLinkIndex >= 0 ? form.getValues("socialLinks")[socialLinkIndex] : undefined} onClose={() => setSocialLinkIndex(null)} onSave={handleSaveSocialLink} /> : null}
-    </View>
+    </GeneralLayout>
   );//return ends
 };//export ends
 
 /* ------------------ BREAK ------------------ */
 
-// Renders an RHF-controlled card field with the appropriate keyboard and inline validation.
+// Reuses the shared form inputs while retaining the card's required, phone and email validation.
 function CardField({ form, name, label, placeholder, keyboardType = "default", multiline = false, required = false, disabled }: CardFieldProps) {
+  const Input = multiline ? PxTextArea : PxTextInput;
   //Default Return
-  return (
-    <Controller
-      control={form.control}
-      name={name}
-      rules={{ validate: (value) => validateCardField(value, keyboardType, required) }}
-      render={({ field, fieldState }) => (
-        <View style={styles.field}>
-          <Text style={styles.fieldLabel}>{label}</Text>
-          <TextInput
-            ref={field.ref}
-            accessibilityLabel={label}
-            value={field.value}
-            onChangeText={field.onChange}
-            onBlur={field.onBlur}
-            editable={!disabled}
-            placeholder={placeholder}
-            placeholderTextColor={colors.mute.light}
-            selectionColor={colors.secondary.main}
-            keyboardType={keyboardType}
-            autoCapitalize={keyboardType === "default" ? "sentences" : "none"}
-            autoCorrect={false}
-            multiline={multiline}
-            textAlignVertical={multiline ? "top" : "center"}
-            style={[styles.input, multiline && styles.multilineInput, fieldState.invalid && styles.invalidInput]}
-          />
-          {fieldState.error?.message ? <Text accessibilityRole="alert" style={styles.fieldError}>{fieldState.error.message}</Text> : null}
-        </View>
-      )}
-    />
-  );//return ends
+  return <Input RHF={form} name={name} label={label} placeholder={placeholder} keyboardType={keyboardType} autoCapitalize={keyboardType === "default" ? "sentences" : "none"} autoCorrect={false} disabled={disabled} rules={{ validate: (value) => validateCardField(String(value ?? ""), keyboardType, required) }} />;//return ends
 };//func ends
 
 // Adds another contact or social profile within the section's visible limit.
@@ -225,7 +210,7 @@ function AddFieldButton({ label, onPress, disabled }: FieldButtonProps) {
 function RemoveFieldButton({ label, onPress, disabled }: FieldButtonProps) {
   //Default Return
   return (
-    <Pressable accessibilityRole="button" accessibilityLabel={label} disabled={disabled} onPress={onPress} style={({ pressed }) => [styles.removeButton, (pressed || disabled) && styles.disabledButton]}>
+    <Pressable accessibilityRole="button" accessibilityLabel={label} disabled={disabled} onPress={onPress} style={({ pressed }) => [styles.fieldActionButton, (pressed || disabled) && styles.disabledButton]}>
       <Trash2 size={18} strokeWidth={1.25} color={colors.mute.main} />
     </Pressable>
   );//return ends
@@ -265,22 +250,17 @@ const styles = StyleSheet.create({
   sectionCount: { color: colors.mute.main, fontFamily: fontFamilies.primaryRegular, fontSize: fontSizes.caption },
   fieldColumn: { flex: 1, minWidth: 0 },
   contactRow: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
-  field: { gap: spacing.xxs },
-  fieldLabel: { color: colors.mute.main, fontFamily: fontFamilies.primaryMedium, fontSize: fontSizes.caption },
-  input: { minHeight: 48, paddingHorizontal: spacing.sm, paddingVertical: spacing.sm, borderWidth: 1, borderColor: colors.border.main, borderRadius: radii.lg, backgroundColor: colors.white.main, color: colors.primary.main, fontFamily: fontFamilies.primaryRegular, fontSize: fontSizes.body2 },
-  multilineInput: { minHeight: 96 },
-  invalidInput: { borderColor: colors.error.main },
   fieldError: { color: colors.error.main, fontFamily: fontFamilies.primaryRegular, fontSize: fontSizes.caption },
   socialLink: { flexDirection: "row", alignItems: "center", gap: spacing.xs, padding: spacing.sm, borderWidth: 1, borderColor: colors.border.main, borderRadius: radii.lg, backgroundColor: colors.white.main },
-  linkDetails: { flex: 1, gap: spacing.xxs, padding: spacing.xxs },
-  linkHeading: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
+  linkActions: { flexDirection: "row", alignItems: "center", gap: spacing.none },
+  linkDetails: { flex: 1, minWidth: 0, gap: spacing.xxs, padding: spacing.xxs },
   linkTitle: { color: colors.primary.main, fontFamily: fontFamilies.primarySemiBold, fontSize: fontSizes.body2 },
   linkUrl: { color: colors.mute.main, fontFamily: fontFamilies.primaryRegular, fontSize: fontSizes.caption },
   addButton: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: spacing.xs, alignSelf: "flex-start" },
   addText: { color: colors.secondary.main, fontFamily: fontFamilies.primarySemiBold, fontSize: fontSizes.body2 },
-  removeButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
+  fieldActionButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   disabledButton: { opacity: 0.65 },
-  formFooter: { gap: spacing.xs, padding: spacing.md, backgroundColor: colors.white.main },
+  formFooter: { gap: spacing.xs },
   saveButton: { minHeight: 50, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.xs, borderRadius: radii.lg, backgroundColor: colors.secondary.main },
   saveText: { color: colors.white.main, fontFamily: fontFamilies.primarySemiBold, fontSize: fontSizes.button }
 });

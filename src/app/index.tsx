@@ -1,130 +1,385 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useFocusEffect } from "expo-router";
-import { ArrowUpRight, ChevronRight, ContactRound } from "lucide-react-native";
-import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  Barcode, CalendarDays, ChevronRight, ContactRound, File, FileText, Globe2,
+  History, Link, Mail, MapPin, MessageSquare, Pencil, Phone, QrCode,
+  ScanLine, Share2, ShieldKeyhole, Wallet, Wifi, type LucideIcon
+} from "lucide-react-native";
+import { Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import Svg, { Path, Rect } from "react-native-svg";
 
-import { HomeAnalytics } from "@/components/home/HomeAnalytics";
-import { getDigitalCard, type RemoteCard } from "@/helpers/digital_cards/api/cards";
+import { PxCircularProgress } from "@/components/elements/PxCircularProgress";
 import { GeneralLayout } from "@/components/layout/GeneralLayout";
+import { HeaderNav } from "@/components/layout/HeaderNav";
+import { getDigitalCard, restoreDigitalCard, saveDigitalCardSettings, type RemoteCard } from "@/helpers/digital_cards/api/cards";
+import DigitalCardShareDialog from "@/helpers/digital_cards/dialogs/DigitalCardShareDialog";
+import { createDigitalCard, type AppDigitalCardQr } from "@/helpers/digital_cards/model";
+import { validateDigitalCard } from "@/helpers/digital_cards/validations";
+import { QR_DEFAULTS } from "@/helpers/qrcodes/create/QrCreateScreen";
+import { UpiPaymentIcon } from "@/helpers/scans/components/UpiPaymentIcon";
+import { getAllScans } from "@/helpers/scans/db/getQueries";
+import { getScanTypeInit, normalizeScanType } from "@/helpers/scans/identifiers";
 import { colors, fontFamilies, fontSizes, radii, spacing } from "@/theme/tokens";
+import { getStorageUser } from "@/utils/auth/AuthUser";
+import { useSessionRefreshPending } from "@/utils/auth/SessionRefreshContext";
 import { redirect } from "@/utils/general/Redirect";
 
 /* ------------------ BREAK ------------------ */
 
-// Renders the app home route inside the shared general layout.
+type ScanRecord = Awaited<ReturnType<typeof getAllScans>>[number];
+type ShareTab = "qr" | "social";
+type ScanTypeSummary = { type: string; label: string; count: number; percentage: number };
+type ScanCategoryProps = { summary: ScanTypeSummary };
+type ShortcutProps = { title: string; description: string; Icon: LucideIcon; onPress: () => void };
+
+/* ------------------ BREAK ------------------ */
+
+// Leads Home with the user's digital card, sharing actions, and top scan categories.
 export default function HomeScreen() {
+  const isSessionRefreshPending = useSessionRefreshPending();
   const [loadingCard, setLoadingCard] = useState(true);
   const [card, setCard] = useState<RemoteCard | null>(null);
+  const [cardError, setCardError] = useState(false);
   const [failedPhoto, setFailedPhoto] = useState<string | null>(null);
+  const [records, setRecords] = useState<ScanRecord[]>([]);
+  const [loadingScans, setLoadingScans] = useState(true);
+  const [scanError, setScanError] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [shareTab, setShareTab] = useState<ShareTab>("qr");
 
-  // Loads the account's saved card on Home entry and after returning from its editor.
-  useFocusEffect(useCallback(() => {
-    let active = true;
+  const shareCard = useMemo(() => card ? restoreDigitalCard(card, createDigitalCard({
+    userId: card.user_id, defaults: QR_DEFAULTS, uid: card.uid
+  })) : null, [card]);
+  const scanTypes = useMemo(() => summarizeScanTypes(records), [records]);
+  const topScanTypes = scanTypes.slice(0, 6);
+
+  // Refreshes the saved card and local scans independently without replacing either on failure.
+  const loadHome = useCallback(async (isActive: () => boolean = () => true, forceRefresh = false): Promise<void> => {
     setLoadingCard(true);
-    void getDigitalCard().then(saved => {
-      if (active) setCard(saved);
-    }).catch(() => {
-      console.warn("Unable to refresh the Home digital card.");
-    }).finally(() => {
-      if (active) setLoadingCard(false);
-    });
-    return () => { active = false; };
-  }, []));
+    setLoadingScans(true);
+    const [cardResult, scansResult] = await Promise.allSettled([loadSavedCard(forceRefresh), getAllScans()]);
+    if (!isActive()) return;
+    if (cardResult.status === "fulfilled") {
+      setCard(cardResult.value);
+    };//if ends
+    if (scansResult.status === "fulfilled") {
+      setRecords(scansResult.value);
+    };//if ends
+    setCardError(cardResult.status === "rejected");
+    setScanError(scansResult.status === "rejected");
+    setLoadingCard(false);
+    setLoadingScans(false);
+  }, []);
+
+  // Reloads Home after scanning or editing, once the startup session check completes.
+  useFocusEffect(useCallback(() => {
+    if (isSessionRefreshPending) return;
+    let active = true;
+    void loadHome(() => active);
+    return () => { active = false; };//return ends
+  }, [isSessionRefreshPending, loadHome]));
+
+  // Reloads the card and scan history for a pull-to-refresh gesture.
+  const handleRefresh = async (): Promise<void> => {
+    setRefreshing(true);
+    await loadHome(() => true, true);
+    setRefreshing(false);
+  };//func ends
+
+  // Opens the existing card editor directly from Home's Edit or creation action.
+  const editCard = (): void => {
+    redirect("push", { pathname: "/digital_cards/modify", params: { mode: "edit" } });
+  };//func ends
+
+  // Shows the existing QR or link-sharing sheet for the selected card action.
+  const openShare = (tab: ShareTab): void => {
+    setShareTab(tab);
+    setShareOpen(true);
+  };//func ends
+
+  // Publishes through the existing settings API before the sharing sheet exposes a public link.
+  const publishCard = async (): Promise<AppDigitalCardQr | null> => {
+    if (!shareCard) return null;
+    const next = { ...shareCard, cardSettings: { ...shareCard.cardSettings, status: "published" as const } };
+    await validateDigitalCard(next);
+    const published = await saveDigitalCardSettings(next.uid, next.cardSettings);
+    setCard(published);
+    return restoreDigitalCard(published, next);
+  };//func ends
+
+  const cardDisabled = loadingCard || (cardError && !card);
 
   //Default Return
   return (
-    <GeneralLayout scroll={false}>
-      <HomeAnalytics topContent={(
-        <Pressable
-          disabled={loadingCard}
-          accessibilityState={{ busy: loadingCard, disabled: loadingCard }}
-          accessibilityLabel={loadingCard ? "Loading your Digital Business Card" : card ? `View ${card.name}’s Digital Business Card` : "Create Digital Business Card"}
-          accessibilityRole="button"
-          onPress={() => redirect("push", "/digital_cards/modify")}
-          style={({ pressed }) => [styles.digitalCard, pressed && styles.pressed]}
-        >
-          <View pointerEvents="none" style={styles.cardPattern} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-            <View style={styles.patternWash} />
-            <View style={[styles.patternRing, styles.patternRingOuter]} />
-            <View style={[styles.patternRing, styles.patternRingInner]} />
+    <GeneralLayout scroll={false} topView={<HeaderNav showHome={false} />}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.content}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void handleRefresh()} tintColor={colors.secondary.main} colors={[colors.secondary.main]} />}
+      >
+        <View style={styles.cardSection}>
+          <View style={styles.cardGroup}>
+            <View style={styles.digitalCard}>
+              <View pointerEvents="none" style={styles.cardPattern} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+                <Svg width="100%" height="100%" viewBox="0 0 400 240" preserveAspectRatio="xMidYMid slice">
+                  <Rect width={400} height={240} fill={colors.cream.cardLight} />
+                  <Path d="M140 0H400V196C260 190 176 114 140 0Z" fill={colors.cream.card} />
+                  <Path d="M190 240C258 188 328 188 400 176V240Z" fill={colors.cream.sand} opacity={0.7} />
+                  <Path d="M164 -20C182 100 278 162 420 150" fill="none" stroke={colors.cream.contour} strokeWidth={0.75} />
+                  <Path d="M190 -20C210 94 296 158 420 130M150 50C202 176 302 206 420 198" fill="none" stroke={colors.white.main} strokeWidth={0.75} opacity={0.8} />
+                </Svg>
+              </View>
+
+              {loadingCard ? (
+                <View accessibilityLiveRegion="polite" style={styles.cardMessage}>
+                  <PxCircularProgress color={colors.mute.dark} />
+                  <Text style={styles.cardDescription}>Loading your card…</Text>
+                </View>
+              ) : cardError && !card ? (
+                <View style={styles.cardMessage}>
+                  <Text style={styles.cardDescription}>Your card could not be loaded.</Text>
+                  <Pressable accessibilityRole="button" onPress={() => void loadHome()} style={styles.retryButton}>
+                    <Text style={styles.retryText}>Try again</Text>
+                  </Pressable>
+                </View>
+              ) : (
+                <Pressable
+                  accessibilityLabel={card ? `View ${card.name}` : "Create your digital business card"}
+                  accessibilityRole="button"
+                  onPress={() => card ? redirect("push", { pathname: "/digital_cards/modify", params: { mode: "preview" } }) : editCard()}
+                  style={({ pressed }) => [styles.cardPreview, pressed && styles.pressed]}
+                >
+                  <View style={styles.cardIdentity}>
+                    <View style={styles.avatarBorder}>
+                      <View style={styles.avatar}>
+                        {card?.photo_url && failedPhoto !== card.photo_url ? (
+                          <Image accessibilityLabel="Your card profile photo" source={{ uri: card.photo_url }} style={styles.avatarImage} onError={() => setFailedPhoto(card.photo_url)} />
+                        ) : card ? (
+                          <Text style={styles.avatarInitial}>{(card.fullname || card.name).trim().slice(0, 1).toUpperCase()}</Text>
+                        ) : (
+                          <ContactRound size={24} strokeWidth={1.25} color={colors.mute.dark} />
+                        )}
+                      </View>
+                    </View>
+                    <View style={styles.cardNameGroup}>
+                      <Text numberOfLines={2} ellipsizeMode="tail" style={styles.cardTitle}>{card?.name || "Create your card"}</Text>
+                      <Text numberOfLines={2} style={styles.cardDescription}>{card ? card.position : "Your details. Your QR. One card to share."}</Text>
+                    </View>
+                  </View>
+                  <ChevronRight size={28} strokeWidth={1.25} color={colors.mute.dark} />
+                </Pressable>
+              )}
+            </View>
+
+            <View style={styles.cardActions}>
+              <Pressable
+                accessibilityRole="button"
+                disabled={cardDisabled}
+                accessibilityState={{ disabled: cardDisabled }}
+                onPress={() => card ? openShare("qr") : editCard()}
+                style={({ pressed }) => [styles.cardAction, styles.primaryAction, pressed && styles.pressed, cardDisabled && styles.disabled]}
+              >
+                <ScanLine size={20} strokeWidth={1.25} color={colors.secondary.dark} />
+                <Text style={styles.primaryActionText}>{card ? "Show my QR" : "Create my card"}</Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Share card"
+                disabled={cardDisabled || !card}
+                accessibilityState={{ disabled: cardDisabled || !card }}
+                onPress={() => openShare("social")}
+                style={({ pressed }) => [styles.iconAction, pressed && styles.pressed, (cardDisabled || !card) && styles.disabled]}
+              >
+                <Share2 size={20} strokeWidth={1.25} color={colors.primary.main} />
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={card ? "Edit digital business card" : "Create digital business card"}
+                disabled={cardDisabled}
+                accessibilityState={{ disabled: cardDisabled }}
+                onPress={editCard}
+                style={({ pressed }) => [styles.iconAction, pressed && styles.pressed, cardDisabled && styles.disabled]}
+              >
+                <Pencil size={20} strokeWidth={1.25} color={colors.primary.main} />
+              </Pressable>
+            </View>
           </View>
-          {/* Keeps the original content height as the sizing reference for both states. */}
-          <View style={[styles.createContent, (card || loadingCard) && styles.hiddenContent]} accessibilityElementsHidden={Boolean(card) || loadingCard} importantForAccessibility={card || loadingCard ? "no-hide-descendants" : "auto"}>
-            <View style={styles.cardTopRow}>
-              <View style={styles.cardIcon}>
-                <ContactRound size={22} strokeWidth={1.25} color={colors.secondary.main} />
-              </View>
-              <View style={styles.cardContent}>
-                <Text style={styles.cardTitle}>Create Digital Business Card</Text>
-                <Text style={styles.cardDescription}>Your details. Your QR. One card to share.</Text>
-              </View>
-            </View>
-            <View style={styles.cardAction}>
-              <View style={styles.freePill}>
-                <Text style={styles.freeText}>Free</Text>
-              </View>
-              <View style={styles.cardActionLabel}>
-                <Text style={styles.cardActionText}>Get started</Text>
-                <ArrowUpRight size={18} strokeWidth={1.25} color={colors.white.main} />
-              </View>
-            </View>
+          {cardError && card ? <Text accessibilityRole="alert" style={styles.stateText}>Could not refresh your card. Pull down to try again.</Text> : null}
+        </View>
+
+        <View style={styles.shortcuts}>
+          <HomeShortcut
+            title="My scans"
+            description={loadingScans ? "Loading scans…" : scanError ? "View your saved scans" : records.length + " scans"}
+            Icon={History}
+            onPress={() => redirect("push", "/scans/list")}
+          />
+          <HomeShortcut title="Create QR" description="Links, text & more" Icon={QrCode} onPress={() => redirect("push", "/qrcodes/create")} />
+        </View>
+
+        <View style={styles.categoriesSection}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.categoriesHeading}>Scans by type</Text>
+            <Pressable accessibilityRole="button" accessibilityLabel="View all scans" onPress={() => redirect("push", "/scans/list")} style={({ pressed }) => [styles.viewAllButton, pressed && styles.pressed]}>
+              <Text style={styles.viewAllText}>View all</Text>
+            </Pressable>
           </View>
-          {loadingCard ? <View style={styles.savedCard}>
-            <View style={styles.avatarBorder}>
-              <View style={[styles.avatar, styles.loadingAvatar]}>
-                <ActivityIndicator color={colors.white.main} />
+          {loadingScans ? (
+            <View style={styles.scanMessage}>
+              <PxCircularProgress color={colors.secondary.main} />
+              <Text style={styles.stateText}>Loading scan categories…</Text>
+            </View>
+          ) : scanError ? (
+            <View style={styles.scanMessage}>
+              <Text style={styles.stateText}>Your scans could not be loaded.</Text>
+              <Pressable accessibilityRole="button" onPress={() => void loadHome()} style={styles.retryButton}><Text style={styles.retryText}>Try again</Text></Pressable>
+            </View>
+          ) : topScanTypes.length ? (
+            <View style={styles.categoriesGrid}>
+              {topScanTypes.map(summary => <ScanCategory key={summary.type} summary={summary} />)}
+            </View>
+          ) : (
+            <Pressable accessibilityRole="button" onPress={() => redirect("push", "/scans/scanner")} style={({ pressed }) => [styles.emptyScans, pressed && styles.pressed]}>
+              <View style={styles.scanIcon}><ScanLine size={24} strokeWidth={1.25} color={colors.secondary.main} /></View>
+              <View style={styles.emptyCopy}>
+                <Text style={styles.emptyTitle}>Scan your first QR</Text>
+                <Text style={styles.stateText}>Your scan categories will appear here.</Text>
               </View>
-            </View>
-            <View style={styles.cardContent}>
-              <Text style={styles.cardHeading}>My Digital Business Card</Text>
-              <Text style={styles.cardDescription}>Loading your card…</Text>
-            </View>
-          </View> : card ? <View style={styles.savedCard}>
-            <View style={styles.avatarBorder}>
-            <View style={styles.avatar}>
-              {card.photo_url && failedPhoto !== card.photo_url ? <Image source={{ uri: card.photo_url }} style={styles.avatarImage} onError={() => setFailedPhoto(card.photo_url)} /> : <Text style={styles.avatarInitial}>{card.name.trim().slice(0, 1).toUpperCase()}</Text>}
-            </View>
-            </View>
-            <View style={styles.cardContent}>
-              <Text numberOfLines={1} style={styles.cardHeading}>My Digital Business Card</Text>
-              <Text numberOfLines={1} style={styles.cardTitle}>{card.name}</Text>
-              {card.position ? <Text numberOfLines={1} style={styles.cardDescription}>{card.position}</Text> : null}
-            </View>
-            <ChevronRight size={24} strokeWidth={1.25} color={colors.white.main} />
-          </View> : null}
-        </Pressable>
-      )} />
+              <ChevronRight size={20} strokeWidth={1.25} color={colors.mute.main} />
+            </Pressable>
+          )}
+        </View>
+      </ScrollView>
+      {shareCard ? <DigitalCardShareDialog card={shareCard} open={shareOpen} setOpen={setShareOpen} onPublish={publishCard} initialTab={shareTab} /> : null}
     </GeneralLayout>
   );//return ends
 };//export ends
 
 /* ------------------ BREAK ------------------ */
 
+// Loads a saved card only for signed-in accounts, leaving guests free to start the creation flow.
+async function loadSavedCard(forceRefresh = false): Promise<RemoteCard | null> {
+  const user = await getStorageUser();
+  return user ? getDigitalCard({ forceRefresh }) : null;
+};//func ends
+
+// Renders a compact shortcut underneath the digital card.
+function HomeShortcut({ title, description, Icon, onPress }: ShortcutProps) {
+  //Default Return
+  return (
+    <Pressable accessibilityRole="button" accessibilityLabel={title + ". " + description} onPress={onPress} style={({ pressed }) => [styles.shortcut, pressed && styles.pressed]}>
+      <View style={styles.shortcutIcon}><Icon size={24} strokeWidth={1.25} color={colors.secondary.main} /></View>
+      <View style={styles.shortcutCopy}>
+        <Text numberOfLines={2} style={styles.shortcutTitle}>{title}</Text>
+        <Text numberOfLines={1} style={styles.shortcutDescription}>{description}</Text>
+      </View>
+    </Pressable>
+  );//return ends
+};//func ends
+
+// Shows one scan category's count and share of all scans, linking to its filtered history.
+function ScanCategory({ summary }: ScanCategoryProps) {
+  const Icon = getScanCategoryIcon(summary.type);
+
+  //Default Return
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${summary.label}: ${summary.count} scans, ${summary.percentage}% of total scans`}
+      onPress={() => redirect("push", { pathname: "/scans/list", params: { type: summary.type } })}
+      style={({ pressed }) => [styles.categoryCard, pressed && styles.pressed]}
+    >
+      <View style={styles.categoryTopRow}>
+        {summary.type === "upi_payment" ? <UpiPaymentIcon size={32} backgroundColor={colors.cream.main} /> : <View style={styles.categoryIcon}><Icon size={18} strokeWidth={1.25} color={colors.secondary.main} /></View>}
+        <Text style={styles.categoryPercentage}>{summary.percentage}%</Text>
+      </View>
+      <Text style={styles.categoryCount}>{summary.count}</Text>
+      <Text numberOfLines={2} style={styles.categoryLabel}>{summary.label}</Text>
+      <View style={styles.progressTrack}>
+        <View style={[styles.progressFill, { width: `${summary.percentage}%` }]} />
+      </View>
+    </Pressable>
+  );//return ends
+};//func ends
+
+// Matches each scan identifier to a consistent Lucide outline icon.
+function getScanCategoryIcon(type: string): LucideIcon {
+  const icons: Record<string, LucideIcon> = {
+    url: Globe2, text: FileText, contact: ContactRound, "digital-card": ContactRound, phone: Phone,
+    file: File, product: Barcode, barcode: Barcode, email: Mail,
+    sms: MessageSquare, wifi: Wifi, location: MapPin, calendar: CalendarDays,
+    payment: Wallet, upi_payment: Wallet, auth: ShieldKeyhole, deep_link: Link
+  };
+  return icons[type] || QrCode;
+};//func ends
+
+// Groups normalized scan types and ranks their counts using all saved scans as the percentage total.
+function summarizeScanTypes(records: ScanRecord[]): ScanTypeSummary[] {
+  const counts = new Map<string, number>();
+  for (const record of records) {
+    const type = normalizeScanType(record.type);
+    counts.set(type, (counts.get(type) || 0) + 1);
+  };//for ends
+  return [...counts.entries()]
+    .sort((first, second) => second[1] - first[1])
+    .map(([type, count]) => ({
+      type, count, label: getScanTypeInit(type).label,
+      percentage: Math.round(count / records.length * 100)
+    }));
+};//func ends
+
+/* ------------------ BREAK ------------------ */
+
 const styles = StyleSheet.create({
-  digitalCard: { gap: spacing.sm, padding: spacing.md, borderRadius: radii.xl, overflow: "hidden", backgroundColor: colors.neutral.dark },
-  cardPattern: { position: "absolute", top: 0, right: 0, bottom: 0, left: 0, overflow: "hidden" },
-  patternWash: { position: "absolute", width: 220, height: 220, bottom: -170, left: -40, borderRadius: radii.pill, backgroundColor: colors.neutral.light, opacity: 0.06 },
-  patternRing: { position: "absolute", borderRadius: radii.pill, borderWidth: 1, borderColor: colors.neutral.light, opacity: 0.12 },
-  patternRingOuter: { width: 280, height: 280, top: -190, right: -80 },
-  patternRingInner: { width: 220, height: 220, top: -160, right: -50 },
-  createContent: { gap: spacing.sm },
-  hiddenContent: { opacity: 0 },
-  savedCard: { position: "absolute", top: 0, bottom: 0, left: 0, right: 0, flexDirection: "row", alignItems: "center", gap: spacing.sm, padding: spacing.md },
-  cardHeading: { color: colors.neutral.light, fontFamily: fontFamilies.primaryMedium, fontSize: fontSizes.caption },
-  avatarBorder: { padding: 3, borderWidth: 1, borderColor: colors.white.main, borderRadius: radii.pill },
-  avatar: { width: 56, height: 56, borderRadius: radii.pill, overflow: "hidden", alignItems: "center", justifyContent: "center", backgroundColor: colors.secondary.light },
-  loadingAvatar: { backgroundColor: "transparent" },
+  content: { flexGrow: 1, gap: spacing.lg, paddingHorizontal: spacing.lg, paddingTop: spacing.lg, paddingBottom: spacing.lg, backgroundColor: colors.cream.main },
+  cardSection: { gap: spacing.xs },
+  sectionHeader: { minHeight: 40, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.xs },
+  cardGroup: { borderRadius: radii.xl + spacing.xs, backgroundColor: colors.white.main, shadowColor: colors.neutral.dark, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.05, shadowRadius: 16, elevation: 2 },
+  digitalCard: { minHeight: 104, flexDirection: "row", alignItems: "center", gap: spacing.sm, padding: spacing.md, borderRadius: radii.xl + spacing.xs, borderWidth: 1, borderColor: colors.cream.dark, backgroundColor: colors.cream.cardLight, overflow: "hidden" },
+  cardPattern: { position: "absolute", top: 0, right: 0, bottom: 0, left: 0 },
+  cardPreview: { flex: 1, minHeight: 72, flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  cardIdentity: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  avatarBorder: { flexShrink: 0, padding: 3, borderWidth: 1, borderColor: colors.mute.main, borderRadius: radii.pill },
+  avatar: { width: 48, height: 48, borderRadius: radii.pill, overflow: "hidden", alignItems: "center", justifyContent: "center", backgroundColor: colors.white.main },
   avatarImage: { width: "100%", height: "100%", resizeMode: "cover" },
-  avatarInitial: { color: colors.primary.main, fontFamily: fontFamilies.primaryBold, fontSize: fontSizes.h5 },
-  pressed: { opacity: 0.8 },
-  cardTopRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  cardIcon: { width: spacing.xl + spacing.xs, height: spacing.xl + spacing.xs, alignItems: "center", justifyContent: "center", borderRadius: radii.lg, backgroundColor: colors.secondary.light },
-  cardContent: { flex: 1, gap: spacing.xxs },
-  freePill: { paddingHorizontal: spacing.sm, paddingVertical: spacing.xxs, borderRadius: radii.pill, backgroundColor: colors.secondary.light },
-  freeText: { color: colors.primary.main, fontFamily: fontFamilies.primarySemiBold, fontSize: fontSizes.caption },
-  cardTitle: { color: colors.white.main, fontFamily: fontFamilies.primaryBold, fontSize: fontSizes.subtitle1 },
-  cardDescription: { color: colors.neutral.light, fontFamily: fontFamilies.primaryRegular, fontSize: fontSizes.caption },
-  cardAction: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  cardActionLabel: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
-  cardActionText: { color: colors.white.main, fontFamily: fontFamilies.primarySemiBold, fontSize: fontSizes.body2 }
+  avatarInitial: { color: colors.mute.dark, fontFamily: fontFamilies.primaryBold, fontSize: fontSizes.h4 },
+  cardNameGroup: { flex: 1, minWidth: 0, gap: spacing.xxs },
+  cardTitle: { flexShrink: 1, color: colors.primary.main, fontFamily: fontFamilies.primaryBold, fontSize: fontSizes.subtitle1, lineHeight: 20, letterSpacing: -0.2 },
+  cardDescription: { color: colors.primary.light, fontFamily: fontFamilies.primaryRegular, fontSize: fontSizes.body2, lineHeight: 20 },
+  cardMessage: { flex: 1, minHeight: 72, alignItems: "center", justifyContent: "center", gap: spacing.sm },
+  cardActions: { flexDirection: "row", gap: spacing.xs, padding: spacing.xs },
+  cardAction: { flex: 1, minWidth: 0, minHeight: 48, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.xs, paddingHorizontal: spacing.xs, borderRadius: radii.lg },
+  primaryAction: { backgroundColor: colors.secondary.light },
+  iconAction: { width: 48, minHeight: 48, flexShrink: 0, alignItems: "center", justifyContent: "center", borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border.main, backgroundColor: colors.white.main },
+  primaryActionText: { color: colors.secondary.dark, fontFamily: fontFamilies.primarySemiBold, fontSize: fontSizes.body2 },
+  shortcuts: { flexDirection: "row", gap: spacing.xs },
+  shortcut: { flex: 1, minWidth: 0, minHeight: 72, flexDirection: "row", alignItems: "center", gap: spacing.xxs, paddingHorizontal: spacing.xs, paddingVertical: spacing.sm, borderWidth: 1, borderColor: colors.border.main, borderRadius: radii.xl, backgroundColor: colors.white.main },
+  shortcutIcon: { width: 40, height: 40, flexShrink: 0, alignItems: "center", justifyContent: "center", borderRadius: radii.lg, backgroundColor: colors.cream.main },
+  shortcutCopy: { flex: 1, minWidth: 0, gap: spacing.xxs },
+  shortcutTitle: { color: colors.primary.main, fontFamily: fontFamilies.primarySemiBold, fontSize: fontSizes.body2 },
+  shortcutDescription: { color: colors.mute.main, fontFamily: fontFamilies.primaryRegular, fontSize: fontSizes.caption, lineHeight: 16 },
+  categoriesSection: { gap: spacing.xs },
+  categoriesHeading: { color: colors.primary.main, fontFamily: fontFamilies.primaryBold, fontSize: fontSizes.h6 },
+  viewAllButton: { minHeight: 44, justifyContent: "center", paddingLeft: spacing.xs },
+  viewAllText: { color: colors.mute.main, fontFamily: fontFamilies.primaryRegular, fontSize: fontSizes.body2 },
+  categoriesGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", gap: spacing.xs },
+  categoryCard: { width: "48%", minHeight: 112, gap: spacing.xxs, padding: spacing.xs, borderWidth: 1, borderColor: colors.border.main, borderRadius: radii.lg, backgroundColor: colors.white.main },
+  categoryTopRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  categoryIcon: { width: 32, height: 32, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.border.main, borderRadius: radii.md, backgroundColor: colors.cream.main },
+  categoryPercentage: { color: colors.mute.main, fontFamily: fontFamilies.primaryMedium, fontSize: fontSizes.caption - 1 },
+  categoryCount: { color: colors.primary.main, fontFamily: fontFamilies.primaryBold, fontSize: fontSizes.h6, lineHeight: 24 },
+  categoryLabel: { color: colors.mute.main, fontFamily: fontFamilies.primaryRegular, fontSize: fontSizes.caption, lineHeight: 16 },
+  progressTrack: { height: spacing.xxs, marginTop: spacing.xxs, overflow: "hidden", borderRadius: radii.pill, backgroundColor: colors.line.light },
+  progressFill: { height: "100%", borderRadius: radii.pill, backgroundColor: colors.primary.main },
+  scanIcon: { width: 44, height: 44, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.border.main, borderRadius: radii.lg, backgroundColor: colors.cream.main },
+  emptyCopy: { flex: 1, minWidth: 0, gap: spacing.xxs },
+  emptyTitle: { color: colors.primary.main, fontFamily: fontFamilies.primarySemiBold, fontSize: fontSizes.body1 },
+  scanMessage: { minHeight: 120, alignItems: "center", justifyContent: "center", gap: spacing.sm },
+  stateText: { color: colors.mute.main, fontFamily: fontFamilies.primaryRegular, fontSize: fontSizes.body2, lineHeight: 20 },
+  emptyScans: { minHeight: 100, flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  retryButton: { minHeight: 44, justifyContent: "center", paddingHorizontal: spacing.md },
+  retryText: { color: colors.secondary.dark, fontFamily: fontFamilies.primarySemiBold, fontSize: fontSizes.body2 },
+  pressed: { opacity: 0.72 },
+  disabled: { opacity: 0.5 }
 });

@@ -1,9 +1,10 @@
-import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
-import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { Pressable, StyleSheet, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { Text } from "react-native-paper";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { PxIcon } from "@/components/elements/PxIcon";
+import { PxCircularProgress } from "@/components/elements/PxCircularProgress";
 import { UnoQrLogo } from "@/components/brand/UnoQrLogo";
 import { colors, fontFamilies, fontSizes, radii, spacing } from "@/theme/tokens";
 
@@ -29,13 +30,13 @@ export function LinkCheckOverlay({ onClose }: LinkCheckOverlayProps) {
             onPress={onClose}
             style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}
           >
-            <MaterialCommunityIcons name="close" size={24} color={colors.primary.main} />
+            <PxIcon name="close" size={24} color={colors.primary.main} />
           </Pressable>
         </SafeAreaView>
       ) : null}
 
       <View style={styles.content}>
-        <ActivityIndicator size="large" color={colors.secondary.main} />
+        <PxCircularProgress size={40} color={colors.secondary.main} />
         <Text style={styles.title}>Checking this link</Text>
         <Text style={styles.body}>
           We’re checking the link before redirecting you to the website.

@@ -22,7 +22,7 @@ export default function SaveStatusDialog({ visible, onClose, isSavedOnDevice, is
     <PxDialog open={visible} setOpen={(open) => { if (!open) onClose(); }} title="Save status">
       <View style={styles.content} accessibilityLiveRegion="polite">
         <View style={styles.row}>
-          <Smartphone color={colors.mute.main} size={24} strokeWidth={1.5} />
+          <Smartphone color={colors.mute.main} size={24} strokeWidth={1.25} />
           <View style={styles.copy}>
             <Text style={styles.label}>On this device</Text>
             <Text style={styles.description}>{isSavedOnDevice ? "Your latest changes are saved." : "Your latest changes are not saved yet."}</Text>
@@ -30,7 +30,7 @@ export default function SaveStatusDialog({ visible, onClose, isSavedOnDevice, is
           <Text style={[styles.status, { color: isSavedOnDevice ? colors.success.dark : colors.warning.dark }]}>{isSavedOnDevice ? "Saved" : "Pending"}</Text>
         </View>
         <View style={styles.row}>
-          {isSavedInCloud ? <CloudCheck color={colors.success.dark} size={24} strokeWidth={1.5} /> : <CloudAlert color={colors.warning.dark} size={24} strokeWidth={1.5} />}
+          {isSavedInCloud ? <CloudCheck color={colors.success.dark} size={24} strokeWidth={1.25} /> : <CloudAlert color={colors.warning.dark} size={24} strokeWidth={1.25} />}
           <View style={styles.copy}>
             <Text style={styles.label}>In the cloud</Text>
             <Text style={styles.description}>{isSavedInCloud ? "Your latest changes are backed up." : isSavedOnDevice ? "Your changes are saved here and waiting to upload." : "Waiting for your changes to save on this device."}</Text>

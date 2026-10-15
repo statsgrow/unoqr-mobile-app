@@ -2,13 +2,15 @@ import _ from "lodash";
 import { useEffect, useMemo, useState } from "react";
 import { ImagePlus, Trash2 } from "lucide-react-native";
 import { Image, Pressable, StyleSheet, View } from "react-native";
-import { ActivityIndicator, Text } from "react-native-paper";
-import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { Text } from "react-native-paper";
 import { manipulateAsync, SaveFormat } from "expo-image-manipulator";
 import * as DocumentPicker from "expo-document-picker";
 import { File } from "expo-file-system";
 import type { UseFormReturn } from "react-hook-form";
 
+import { PxIcon, type PxIconName } from "@/components/elements/PxIcon";
+import { colors as tokenColors } from "@/theme/tokens";
+import { PxCircularProgress } from "@/components/elements/PxCircularProgress";
 import { selectImage, type ImagePickerFile } from "@/components/files/ImagePicker";
 import GetError from "@/utils/general/Error";
 import { colors, fontFamilies, fonts, sizes } from "@/theme/themeSettings";
@@ -30,7 +32,7 @@ export type BasicFileInputType = {
 	onUpload?: (file: FileInputValue) => Promise<FileInputValue>;
 	onRemove?: (file: FileInputValue) => Promise<void>;
 	leftAdornment?: {
-		icon?: keyof typeof MaterialCommunityIcons.glyphMap;
+		icon?: PxIconName;
 		text?: string;
 	};
 };
@@ -233,20 +235,20 @@ export default function PxFileInput({
 
 					{hasFile && !isImageFile ? (
 						<View style={styles.filePlaceholder}>
-							<MaterialCommunityIcons name={type === "pdf" ? "file-pdf-box" : "file-delimited-outline"} size={34} color={colors.primary} />
+							<PxIcon name={type === "pdf" ? "file-pdf-box" : "file-delimited-outline"} size={34} color={colors.primary} />
 							<Text style={styles.fileTypeLabel}>{type.toUpperCase()}</Text>
 						</View>
 					) : null}
 
 					{!hasFile && !fileLoading ? (
 						<View style={styles.emptyStateWrap}>
-							{leftAdornment?.icon ? <MaterialCommunityIcons name={leftAdornment.icon} size={24} color={colors.grey[400]} /> : null}
+							{leftAdornment?.icon ? <PxIcon name={leftAdornment.icon} size={24} color={colors.grey[400]} /> : null}
 							{leftAdornment?.text ? <Text style={styles.emptyStateAdornmentText}>{leftAdornment.text}</Text> : null}
 							<Text style={styles.placeholderText}>{emptyStateLabel}</Text>
 						</View>
 					) : null}
 
-					{fileLoading ? <ActivityIndicator color={colors.primary} /> : null}
+					{fileLoading ? <PxCircularProgress color={tokenColors.primary.main} /> : null}
 				</Pressable>
 
 				<View style={styles.actionArea}>

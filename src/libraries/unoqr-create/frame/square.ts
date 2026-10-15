@@ -1,4 +1,4 @@
-import type { DotStyle } from "@/helpers/qrcodes/modify/dot";
+import type { DotStyle } from "../dot";
 
 import { buildFrameDots } from "./dots";
 

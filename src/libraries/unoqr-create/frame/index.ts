@@ -1,4 +1,4 @@
-import type { DotStyle } from "@/helpers/qrcodes/modify/dot";
+import type { DotStyle } from "../dot";
 
 import { buildCircleFrameDots } from "./circle";
 import { hashValue } from "./dots";
@@ -7,12 +7,12 @@ import { buildSquircleFrameDots, getSquircleInset } from "./squircle";
 
 /* ------------------ BREAK ------------------ */
 
-export type FrameStyle = "squircle" | "round" | "square" | "none";
+export type FrameStyle = "squircle" | "round" | "square" | "none";//export ends
 
 export type FrameOptions = {
   style: FrameStyle;
   color: string;
-};
+};//export ends
 
 /* ------------------ BREAK ------------------ */
 

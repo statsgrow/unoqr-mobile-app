@@ -23,7 +23,7 @@ type ColorDialogProps = {
 /* ------------------ BREAK ------------------ */
 
 const BACKGROUND_COLORS = [
-  colors.white.main, colors.cream.main, "#FFF2E9", "#EAF5EF", "#EAF1FA",
+  colors.white.main, "#FFF2E9", "#EAF5EF", "#EAF1FA",
   "#F2EAF6", "#FFF8D8", "#E8F6F3", "#FCEAF0", "#ECEBFA"
 ];
 

@@ -1,11 +1,12 @@
 import { useCallback, useRef, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
-import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { Pencil, Trash2 } from "lucide-react-native";
-import { ActivityIndicator, Text } from "react-native-paper";
+import { Text } from "react-native-paper";
 import { useForm } from "react-hook-form";
 
+import { PxIcon } from "@/components/elements/PxIcon";
+import { PxCircularProgress } from "@/components/elements/PxCircularProgress";
 import { PxDialog } from "@/components/elements/PxDialog";
 import { PxButton } from "@/components/elements/PxButton";
 import { PxPageLoader } from "@/components/elements/PxPageLoader";
@@ -162,7 +163,7 @@ export default function ScanDetailScreen() {
         />
       ) : detailState.loading ? (
         <View style={styles.centerState}>
-          <ActivityIndicator size="large" color={colors.secondary.main} />
+          <PxCircularProgress size={40} color={colors.secondary.main} />
           <Text style={styles.stateText}>Loading collected scan data…</Text>
         </View>
       ) : record ? (
@@ -197,7 +198,7 @@ export default function ScanDetailScreen() {
         </View>
       ) : (
         <View style={styles.centerState}>
-          <MaterialCommunityIcons
+          <PxIcon
             name="database-alert-outline"
             size={44}
             color={colors.error.main}
@@ -211,12 +212,12 @@ export default function ScanDetailScreen() {
       )}
       <PxModal visible={isNotesOpen} onRequestClose={() => { if (!isSavingNotes) setIsNotesOpen(false); }}
         name="Comments & Tags" height="auto" maxHeight={760} keyboardAvoiding hideCloseButton={isSavingNotes} closeOnBackdropClick={!isSavingNotes}
-        footer={(
+        footerAction={(
           <View style={styles.notesFooter}>
             {notesError ? <Text style={styles.deleteError}>{notesError}</Text> : null}
             <Pressable accessibilityRole="button" accessibilityLabel="Save scan notes" accessibilityState={{ disabled: isSavingNotes }}
               disabled={isSavingNotes} onPress={() => void handleSaveNotes()} style={[styles.saveNotesButton, isSavingNotes && styles.saveNotesButtonDisabled]}>
-              {isSavingNotes ? <ActivityIndicator size="small" color={colors.white.main} /> : <Text style={styles.saveNotesText}>Save Now</Text>}
+              {isSavingNotes ? <PxCircularProgress size={20} color={colors.white.main} /> : <Text style={styles.saveNotesText}>Save Now</Text>}
             </Pressable>
           </View>
         )}>

@@ -1,11 +1,11 @@
 import { useState } from "react";
 import { Image, Pressable, StyleSheet, View } from "react-native";
-import { MaterialCommunityIcons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
 
 import * as WebBrowser from "expo-web-browser";
 import { Chip, IconButton, Text } from "react-native-paper";
 
+import { PxIcon } from "@/components/elements/PxIcon";
 import { redirect } from "@/utils/general/Redirect";
 import { getScanById } from "@/helpers/scans/db/getQueries";
 import type { ScanUrlMetadata } from "@/helpers/scans/db/init";
@@ -58,7 +58,7 @@ export function Website({ record }: WebsiteProps) {
             {!isFile && faviconUrl ? (
               <Image resizeMode="contain" source={{ uri: faviconUrl }} style={styles.favicon} />
             ) : (
-              <MaterialCommunityIcons name={isFile ? "file-outline" : "web"} size={22} color={colors.primary.main} />
+              <PxIcon name={isFile ? "file-outline" : "web"} size={22} color={colors.primary.main} />
             )}
           </View>
           <View style={styles.titleContent}>
@@ -91,7 +91,7 @@ export function Website({ record }: WebsiteProps) {
         ) : null}
 
         <View style={styles.timestampRow}>
-          <MaterialCommunityIcons name="calendar-clock" size={16} color={colors.mute.main} />
+          <PxIcon name="calendar-clock" size={16} color={colors.mute.main} />
           <Text style={styles.timestamp}>{timestamp.date}</Text>
           <View style={styles.timestampDot} />
           <Text style={styles.timestamp}>{timestamp.time}</Text>
@@ -100,7 +100,7 @@ export function Website({ record }: WebsiteProps) {
 
       {crawlError ? (
         <View style={styles.crawlErrorCard}>
-          <MaterialCommunityIcons name="alert-circle-outline" size={22} color={colors.error.main} />
+          <PxIcon name="alert-circle-outline" size={22} color={colors.error.main} />
           <View style={styles.crawlErrorContent}>
             <Text style={styles.crawlErrorTitle}>Could not collect link details</Text>
             <Text selectable style={styles.crawlErrorMessage}>{crawlError}</Text>
@@ -163,7 +163,7 @@ function UrlCard({ label, protocol, url, verificationFailed = false }: UrlCardPr
         <IconButton
           accessibilityLabel={`Copy ${label}`}
           disabled={!safeUrl}
-          icon="content-copy"
+          icon={({ color, size }) => <PxIcon name="content-copy" color={color} size={size} />}
           iconColor={safeUrl ? colors.primary.light : colors.mute.light}
           onPress={() => void copyUrl(safeUrl)}
           size={18}
@@ -171,7 +171,7 @@ function UrlCard({ label, protocol, url, verificationFailed = false }: UrlCardPr
         />
         <Chip
           compact
-          icon={verificationFailed ? "alert-circle-outline" : isSecure ? "lock-outline" : "lock-open-alert-outline"}
+          icon={({ color, size }) => <PxIcon name={verificationFailed ? "alert-circle-outline" : isSecure ? "lock-outline" : "lock-open-alert-outline"} color={color} size={size} />}
           style={[styles.securityChip, isSecure && !verificationFailed ? styles.secureChip : styles.insecureChip]}
           textStyle={[styles.securityChipText, isSecure && !verificationFailed ? styles.secureText : styles.insecureText]}
         >
@@ -184,7 +184,7 @@ function UrlCard({ label, protocol, url, verificationFailed = false }: UrlCardPr
           onPress={() => void openUrl(safeUrl)}
           style={styles.chevronButton}
         >
-          <MaterialCommunityIcons
+          <PxIcon
             name="chevron-right"
             size={24}
             color={safeUrl ? colors.secondary.main : colors.mute.light}

@@ -1,6 +1,6 @@
 import type { BitMatrix } from "qrcode";
 
-import { isEyeModule } from "@/helpers/qrcodes/modify/eye";
+import { isEyeModule } from "../eye";
 
 import { classyDot } from "./classy";
 import { connectedDot } from "./connected";
@@ -9,7 +9,7 @@ import { roundedDot } from "./rounded";
 import { squareDot } from "./square";
 import type { DotShapeBuilder, DotShapeInput, DotStyle } from "./types";
 
-export type { DotStyle } from "./types";
+export type { DotStyle } from "./types";//export ends
 
 /* ------------------ BREAK ------------------ */
 
@@ -32,18 +32,12 @@ export function buildDot(style: DotStyle, input: DotShapeInput): string {
 export function buildDots(modules: BitMatrix, margin: number, style: DotStyle, color: string): string {
   const parts: string[] = [];
 
-  // Checks only dark data modules so connected corners stay clear of finder eyes.
-  const hasNeighbor = (col: number, row: number): boolean => (
-    row >= 0 && row < modules.size && col >= 0 && col < modules.size
-    && modules.get(row, col) === 1 && !isEyeModule(row, col, modules.size)
-  );//func ends
-
   for (let row = 0; row < modules.size; row++) {
     if (style === "square") {
       let runStart = -1;
 
       for (let col = 0; col <= modules.size; col++) {
-        const dark = col < modules.size && hasNeighbor(col, row);
+        const dark = col < modules.size && hasDataNeighbor(modules, col, row);
         if (dark && runStart < 0) runStart = col;
         if (!dark && runStart >= 0) {
           parts.push(`<rect x="${margin + runStart}" y="${margin + row}" width="${col - runStart}" height="1" fill="${color}"/>`);
@@ -54,10 +48,18 @@ export function buildDots(modules: BitMatrix, margin: number, style: DotStyle, c
     };//if ends
 
     for (let col = 0; col < modules.size; col++) {
-      if (!hasNeighbor(col, row)) continue;
-      parts.push(buildDot(style, { x: margin + col, y: margin + row, col, row, color, hasNeighbor }));
+      if (!hasDataNeighbor(modules, col, row)) continue;
+      parts.push(buildDot(style, { x: margin + col, y: margin + row, col, row, color, hasNeighbor: (neighborCol, neighborRow) => hasDataNeighbor(modules, neighborCol, neighborRow) }));
     };//for ends
   };//for ends
 
   return parts.join("");
 };//export ends
+
+/* ------------------ BREAK ------------------ */
+
+// Checks dark data modules without joining finder eyes to neighboring shapes.
+function hasDataNeighbor(modules: BitMatrix, col: number, row: number): boolean {
+  return row >= 0 && row < modules.size && col >= 0 && col < modules.size
+    && modules.get(row, col) === 1 && !isEyeModule(row, col, modules.size);
+};//func ends

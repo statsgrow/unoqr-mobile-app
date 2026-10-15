@@ -7,6 +7,7 @@ import { QR_API_TIMEOUT, type QrApiData, type QrApiResponse, type QrSyncConfirma
 
 // Saves a complete QR snapshot and returns the API's synchronization confirmation.
 export async function putQrToApi(data: QrApiData): Promise<QrSyncConfirmation | null> {
+  if (typeof data.content !== "string" || !data.content.trim()) throw new Error("Enter QR content before saving.");
   const url = apiSettings.getApiUrl({ path: "/app/static_qrcodes" });
   const response = await Axios.put<QrApiResponse<QrSyncConfirmation>>(url.href, data, { timeout: QR_API_TIMEOUT });
   return response.data.data ?? null;

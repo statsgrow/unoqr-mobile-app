@@ -1,3 +1,5 @@
+import type { DigitalCardLayoutType, DigitalCardSocialLink } from "@/libraries/digitalcards-layouts/core/types";
+
 import type { FileInputValue } from "@/components/form/PxFileInput";
 import type { QrCreateFormValues } from "@/helpers/qrcodes/create/QrCreate";
 import { colors } from "@/theme/tokens";
@@ -5,8 +7,7 @@ import { getUID } from "@/utils/general/Uid";
 
 /* ------------------ TYPES ------------------ */
 
-export type DigitalCardLayoutType = "modern" | "centered" | "spotlight" | "minimal";
-export type DigitalCardSocialLink = { label: string; url: string };
+export type { DigitalCardLayoutType, DigitalCardSocialLink } from "@/libraries/digitalcards-layouts/core/types";//export ends
 export type DigitalCardSettingsValues = {
   name: string;
   status: "published" | "unpublished";
@@ -14,6 +15,7 @@ export type DigitalCardSettingsValues = {
   seoDescription: string;
   allowIndexing: boolean;
   allowSaveContact: boolean;
+  isContactRequired: boolean;
 };
 export type DigitalCardDetails = {
   profilePicture: FileInputValue | null;
@@ -48,7 +50,8 @@ export const DIGITAL_CARD_SETTINGS_DEFAULTS: DigitalCardSettingsValues = {
   seoTitle: "",
   seoDescription: "",
   allowIndexing: false,
-  allowSaveContact: true
+  allowSaveContact: true,
+  isContactRequired: false
 };//export ends
 
 /* ------------------ BREAK ------------------ */

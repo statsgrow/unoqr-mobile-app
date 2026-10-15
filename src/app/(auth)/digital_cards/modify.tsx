@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { Eye, Pencil } from "lucide-react-native";
-import { ActivityIndicator, Keyboard, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Keyboard, Pressable, StyleSheet, Text, View } from "react-native";
 
+import { PxCircularProgress } from "@/components/elements/PxCircularProgress";
 import { HeaderBackButton } from "@/components/layout/HeaderBackButton";
 import { createDigitalCard, type AppDigitalCardQr, type DigitalCardDetails, type DigitalCardLayoutType, type DigitalCardSettingsValues } from "@/helpers/digital_cards/model";
-import { getDigitalCard, restoreDigitalCard, saveDigitalCard, saveDigitalCardQrDesign, saveDigitalCardDetails, saveDigitalCardLayout, saveDigitalCardSettings, type RemoteCard } from "@/helpers/digital_cards/api/cards";
+import { deleteDigitalCard, getDigitalCard, restoreDigitalCard, saveDigitalCard, saveDigitalCardQrDesign, saveDigitalCardDetails, saveDigitalCardLayout, saveDigitalCardSettings, type RemoteCard } from "@/helpers/digital_cards/api/cards";
 import { validateDigitalCard } from "@/helpers/digital_cards/validations";
 import DigitalCardForm from "@/helpers/digital_cards/forms/DigitalCardForm";
 import DigitalCardLayout from "@/helpers/digital_cards/forms/DigitalCardLayout";
@@ -28,7 +28,9 @@ type DigitalCardStep = "form" | "layout" | "qr" | "settings";
 
 // Opens the saved card in Preview and keeps its editor sections mounted beneath the header.
 export default function ModifyDigitalCardScreen() {
-  const [screen, setScreen] = useState<DigitalCardScreen>("preview");
+  const params = useLocalSearchParams<{ mode?: string }>();
+  const initialScreen: DigitalCardScreen = params.mode === "edit" ? "edit" : "preview";
+  const [screen, setScreen] = useState<DigitalCardScreen>(initialScreen);
   const [activeStep, setActiveStep] = useState<DigitalCardStep>("form");
   const [card, setCard] = useState<AppDigitalCardQr | null>(null);
   const draftCard = useRef<AppDigitalCardQr | null>(null);
@@ -37,9 +39,8 @@ export default function ModifyDigitalCardScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [revision, setRevision] = useState(0);
   const [loadKey, setLoadKey] = useState(0);
-  const insets = useSafeAreaInsets();
 
-  // Loads API values on opening or explicit refresh while retaining mounted RHF drafts across tabs.
+  // Loads cached values on opening or explicit refresh while retaining mounted RHF drafts across tabs.
   useEffect(() => {
     let isMounted = true;
     setError(null);
@@ -48,11 +49,11 @@ export default function ModifyDigitalCardScreen() {
       try {
         const user = await getStorageUser();
         if (!user) throw new Error("Sign in to create your digital business card.");
-        const remote = await getDigitalCard();
+        const remote = await getDigitalCard({ forceRefresh: loadKey > 0 });
         const defaults = createDigitalCard({ userId: user.id, defaults: QR_DEFAULTS, uid: remote?.uid });
         const loaded = remote ? restoreDigitalCard(remote, defaults) : defaults;
         if (isMounted) {
-          if (loadKey === 0 || !remote?.id) setScreen(remote?.id ? "preview" : "edit");
+          if (loadKey === 0 || !remote?.id) setScreen(remote?.id ? initialScreen : "edit");
           latestCard.current = loaded;
           draftCard.current = loaded;
           setCard(loaded);
@@ -66,7 +67,7 @@ export default function ModifyDigitalCardScreen() {
     };//func ends
     void loadCard();
     return () => { isMounted = false; };//return ends
-  }, [loadKey]);
+  }, [loadKey, initialScreen]);
 
   // Saves only the selected section and commits API-confirmed values without replacing other RHF drafts.
   const persistCard = useCallback(async (changes: Partial<AppDigitalCardQr>, saveSection: (uid: string) => Promise<RemoteCard>): Promise<void> => {
@@ -90,6 +91,18 @@ export default function ModifyDigitalCardScreen() {
   const handleRefresh = useCallback((): void => {
     Keyboard.dismiss();
     setLoadKey((value) => value + 1);
+  }, []);
+
+  // Deletes the saved card remotely and locally before returning to the Home screen.
+  const handleDeleteCard = useCallback(async (): Promise<void> => {
+    const current = latestCard.current;
+    if (!current?.id) throw new Error("Save your digital card before deleting it.");
+    Keyboard.dismiss();
+    await deleteDigitalCard(current.uid);
+    latestCard.current = null;
+    draftCard.current = null;
+    setCard(null);
+    router.replace("/");
   }, []);
 
   // Saves QR appearance through the API without changing publication status.
@@ -143,7 +156,7 @@ export default function ModifyDigitalCardScreen() {
 
   //Default Return
   return (
-    <KeyboardAvoidingView style={styles.root} behavior={screen === "edit" && activeStep !== "layout" && Platform.OS === "ios" ? "padding" : undefined} keyboardVerticalOffset={insets.top}>
+    <View style={styles.root}>
       <View style={styles.header}>
         <HeaderBackButton accessibilityLabel={screen === "edit" && card?.id ? "Back to card preview" : "Back to Home"} onPress={() => { Keyboard.dismiss(); if (screen === "edit" && card?.id) setScreen("preview"); else router.back(); }} />
         <Text numberOfLines={1} style={styles.title}>{card?.cardSettings.name || "My Card"}</Text>
@@ -182,10 +195,10 @@ export default function ModifyDigitalCardScreen() {
               <DigitalCardLayout key={revision} refreshing={refreshing} onRefresh={handleRefresh} layout={card.layout} primaryColor={card.primaryColor} onDraftChange={handleLayoutDraft} onSave={handleSaveLayout} />
             </View>
             <View style={[styles.panel, activeStep !== "qr" && styles.hiddenPanel]}>
-              <CreateQrScreen key={revision} digitalCard={{ primaryColor: (draftCard.current || card).primaryColor, settings: card.settings, onSave: handleSaveQr, onDraftChange: handleQrDraft, refreshing, onRefresh: handleRefresh, renderPreview: (settings) => screen === "edit" && activeStep === "qr" ? <DigitalCardQrPreview card={{ ...(draftCard.current || card), settings }} /> : null }} />
+              <CreateQrScreen key={revision} digitalCard={{ primaryColor: (draftCard.current || card).primaryColor, settings: card.settings, onSave: handleSaveQr, onDraftChange: handleQrDraft, refreshing, onRefresh: handleRefresh, renderPreview: (settings) => screen === "edit" && activeStep === "qr" ? <DigitalCardQrPreview draft card={{ ...(draftCard.current || card), settings }} /> : null }} />
             </View>
             <View style={[styles.panel, activeStep !== "settings" && styles.hiddenPanel]}>
-              <DigitalCardSettings key={revision} refreshing={refreshing} onRefresh={handleRefresh} settings={card.cardSettings} onDraftChange={handleSettingsDraft} onSave={handleSaveSettings} />
+              <DigitalCardSettings key={revision} refreshing={refreshing} onRefresh={handleRefresh} settings={card.cardSettings} cardUrl={`https://unoqr.com/dc/${card.uid}`} fullname={card.details.fullname} bio={card.details.bio} onDraftChange={handleSettingsDraft} onSave={handleSaveSettings} onDelete={card.id ? handleDeleteCard : undefined} />
             </View>
           </View>
           {screen === "preview" ? <DigitalCardViewScreen embedded savedCard={card} onPublished={handlePublished} onCardRefreshed={handleCardRefreshed} /> : null}
@@ -200,11 +213,11 @@ export default function ModifyDigitalCardScreen() {
               </Pressable>
             </>
           ) : (
-            <ActivityIndicator color={colors.secondary.main} size="large" />
+            <PxCircularProgress color={colors.secondary.main} size={40} />
           )}
         </View>
       )}
-    </KeyboardAvoidingView>
+    </View>
   );//return ends
 };//export ends
 

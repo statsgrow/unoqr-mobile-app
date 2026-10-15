@@ -1,18 +1,13 @@
 import { File, Paths } from "expo-file-system";
 import { manipulateAsync, SaveFormat } from "expo-image-manipulator";
 import * as Print from "expo-print";
-import QRCode from "qrcode";
 import { Platform } from "react-native";
 import type Svg from "react-native-svg";
 
-import { buildDots, type DotStyle } from "@/helpers/qrcodes/modify/dot";
-import { buildEye, type EyeStyle } from "@/helpers/qrcodes/modify/eye";
-import { buildFrame, type FrameOptions } from "@/helpers/qrcodes/modify/frame";
-import { buildUserLogo, type QrUserLogo } from "@/helpers/qrcodes/modify/logo";
-import { buildQrLogo } from "@/helpers/qrcodes/modify/unoqrLogo";
+import { createQrSvg as createSharedQrSvg, type DotStyle, type EyeStyle, type FrameOptions } from "@/libraries/unoqr-create";
+import { getQrLogoDataUrl, type QrUserLogo } from "@/helpers/qrcodes/modify/logo";
 
 import type { QrContentData, QrContentType } from "./QrContent";
-import { checkContentLength } from "./QrQuality";
 
 /* ------------------ BREAK ------------------ */
 
@@ -54,26 +49,10 @@ export type QrCreateFormValues = {
 
 // Creates the SVG used by both the QR preview and exported files.
 export async function createQrSvg(settings: QrCreateFormValues): Promise<string> {
-  const value = settings.content.trim();
-  if (!checkContentLength(value).canCreate) throw new Error("QR content must contain 1 to 500 characters.");
-  const eye: QrEyeOptions = { style: settings.eye.type, color: settings.eye.color || settings.styles.fg_color };
-  const dot: QrDotOptions = { style: settings.dot.type, color: settings.dot.color || settings.styles.fg_color };
-  const frame: QrFrameOptions = { style: settings.frame.type, color: settings.frame.color || settings.styles.fg_color };
-  const errorCorrectionLevel = settings.logo ? "H" : "M";
-  const isFramed = frame.style !== "none";
-  const useDefaultStyles = eye.style === "square" && dot.style === "square"
-    && eye.color.toUpperCase() === dot.color.toUpperCase();
-  const svg = !isFramed && useDefaultStyles
-    ? await QRCode.toString(value, {
-      type: "svg",
-      errorCorrectionLevel,
-      margin: 1,
-      color: { dark: dot.color, light: settings.styles.bg_color }
-    })
-    : buildStyledQrSvg(value, eye, dot, 1, settings.styles.bg_color, !isFramed, errorCorrectionLevel);
-
-  const qrWithLogo = await addQrLogos(svg, dot.color, settings.styles.bg_color, settings.logo, settings.hide_logo);
-  return buildFrame(qrWithLogo, value, frame, dot.style, dot.color, settings.styles.bg_color);
+  const logoDataUrl = settings.logo ? await getQrLogoDataUrl(settings.logo) : null;
+  return createSharedQrSvg(settings.content, {
+    dot: settings.dot, eye: settings.eye, frame: settings.frame, styles: settings.styles
+  }, { logoDataUrl, hideUnoqrLogo: settings.hide_logo });
 };//export ends
 
 // Prepares a local QR file in the requested format for a separate sharing step.
@@ -118,32 +97,6 @@ export async function createQrFile(svg: string, format: QrExportFormat, preview:
 };//export ends
 
 /* ------------------ BREAK ------------------ */
-
-// Adds the optional center image and UnoQR wordmark before any frame is applied.
-async function addQrLogos(svg: string, dotColor: string, backgroundColor: string, userLogo: QrUserLogo | null, hideUnoqrLogo: boolean): Promise<string> {
-  const sizeMatch = svg.match(/viewBox="0 0 (\d+) \1"/);
-  if (!sizeMatch) throw new Error("QR SVG is missing its square viewBox.");
-
-  const qrSize = Number(sizeMatch[1]);
-  const centerLogo = userLogo ? await buildUserLogo(qrSize, userLogo, backgroundColor) : "";
-  const unoqrLogo = hideUnoqrLogo ? "" : buildQrLogo(qrSize, dotColor, backgroundColor);
-  return svg.replace(/<\/svg>\s*$/, `${centerLogo}${unoqrLogo}</svg>`);
-};//func ends
-
-// Combines the selected data modules and finder eyes into one SVG.
-function buildStyledQrSvg(value: string, eye: QrEyeOptions, dot: QrDotOptions, margin: number, background: string, includeBackground: boolean, errorCorrectionLevel: "M" | "H"): string {
-  const modules = QRCode.create(value, { errorCorrectionLevel }).modules;
-  const totalSize = modules.size + margin * 2;
-  const data = buildDots(modules, margin, dot.style, dot.color);
-  const lastEye = modules.size - 7;
-  const eyes = buildEye(eye.style, margin, margin, eye.color)
-    + buildEye(eye.style, margin + lastEye, margin, eye.color)
-    + buildEye(eye.style, margin, margin + lastEye, eye.color);
-
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${totalSize} ${totalSize}">`
-    + (includeBackground ? `<rect width="${totalSize}" height="${totalSize}" fill="${background}"/>` : "")
-    + `${data}${eyes}</svg>`;
-};//func ends
 
 // Renders the current SVG preview to a high-resolution PNG for raster exports.
 function renderPng(preview: Svg): Promise<string> {

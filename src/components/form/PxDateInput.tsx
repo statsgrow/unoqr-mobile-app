@@ -2,15 +2,15 @@ import { useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { Controller, type FieldPath, type FieldValues, type RegisterOptions, type UseFormReturn } from "react-hook-form";
 import { HelperText, Text, TextInput } from "react-native-paper";
-import { MaterialCommunityIcons } from "@expo/vector-icons";
 
+import { PxIcon, type PxIconName } from "@/components/elements/PxIcon";
 import { colors } from "@/theme/themeSettings";
 
 /* ------------------ TYPES ------------------ */
 
 type LeftAdornment = {
 	text?: string;
-	icon?: keyof typeof MaterialCommunityIcons.glyphMap;
+	icon?: PxIconName;
 };
 
 type PxDateInputProps<TFieldValues extends FieldValues> = {
@@ -77,7 +77,7 @@ function DateInputElement({ field, fieldState, label, placeholder, disabled, lef
 			<View style={[styles.inputShell, isActive && styles.inputShellActive, hasError && styles.inputShellError, disabled && styles.inputShellDisabled]}>
 				{leftAdornment?.text || leftAdornment?.icon ? (
 					<View style={[styles.adornment, isActive && styles.adornmentActive, hasError && styles.adornmentError, disabled && styles.adornmentDisabled]}>
-						{leftAdornment?.icon ? <MaterialCommunityIcons name={leftAdornment.icon} size={18} color={colors.grey[500]} /> : null}
+						{leftAdornment?.icon ? <PxIcon name={leftAdornment.icon} size={18} color={colors.grey[500]} /> : null}
 						{leftAdornment?.text ? <Text style={styles.prefix}>{leftAdornment.text}</Text> : null}
 					</View>
 				) : null}

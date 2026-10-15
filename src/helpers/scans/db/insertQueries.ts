@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 
 import { apiSettings, installSettings } from "@/settings";
 import { insertAppInstall } from "@/utils/auth/AppInstall";
-import { Axios } from "@/utils/general/Axios";
+import { Axios, isInstallVerificationPending } from "@/utils/general/Axios";
 import { getData } from "@/utils/general/Storage";
 import { Toast } from "@/utils/general/Toast";
 import { db } from "@/utils/sqlite/db";
@@ -35,7 +35,7 @@ const initialScanApiTimeoutMilliseconds = 10_000;
 
 /* ------------------ BREAK ------------------ */
 
-// Inserts a scan locally first and waits for its initial API attempt before opening the destination.
+// Saves scans locally, allowing native digital cards to open while API synchronization continues.
 export async function insertScan(data: InsertScanInput) {
   if (!db) return null;
 
@@ -52,7 +52,7 @@ export async function insertScan(data: InsertScanInput) {
 
     initialSyncPromises.set(scanData.id, syncPromise);
     void syncPromise.finally(() => initialSyncPromises.delete(scanData.id));
-    await syncPromise;
+    if (data.type !== "digital-card") await syncPromise;
 
     return result;
   } catch (error: unknown) {
@@ -86,6 +86,8 @@ export async function insertScanToAPI(data: InsertScanInput): Promise<InsertScan
 
     return insertedScan;
   } catch (error: unknown) {
+    // Leave the local row pending until installation verification allows a retry.
+    if (isInstallVerificationPending(error)) return null;
     await appendScanError(data.id, getErrorMessage(error));
     console.error("Error inserting scan to API:", error);
     return null;
@@ -175,6 +177,7 @@ async function syncLateNonWebScanLocation(
     const apiUrl = apiSettings.getApiUrl({ path: `/app/scans/${scan.id}` });
     await Axios.put<ScanApiResponse>(apiUrl.href, updateData);
   } catch (error: unknown) {
+    if (isInstallVerificationPending(error)) return;
     console.error("Error synchronizing late non-web scan location:", error);
   };//try-catch ends
 };//func ends

@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { Linking, StyleSheet, View } from "react-native";
-import { MaterialCommunityIcons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
 import { Text } from "react-native-paper";
 
+import { PxIcon } from "@/components/elements/PxIcon";
 import { PxButton } from "@/components/elements/PxButton";
 import { UpiPaymentIcon } from "@/helpers/scans/components/UpiPaymentIcon";
 import { getScanById } from "@/helpers/scans/db/getQueries";
@@ -166,7 +166,7 @@ export function UpiPayment({ record }: UpiPaymentProps) {
             <Text numberOfLines={2} style={styles.providerBank}>{provider.bank}</Text>
             {isMerchant ? (
               <View style={styles.merchantChip}>
-                <MaterialCommunityIcons name="storefront-outline" size={14} color={colors.primary.contrast} />
+                <PxIcon name="storefront-outline" size={14} color={colors.primary.contrast} />
                 <Text style={styles.merchantChipText}>Merchant</Text>
               </View>
             ) : null}
@@ -174,7 +174,7 @@ export function UpiPayment({ record }: UpiPaymentProps) {
         </View>
 
         <View style={styles.timestampRow}>
-          <MaterialCommunityIcons name="calendar-clock" size={16} color={colors.mute.main} />
+          <PxIcon name="calendar-clock" size={16} color={colors.mute.main} />
           <Text style={styles.timestamp}>{timestamp.date}</Text>
           <View style={styles.timestampDot} />
           <Text style={styles.timestamp}>{timestamp.time}</Text>

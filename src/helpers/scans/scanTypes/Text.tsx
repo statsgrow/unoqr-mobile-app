@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
-import { MaterialCommunityIcons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
 import { Text } from "react-native-paper";
 
+import { PxIcon } from "@/components/elements/PxIcon";
 import { PxButton } from "@/components/elements/PxButton";
 import { PxDialog } from "@/components/elements/PxDialog";
 import { getScanById } from "@/helpers/scans/db/getQueries";
@@ -42,7 +42,7 @@ export function PlainText({ record }: PlainTextProps) {
       <View style={styles.summaryCard}>
         <View style={styles.titleRow}>
           <View style={styles.textIcon}>
-            <MaterialCommunityIcons name="text-box-outline" size={22} color={colors.primary.main} />
+            <PxIcon name="text-box-outline" size={22} color={colors.primary.main} />
           </View>
           <View style={styles.titleContent}>
             <Text style={styles.summaryTitle}>Plain text</Text>
@@ -51,7 +51,7 @@ export function PlainText({ record }: PlainTextProps) {
         </View>
 
         <View style={styles.timestampRow}>
-          <MaterialCommunityIcons name="calendar-clock" size={16} color={colors.mute.main} />
+          <PxIcon name="calendar-clock" size={16} color={colors.mute.main} />
           <Text style={styles.timestamp}>{timestamp.date}</Text>
           <View style={styles.timestampDot} />
           <Text style={styles.timestamp}>{timestamp.time}</Text>

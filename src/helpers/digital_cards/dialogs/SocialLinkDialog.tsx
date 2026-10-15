@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { Controller, useForm } from "react-hook-form";
-import { Keyboard, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useForm } from "react-hook-form";
+import { Keyboard, Pressable, StyleSheet, Text, View } from "react-native";
 
+import { PxTextInput } from "@/components/form/PxTextInput";
 import { PxSelect, type PxSelectOption } from "@/components/form/PxSelect";
 import { PxModal } from "@/components/elements/PxModal";
 import type { DigitalCardSocialLink } from "@/helpers/digital_cards/model";
@@ -28,7 +28,6 @@ export default function SocialLinkDialog({ link, onClose, onSave }: SocialLinkDi
   const form = useForm<DigitalCardSocialLink>({ defaultValues: link ?? { label: "", url: "" }, mode: "onChange" });
   const [platformOpen, setPlatformOpen] = useState(false);
   const { isValid } = form.formState;
-  const insets = useSafeAreaInsets();
 
   // Returns the validated draft to the parent field array only when Save is pressed.
   const handleSave = (values: DigitalCardSocialLink): void => {
@@ -45,8 +44,8 @@ export default function SocialLinkDialog({ link, onClose, onSave }: SocialLinkDi
       height="auto"
       maxHeight={720}
       keyboardAvoiding={!platformOpen}
-      footer={(
-        <View style={{ paddingBottom: Platform.OS === "android" ? insets.bottom : 0 }}>
+      footerAction={(
+        <View>
           <Pressable
             accessibilityRole="button"
             accessibilityState={{ disabled: !isValid }}
@@ -69,31 +68,7 @@ export default function SocialLinkDialog({ link, onClose, onSave }: SocialLinkDi
           onOpenChange={setPlatformOpen}
           rules={{ required: "Choose a platform." }}
         />
-        <Controller
-          control={form.control}
-          name="url"
-          rules={{ validate: validateSocialUrl }}
-          render={({ field, fieldState }) => (
-            <View style={styles.field}>
-              <Text style={styles.fieldLabel}>Profile URL</Text>
-              <TextInput
-                ref={field.ref}
-                accessibilityLabel="Profile URL"
-                value={field.value}
-                onChangeText={field.onChange}
-                onBlur={field.onBlur}
-                placeholder="https://…"
-                placeholderTextColor={colors.mute.light}
-                selectionColor={colors.secondary.main}
-                keyboardType="url"
-                autoCapitalize="none"
-                autoCorrect={false}
-                style={[styles.input, fieldState.invalid && styles.invalidInput]}
-              />
-              {fieldState.error?.message ? <Text accessibilityRole="alert" style={styles.errorText}>{fieldState.error.message}</Text> : null}
-            </View>
-          )}
-        />
+        <PxTextInput RHF={form} name="url" label="Profile URL" placeholder="https://…" keyboardType="url" autoCapitalize="none" autoCorrect={false} rules={{ validate: validateSocialUrl }} />
       </View>
     </PxModal>
   );//return ends
@@ -116,11 +91,6 @@ function validateSocialUrl(value: string): true | string {
 
 const styles = StyleSheet.create({
   content: { gap: spacing.lg, paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
-  field: { gap: spacing.xs },
-  fieldLabel: { color: colors.primary.main, fontFamily: fontFamilies.primarySemiBold, fontSize: fontSizes.body1 },
-  input: { minHeight: 48, paddingHorizontal: spacing.sm, paddingVertical: spacing.sm, borderWidth: 1, borderColor: colors.border.main, borderRadius: radii.lg, backgroundColor: colors.white.main, color: colors.primary.main, fontFamily: fontFamilies.primaryRegular, fontSize: fontSizes.body2 },
-  invalidInput: { borderColor: colors.error.main },
-  errorText: { color: colors.error.main, fontFamily: fontFamilies.primaryRegular, fontSize: fontSizes.caption },
   saveButton: { minHeight: 50, flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: radii.lg, backgroundColor: colors.secondary.main },
   disabledButton: { opacity: 0.65 },
   saveText: { color: colors.white.main, fontFamily: fontFamilies.primarySemiBold, fontSize: fontSizes.button }

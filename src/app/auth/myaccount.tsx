@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { Image, StyleSheet, View } from "react-native";
 
-import { ActivityIndicator, Text } from "react-native-paper";
+import { Text } from "react-native-paper";
 
+import { PxCircularProgress } from "@/components/elements/PxCircularProgress";
 import { redirect } from "@/utils/general/Redirect";
 import { GeneralLayout } from "@/components/layout/GeneralLayout";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -50,7 +51,7 @@ export default function MyAccountScreen() {
     <GeneralLayout>
       {!isResolved || !user ? (
         <View style={styles.loader}>
-          <ActivityIndicator color={colors.secondary.main} size="large" />
+          <PxCircularProgress color={colors.secondary.main} size={40} />
         </View>
       ) : (
         <View style={styles.content}>

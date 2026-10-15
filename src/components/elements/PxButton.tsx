@@ -1,7 +1,8 @@
 import { StyleSheet } from "react-native";
-import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Button as PaperButton } from "react-native-paper";
 
+import { PxIcon, type PxIconName } from "@/components/elements/PxIcon";
+import { PxCircularProgress } from "@/components/elements/PxCircularProgress";
 import { colors, fontFamilies, fonts, sizes } from "@/theme/themeSettings";
 
 /* ------------------ TYPES ------------------ */
@@ -16,7 +17,7 @@ type PxButtonProps = Omit<PaperButtonProps, "style" | "contentStyle" | "labelSty
 	shape?: PxButtonShape;
 	color?: PxButtonColor;
 	fullWidth?: boolean;
-	startIcon?: string;
+	startIcon?: PxIconName;
 };
 
 type ModeKey = NonNullable<PaperButtonProps["mode"]>;
@@ -121,6 +122,7 @@ function getModeColors(mode: ModeKey, palette: Palette) {
 
 /* ------------------ BREAK ------------------ */
 
+// Renders a themed button with the app's shared circular icon while loading.
 export function PxButton({
 	size = "md",
 	shape = "rounded",
@@ -145,19 +147,24 @@ export function PxButton({
 	const palette = paletteByColor[semanticColor];
 	const modeColors = getModeColors(mode, palette);
 	const shouldShowBorder = mode === "outlined" || mode === "contained" || mode === "elevated";
-	const resolvedIcon = icon ?? (startIcon ? ({ color: iconColor }: { color: string; size: number }) => (
-		<MaterialCommunityIcons
-			name={startIcon as keyof typeof MaterialCommunityIcons.glyphMap}
+	// Shows the shared loader in place of the regular button icon while busy.
+	const resolvedIcon = loading ? ({ color: iconColor }: { color: string; size: number }) => (
+		<PxCircularProgress color={iconColor} size={startIconSize} />
+	) : icon ?? (startIcon ? ({ color: iconColor }: { color: string; size: number }) => (
+		<PxIcon
+			name={startIcon}
 			size={startIconSize}
 			color={iconColor}
 		/>
 	) : undefined);
 
+	//Default Return
 	return (
 		<PaperButton
 			{...props}
 			mode={mode}
-			loading={loading}
+			loading={false}
+			accessibilityState={{ ...props.accessibilityState, busy: Boolean(loading) || props.accessibilityState?.busy, disabled: isDisabled }}
 			disabled={isDisabled}
 			icon={resolvedIcon}
 			buttonColor={modeColors.buttonColor}
@@ -183,8 +190,8 @@ export function PxButton({
 				}
 			]}
 		/>
-	);
-}
+	);//return ends
+};//export ends
 
 /* ------------------ STYLES ------------------ */
 
