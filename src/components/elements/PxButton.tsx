@@ -128,6 +128,7 @@ export function PxButton({
 	shape = "rounded",
 	color = "primary",
 	fullWidth = false,
+	compact = false,
 	mode = "contained",
 	startIcon,
 	icon,
@@ -163,6 +164,7 @@ export function PxButton({
 		<PaperButton
 			{...props}
 			mode={mode}
+			compact={compact}
 			loading={false}
 			accessibilityState={{ ...props.accessibilityState, busy: Boolean(loading) || props.accessibilityState?.busy, disabled: isDisabled }}
 			disabled={isDisabled}
@@ -178,7 +180,7 @@ export function PxButton({
 				fullWidth && styles.fullWidth
 			]}
 			contentStyle={[
-				{ minHeight: buttonMinHeight, paddingHorizontal: paddingConfig.horizontal, paddingVertical: paddingConfig.vertical },
+				{ minHeight: buttonMinHeight, paddingHorizontal: compact ? paddingConfig.horizontal / 2 : paddingConfig.horizontal, paddingVertical: paddingConfig.vertical },
 				styles.content
 			]}
 			labelStyle={[
@@ -187,7 +189,8 @@ export function PxButton({
 					fontSize: labelConfig.fontSize,
 					lineHeight: labelConfig.lineHeight,
 					marginVertical: 0
-				}
+				},
+				compact && styles.compactLabel
 			]}
 		/>
 	);//return ends
@@ -198,6 +201,9 @@ export function PxButton({
 const styles = StyleSheet.create({
 	fullWidth: {
 		width: "100%"
+	},
+	compactLabel: {
+		marginHorizontal: 0
 	},
 	content: {
 		justifyContent: "center"

@@ -2,13 +2,14 @@ import { useEffect, useRef, useState } from "react";
 import { File, Paths } from "expo-file-system";
 import { router, useLocalSearchParams } from "expo-router";
 import { Download, Share2 } from "lucide-react-native";
-import { Alert, Linking, Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, Linking, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { PxCircularProgress } from "@/components/elements/PxCircularProgress";
 import { fileDownload } from "@/components/files/FileDownload";
 import { GeneralLayout } from "@/components/layout/GeneralLayout";
 import { HeaderBackButton } from "@/components/layout/HeaderBackButton";
 import { getPublicDigitalCard, type PublicDigitalCard } from "@/helpers/digital_cards/api/publicCard";
+import DigitalCardContactDialog from "@/helpers/digital_cards/dialogs/DigitalCardContactDialog";
 import DigitalCardShareDialog from "@/helpers/digital_cards/dialogs/DigitalCardShareDialog";
 import { createDigitalCardContact } from "@/helpers/digital_cards/contact";
 import { getAllScans, getScanById } from "@/helpers/scans/db/getQueries";
@@ -31,8 +32,10 @@ export default function ScannedDigitalCardScreen() {
   const [error, setError] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
   const [shareOpen, setShareOpen] = useState(false);
+  const [collectContactOpen, setCollectContactOpen] = useState(false);
   const [savingContact, setSavingContact] = useState(false);
   const downloadLock = useRef(false);
+  const pendingDownload = useRef(false);
 
   // Cancels stale public reads when returning to scanning or opening a different card.
   useEffect(() => {
@@ -40,6 +43,8 @@ export default function ScannedDigitalCardScreen() {
     setCard(null);
     setLoading(true);
     setError(null);
+    setCollectContactOpen(false);
+    pendingDownload.current = false;
     if (!uid) {
       setError("This digital card link is invalid.");
       setLoading(false);
@@ -61,6 +66,21 @@ export default function ScannedDigitalCardScreen() {
   function goBack(): void {
     if (router.canGoBack()) router.back();
     else router.replace("/scans/scanner");
+  };//func ends
+
+  // Schedules the file picker after collection, waiting for the iOS sheet to finish dismissing.
+  function requestContactDownload(): void {
+    if (downloadLock.current || pendingDownload.current) return;
+    setCollectContactOpen(false);
+    if (Platform.OS === "ios") pendingDownload.current = true;
+    else void saveContact();
+  };//func ends
+
+  // Prevents the iOS Files picker from opening over a modal that is still dismissing.
+  function handleContactDialogDismiss(): void {
+    if (!pendingDownload.current) return;
+    pendingDownload.current = false;
+    void saveContact();
   };//func ends
 
   // Opens the public card's supported contact and social destinations.
@@ -115,7 +135,7 @@ export default function ScannedDigitalCardScreen() {
         </Pressable> : null}
       </View>}
       bottomNav={card?.allow_save_contact ? <View>
-        <Pressable accessibilityRole="button" disabled={savingContact} onPress={() => void saveContact()} style={[styles.action, { backgroundColor: card.primary_color }]}>
+        <Pressable accessibilityRole="button" disabled={savingContact} onPress={() => setCollectContactOpen(true)} style={[styles.action, { backgroundColor: card.primary_color }]}>
           {savingContact ? <PxCircularProgress size={20} color={colors.white.main} /> : <Download size={20} strokeWidth={1.25} color={colors.white.main} />}
           <Text style={styles.saveText}>{savingContact ? "Saving…" : "Save contact"}</Text>
         </Pressable>
@@ -128,6 +148,7 @@ export default function ScannedDigitalCardScreen() {
       </View> : null}
       {card && Layout && data ? <Layout data={data} primaryColor={card.primary_color} onOpenLink={(url) => void openLink(url)} /> : null}
     </GeneralLayout>
+    {card ? <DigitalCardContactDialog key={card.uid} uid={card.uid} fullname={card.fullname} required={card.is_contact_required} open={collectContactOpen} setOpen={setCollectContactOpen} onCollected={requestContactDownload} onSkip={requestContactDownload} onDismiss={handleContactDialogDismiss} /> : null}
     {card ? <DigitalCardShareDialog publicLink={{ url: card.url, fullname: card.fullname }} open={shareOpen} setOpen={setShareOpen} /> : null}
   </>;//return ends
 };//export ends

@@ -7,7 +7,7 @@ import type { RemoteCard } from "./cards";
 
 export type PublicDigitalCard = Pick<RemoteCard,
   "uid" | "url" | "name" | "fullname" | "company" | "position" | "phones" | "emails" |
-  "social_links" | "bio" | "address" | "layout" | "primary_color" | "photo_url" | "allow_save_contact" | "seo"
+  "social_links" | "bio" | "address" | "layout" | "primary_color" | "photo_url" | "allow_save_contact" | "is_contact_required" | "seo"
 >;//export ends
 
 /* ------------------ BREAK ------------------ */

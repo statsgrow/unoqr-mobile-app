@@ -27,11 +27,11 @@ export async function getExpoPushToken({ requestPermission = true }: { requestPe
     });
   };//if ends
 
-  const { status: existingStatus } = await Notifications.getPermissionsAsync();
+  const { status: existingStatus, canAskAgain } = await Notifications.getPermissionsAsync();
   let finalStatus = existingStatus;
 
   if (existingStatus !== "granted") {
-    if (!requestPermission) return null;
+    if (!requestPermission || !canAskAgain) return null;
     const { status } = await Notifications.requestPermissionsAsync();
     finalStatus = status;
   };//if ends

@@ -102,7 +102,7 @@ async function registerAppInstall(): Promise<AppInstallInfo | null> {
 
     const deviceDetails = await getDeviceDetails();
 
-    if (Platform.OS === "android" && deviceDetails.is_real_device) {
+    if ((Platform.OS === "android" || Platform.OS === "ios") && deviceDetails.is_real_device) {
       // Keep device registration available when notifications are denied or unavailable.
       const expoPushTokenInfo = await getExpoPushToken().catch(() => null);
       deviceDetails.expo_token = expoPushTokenInfo?.token ?? null;
@@ -178,14 +178,16 @@ async function checkAppInstallMetadata(): Promise<void> {
   if (!install?.id) return;
   const now = new Date().toISOString();
   const lastCheck = Date.parse(install.last_checked_at || "");
-  const pushCheckDue = !Number.isFinite(lastCheck) || Date.now() - lastCheck >= 24 * 60 * 60 * 1000;
+  const appChanged = install.app_info?.build !== Application.nativeBuildVersion || install.app_info?.version !== Application.nativeApplicationVersion;
+  const pushCheckDue = appChanged || !Number.isFinite(lastCheck) || Date.now() - lastCheck >= 24 * 60 * 60 * 1000;
   const build = Application.nativeBuildVersion;
   const version = Application.nativeApplicationVersion;
   const changes: { app_info?: AppInstallInfo["app_info"]; expo_token?: string; } = {};
   if (!install.updated_at || install.app_info?.build !== build || install.app_info?.version !== version) {
     changes.app_info = { ...install.app_info, build, version };
   };//if ends
-  const pushInfo = pushCheckDue ? await getExpoPushToken({ requestPermission: false }) : null;
+  // Requests initial permission for upgraded installs that have never stored a push token.
+  const pushInfo = pushCheckDue ? await getExpoPushToken({ requestPermission: !install.expo_token }) : null;
   if (pushInfo?.token && pushInfo.token !== install.expo_token) changes.expo_token = pushInfo.token;
   let updatedInstall = install;
   if (Object.keys(changes).length) {

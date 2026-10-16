@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { File, Paths } from "expo-file-system";
-import { Redirect } from "expo-router";
-import { CheckCircle2, QrCode, Share2, UserRound } from "lucide-react-native";
+import { Redirect, useLocalSearchParams } from "expo-router";
+import { ChartNoAxesCombined, CheckCircle2, QrCode, Share2, UserRound, type LucideIcon } from "lucide-react-native";
 import { Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -9,8 +9,11 @@ import { PxCircularProgress } from "@/components/elements/PxCircularProgress";
 import { PxModal } from "@/components/elements/PxModal";
 import { fileDownload } from "@/components/files/FileDownload";
 import { getDigitalCard, restoreDigitalCard, saveDigitalCard } from "@/helpers/digital_cards/api/cards";
+import DigitalCardAnalytics from "@/helpers/digital_cards/analytics/DigitalCardAnalytics";
 import DigitalCardQrPreview from "@/helpers/digital_cards/components/DigitalCardQrPreview";
 import { createDigitalCardContact } from "@/helpers/digital_cards/contact";
+import DigitalCardContacts from "@/helpers/digital_cards/contacts/DigitalCardContacts";
+import UserRoundGroup from "@/helpers/digital_cards/contacts/UserRoundGroup";
 import DigitalCardShareDialog from "@/helpers/digital_cards/dialogs/DigitalCardShareDialog";
 import { getDigitalCardLayout, getDigitalCardLayoutData } from "@/libraries/digitalcards-layouts";
 import { CardFooter } from "@/libraries/digitalcards-layouts/native/shared";
@@ -24,15 +27,17 @@ import GetError from "@/utils/general/Error";
 /* ------------------ BREAK ------------------ */
 
 type DigitalCardViewProps = { embedded?: boolean; savedCard?: AppDigitalCardQr; onPublished?: (card: AppDigitalCardQr) => void; onCardRefreshed?: (card: AppDigitalCardQr) => void };
-type PreviewSide = "profile" | "qr";
+type PreviewSide = "profile" | "qr" | "analytics" | "contacts";
+type PreviewTab = { value: PreviewSide; label: string; Icon: LucideIcon };
 
 /* ------------------ BREAK ------------------ */
 
 // Renders the shared native business-card layout immediately from saved or cached values.
 export default function DigitalCardViewScreen({ embedded = false, savedCard, onPublished, onCardRefreshed }: DigitalCardViewProps = {}) {
   const insets = useSafeAreaInsets();
+  const params = useLocalSearchParams<{ tab?: string }>();
   const [card, setCard] = useState<AppDigitalCardQr | null>(savedCard ?? null);
-  const [side, setSide] = useState<PreviewSide>("profile");
+  const [side, setSide] = useState<PreviewSide>(params.tab === "contacts" ? "contacts" : "profile");
   const [shareOpen, setShareOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loadKey, setLoadKey] = useState(0);
@@ -42,6 +47,12 @@ export default function DigitalCardViewScreen({ embedded = false, savedCard, onP
   const [downloadLocation, setDownloadLocation] = useState<"Downloads" | "Files" | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const downloadLock = useRef(false);
+  const tabs: PreviewTab[] = [
+    { value: "profile", label: "Digital card preview", Icon: UserRound },
+    { value: "qr", label: "QR card preview", Icon: QrCode },
+    { value: "analytics", label: "Card analytics", Icon: ChartNoAxesCombined },
+    { value: "contacts", label: "Submitted contacts", Icon: UserRoundGroup }
+  ];
 
   // Reflects confirmed section saves without a web reload or another card API request.
   useEffect(() => { if (savedCard) setCard(savedCard); }, [savedCard]);
@@ -149,20 +160,20 @@ export default function DigitalCardViewScreen({ embedded = false, savedCard, onP
   return <View style={[styles.root, { paddingBottom: insets.bottom }]}>
     {card ? <View style={styles.toolbar}>
       <View accessibilityRole="tablist" style={styles.tabs}>
-        {(["profile", "qr"] as const).map((value) => <Pressable key={value} accessibilityRole="tab" accessibilityLabel={value === "profile" ? "Digital card preview" : "QR card preview"} accessibilityState={{ selected: side === value }} onPress={() => setSide(value)} style={[styles.tab, side === value && styles.selectedTab]}>
-          {value === "profile" ? <UserRound size={22} strokeWidth={1.25} color={side === value ? colors.white.main : colors.primary.main} /> : <QrCode size={22} strokeWidth={1.25} color={side === value ? colors.white.main : colors.primary.main} />}
+        {tabs.map(({ value, label, Icon }) => <Pressable key={value} accessibilityRole="tab" accessibilityLabel={label} accessibilityState={{ selected: side === value }} onPress={() => setSide(value)} style={[styles.tab, side === value && styles.selectedTab]}>
+          <Icon size={22} strokeWidth={1.25} color={side === value ? colors.white.main : colors.primary.main} />
         </Pressable>)}
       </View>
       <Pressable accessibilityRole="button" accessibilityLabel="Share digital card" disabled={publishing || refreshing} onPress={() => setShareOpen(true)} style={styles.shareButton}><Share2 size={22} strokeWidth={1.25} color={colors.primary.main} /></Pressable>
     </View> : null}
-    {side === "qr" ? <View style={[styles.previewArea, styles.previewContent]}>{previewContent}</View> : <ScrollView style={styles.previewArea} contentContainerStyle={[styles.previewContent, !card && styles.emptyContent]} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={reloadCard} enabled={!publishing} tintColor={colors.secondary.main} colors={[colors.secondary.main]} />}>
+    {side === "contacts" && card ? <DigitalCardContacts key={card.uid} uid={card.uid} /> : side === "analytics" && card ? <DigitalCardAnalytics key={card.uid} uid={card.uid} /> : side === "qr" ? <View style={[styles.previewArea, styles.previewContent]}>{previewContent}</View> : <ScrollView style={styles.previewArea} contentContainerStyle={[styles.previewContent, !card && styles.emptyContent]} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={reloadCard} enabled={!publishing} tintColor={colors.secondary.main} colors={[colors.secondary.main]} />}>
       {previewContent}
     </ScrollView>}
     {actionError ? <Text accessibilityRole="alert" style={[styles.error, styles.feedback]}>{actionError}</Text> : null}
     {card ? <>
-      {side === "profile" ? <CardFooter primaryColor={card.primaryColor} allowSaveContact={card.cardSettings.allowSaveContact} saving={savingContact} onSaveContact={() => void saveContact()} /> : <View style={styles.qrFooter}>
+      {side === "profile" ? <CardFooter primaryColor={card.primaryColor} allowSaveContact={card.cardSettings.allowSaveContact} saving={savingContact} onSaveContact={() => void saveContact()} /> : side === "qr" ? <View style={styles.qrFooter}>
         <Pressable accessibilityRole="button" disabled={refreshing || publishing} onPress={() => setShareOpen(true)} style={styles.retry}><Text style={styles.retryText}>Share QR Card</Text></Pressable>
-      </View>}
+      </View> : null}
       <DigitalCardShareDialog card={card} open={shareOpen} setOpen={setShareOpen} onPublish={handlePublish} initialTab={side === "qr" ? "qr" : "social"} />
     </> : null}
     <PxModal open={downloadLocation !== null} setOpen={(open) => { if (!open) setDownloadLocation(null); }} name="Contact saved" footerAction={<View><Pressable accessibilityRole="button" onPress={() => setDownloadLocation(null)} style={styles.retry}><Text style={styles.retryText}>Done</Text></Pressable></View>}>
@@ -175,11 +186,11 @@ export default function DigitalCardViewScreen({ embedded = false, savedCard, onP
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.cream.main },
-  toolbar: { flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: spacing.sm, paddingHorizontal: spacing.md },
+  toolbar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.xs, paddingVertical: spacing.sm, paddingHorizontal: spacing.md },
   tabs: { flexDirection: "row", borderWidth: 1, borderColor: colors.border.main, borderRadius: radii.xl, padding: spacing.xxs, backgroundColor: colors.white.main },
   tab: { minHeight: 44, minWidth: 56, alignItems: "center", justifyContent: "center", borderRadius: radii.lg },
   selectedTab: { backgroundColor: colors.black.main },
-  shareButton: { position: "absolute", right: spacing.md, minWidth: 44, minHeight: 44, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.border.main, backgroundColor: colors.white.main, borderRadius: radii.xl },
+  shareButton: { minWidth: 44, minHeight: 44, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.border.main, backgroundColor: colors.white.main, borderRadius: radii.xl },
   previewArea: { flex: 1 },
   previewContent: { padding: spacing.md, gap: spacing.md },
   emptyContent: { flexGrow: 1, justifyContent: "center" },
