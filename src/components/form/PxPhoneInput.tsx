@@ -13,7 +13,7 @@ import { PxTextInput } from "./PxTextInput";
 /* ------------------ BREAK ------------------ */
 
 type PhoneCountry = { emoji: string; code: string; country: string; shortCode: string; min: number; max: number };
-export type PxMobileInputProps<T extends FieldValues = FieldValues> = PxFormBinding<T, string> & PxFormFieldOptions & {
+export type PxPhoneInputProps<T extends FieldValues = FieldValues> = PxFormBinding<T, string> & PxFormFieldOptions & {
   placeholder?: string;
   maxLength?: number;
   disabled?: boolean;
@@ -21,8 +21,8 @@ export type PxMobileInputProps<T extends FieldValues = FieldValues> = PxFormBind
   onChangeText?: (value: string) => void;
 };//export ends
 
-type MobileInputElementProps<T extends FieldValues> = {
-  props: PxMobileInputProps<T>;
+type PhoneInputElementProps<T extends FieldValues> = {
+  props: PxPhoneInputProps<T>;
   value: string;
   change: (value: string) => void;
   blur?: () => void;
@@ -33,24 +33,24 @@ type MobileInputElementProps<T extends FieldValues> = {
 /* ------------------ BREAK ------------------ */
 
 // Connects an international phone number to RHF or controlled state with shared field feedback.
-export function PxMobileInput<T extends FieldValues = FieldValues>(props: PxMobileInputProps<T>) {
+export function PxPhoneInput<T extends FieldValues = FieldValues>(props: PxPhoneInputProps<T>) {
   if (props.RHF) {
     //Default Return
     return <Controller control={props.RHF.control} name={props.name} rules={props.rules} render={({ field, fieldState }) => (
-      <MobileInputElement props={props} value={String(field.value ?? "")} change={(value) => { field.onChange(value); props.onChangeText?.(value); }} blur={field.onBlur} inputRef={field.ref} fieldError={fieldState.error?.message || fieldState.invalid} />
+      <PhoneInputElement props={props} value={String(field.value ?? "")} change={(value) => { field.onChange(value); props.onChangeText?.(value); }} blur={field.onBlur} inputRef={field.ref} fieldError={fieldState.error?.message || fieldState.invalid} />
     )} />;//return ends
   };//if ends
 
   //Default Return
-  return <MobileInputElement props={props} value={props.value} change={(value) => props.onChangeText?.(value)} />;//return ends
+  return <PhoneInputElement props={props} value={props.value} change={(value) => props.onChangeText?.(value)} />;//return ends
 };//export ends
 
-export default PxMobileInput;//export ends
+export default PxPhoneInput;//export ends
 
 /* ------------------ BREAK ------------------ */
 
 // Displays national digits and selects their dial code through the shared searchable PxModal.
-function MobileInputElement<T extends FieldValues>({ props, value, change, blur, inputRef, fieldError }: MobileInputElementProps<T>) {
+function PhoneInputElement<T extends FieldValues>({ props, value, change, blur, inputRef, fieldError }: PhoneInputElementProps<T>) {
   const { label, lable, helperText, error, fullWidth, style, placeholder, disabled = false, defaultCountryCode = "91", maxLength = 15 } = props;
   const [country, setCountry] = useState<PhoneCountry>(() => phoneCountries.find(item => item.code === sanitizeDigits(defaultCountryCode)) ?? phoneCountries[0]);
   const [focused, setFocused] = useState(false);
@@ -112,7 +112,7 @@ function MobileInputElement<T extends FieldValues>({ props, value, change, blur,
         <ChevronDown size={16} strokeWidth={1.25} color={colors.neutral.main} />
       </Pressable>
       <View style={styles.inputPane}>
-        <TextInput ref={inputRef} accessibilityLabel={label ?? lable ?? props.name ?? "Mobile number"} dense mode="flat" value={nationalNumber} onChangeText={updateNumber} onFocus={() => setFocused(true)} onBlur={() => { setFocused(false); blur?.(); }} placeholder={placeholder} disabled={disabled} keyboardType="number-pad" maxLength={maxLength} autoComplete="tel-national" autoCapitalize="none" autoCorrect={false} error={false} underlineColor="transparent" activeUnderlineColor="transparent" outlineColor="transparent" activeOutlineColor="transparent" style={styles.input} contentStyle={styles.inputContent} />
+        <TextInput ref={inputRef} accessibilityLabel={label ?? lable ?? props.name ?? "Phone number"} dense mode="flat" value={nationalNumber} onChangeText={updateNumber} onFocus={() => setFocused(true)} onBlur={() => { setFocused(false); blur?.(); }} placeholder={placeholder} disabled={disabled} keyboardType="number-pad" maxLength={maxLength} autoComplete="tel-national" autoCapitalize="none" autoCorrect={false} error={false} underlineColor="transparent" activeUnderlineColor="transparent" outlineColor="transparent" activeOutlineColor="transparent" style={styles.input} contentStyle={styles.inputContent} />
       </View>
     </View>
     <PxModal open={open} setOpen={closeCountries} name="Select country code" height="full">

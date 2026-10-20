@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import { ContactRound, Download, Eye, QrCode, type LucideIcon } from "lucide-react-native";
+import { ContactRound, Download, Eye, MapPin, QrCode, type LucideIcon } from "lucide-react-native";
 import { RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { PxButton } from "@/components/elements/PxButton";
-import { PxCircularProgress } from "@/components/elements/PxCircularProgress";
+import { PxSkeleton } from "@/components/elements/PxSkeleton";
 import { PxSelect } from "@/components/form/PxSelect";
 import { colors, fontFamilies, fontSizes, radii, spacing } from "@/theme/tokens";
 import GetError from "@/utils/general/Error";
@@ -27,7 +27,7 @@ export default function DigitalCardAnalytics({ uid }: DigitalCardAnalyticsProps)
   const metrics: AnalyticsMetric[] = [
     { key: "card_views", label: "Card views", Icon: Eye },
     { key: "qr_card_views", label: "QR card views", Icon: QrCode },
-    { key: "contact_downloads_started", label: "Contact downloads started", Icon: Download },
+    { key: "contact_downloads_started", label: "Card Downloads", Icon: Download },
     { key: "contacts_submitted", label: "Contacts submitted", Icon: ContactRound }
   ];
 
@@ -63,22 +63,45 @@ export default function DigitalCardAnalytics({ uid }: DigitalCardAnalyticsProps)
       <Text style={styles.title}>Card analytics</Text>
     </View>
     <PxSelect label="Date range" value={period} onValueChange={changePeriod} options={[{ label: "Last 7 days", value: "7" }, { label: "Last 30 days", value: "30" }, { label: "All time", value: "all" }]} />
-    {loading ? <View accessibilityRole="progressbar" accessibilityLabel="Loading card analytics" style={styles.feedback}>
-      <PxCircularProgress size={32} color={colors.secondary.main} />
-      <Text style={styles.description}>Loading analytics…</Text>
+    {loading ? <View accessible accessibilityRole="progressbar" accessibilityLabel="Loading card analytics" accessibilityState={{ busy: true }} style={styles.loadingContent}>
+      <View style={styles.metrics}>
+        {metrics.map(({ key }) => <View key={key} style={styles.metricSkeleton}>
+          <PxSkeleton width="100%" height={spacing.xl * 3 + spacing.sm} />
+        </View>)}
+      </View>
+      <View style={styles.locations}>
+        <View style={styles.locationHeading}><Text style={styles.sectionTitle}>Top 5 locations</Text><Text style={styles.locationCaption}>Visitors</Text></View>
+        <View style={styles.locationRow}>
+          <PxSkeleton width={20} height={20} type="rounded" />
+          <View style={styles.locationDetails}>
+            <PxSkeleton width="65%" height={fontSizes.body2} />
+            <PxSkeleton width="40%" height={fontSizes.caption} />
+          </View>
+          <PxSkeleton width={24} height={fontSizes.body2} />
+        </View>
+      </View>
     </View> : error ? <View style={styles.feedback}>
       <Text accessibilityRole="alert" style={styles.error}>{error}</Text>
       <PxButton onPress={refreshAnalytics}>Try again</PxButton>
     </View> : analytics ? <>
       <View style={styles.metrics}>
         {metrics.map(({ key, label, Icon }) => <View key={key} style={styles.metric}>
-          <Icon size={22} strokeWidth={1.25} color={colors.secondary.main} />
-          <Text style={styles.total}>{analytics.summary[key].toLocaleString()}</Text>
+          <View style={styles.metricHeader}>
+            <Text style={styles.total}>{analytics.summary[key].toLocaleString()}</Text>
+            <Icon size={22} strokeWidth={1.25} color={colors.secondary.main} />
+          </View>
           <Text style={styles.label}>{label}</Text>
         </View>)}
       </View>
       {empty ? <Text style={styles.description}>No activity in this date range. Share your card to start making connections.</Text> : null}
-      <Text style={styles.note}>QR card views count visitors opening the QR face, once per card opening. Downloads count contact file downloads started. Your previews are excluded. Dates use your local time.</Text>
+      <View style={styles.locations}>
+        <View style={styles.locationHeading}><Text style={styles.sectionTitle}>Top 5 locations</Text><Text style={styles.locationCaption}>Visitors</Text></View>
+        {analytics.locations?.length ? analytics.locations.map((location, index) => <View key={`${location.city}-${location.country}`} style={[styles.locationRow, index > 0 && styles.locationDivider]}>
+          <MapPin size={20} strokeWidth={1.25} color={colors.mute.main} />
+          <View style={styles.locationDetails}><Text style={styles.locationCity}>{location.city}</Text><Text style={styles.locationCaption}>{location.country || "Country unavailable"}</Text></View>
+          <Text style={styles.locationCount}>{location.visitors.toLocaleString()}</Text>
+        </View>) : <Text style={styles.description}>No location data in this date range.</Text>}
+      </View>
     </> : null}
   </ScrollView>;//return ends
 };//export ends
@@ -88,14 +111,25 @@ export default function DigitalCardAnalytics({ uid }: DigitalCardAnalyticsProps)
 const styles = StyleSheet.create({
   root: { flex: 1 },
   content: { padding: spacing.md, gap: spacing.md },
+  loadingContent: { gap: spacing.md },
   heading: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
   title: { color: colors.primary.main, fontFamily: fontFamilies.primarySemiBold, fontSize: fontSizes.h6 },
   description: { color: colors.mute.main, fontFamily: fontFamilies.primaryRegular, fontSize: fontSizes.body2 },
   metrics: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
-  metric: { flexGrow: 1, flexBasis: "45%", padding: spacing.md, gap: spacing.sm, borderWidth: 1, borderColor: colors.border.main, borderRadius: radii.xl, backgroundColor: colors.white.main },
-  total: { color: colors.primary.main, fontFamily: fontFamilies.primaryBold, fontSize: fontSizes.h3 },
+  metricSkeleton: { flexGrow: 1, flexBasis: "45%" },
+  metric: { flexGrow: 1, flexBasis: "45%", paddingHorizontal: spacing.md, paddingVertical: spacing.sm, gap: spacing.xs, borderWidth: 1, borderColor: colors.border.main, borderRadius: radii.xl, backgroundColor: colors.white.main },
+  metricHeader: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: spacing.xs },
+  total: { flexShrink: 1, color: colors.primary.main, fontFamily: fontFamilies.primaryBold, fontSize: fontSizes.h4 },
   label: { color: colors.neutral.main, fontFamily: fontFamilies.primaryMedium, fontSize: fontSizes.body2 },
   feedback: { paddingVertical: spacing.xl, alignItems: "center", gap: spacing.md },
   error: { color: colors.error.main, fontFamily: fontFamilies.primaryRegular, fontSize: fontSizes.body2, textAlign: "center" },
-  note: { color: colors.mute.main, fontFamily: fontFamilies.primaryRegular, fontSize: fontSizes.caption, lineHeight: 18 }
+  locations: { padding: spacing.md, gap: spacing.sm, borderWidth: 1, borderColor: colors.border.main, borderRadius: radii.xl, backgroundColor: colors.white.main },
+  locationHeading: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm },
+  sectionTitle: { color: colors.primary.main, fontFamily: fontFamilies.primarySemiBold, fontSize: fontSizes.subtitle1 },
+  locationRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingVertical: spacing.xs },
+  locationDivider: { borderTopWidth: 1, borderTopColor: colors.border.main, paddingTop: spacing.sm },
+  locationDetails: { flex: 1, gap: spacing.xxs },
+  locationCity: { color: colors.primary.main, fontFamily: fontFamilies.primaryMedium, fontSize: fontSizes.body2 },
+  locationCaption: { color: colors.mute.main, fontFamily: fontFamilies.primaryRegular, fontSize: fontSizes.caption },
+  locationCount: { color: colors.primary.main, fontFamily: fontFamilies.primarySemiBold, fontSize: fontSizes.body2 }
 });

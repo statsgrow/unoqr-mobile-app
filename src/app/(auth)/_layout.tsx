@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Stack, usePathname } from "expo-router";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -9,6 +9,8 @@ import { colors, fontFamilies, fontSizes, radii, spacing } from "@/theme/tokens"
 import { insertAppInstall } from "@/utils/auth/AppInstall";
 import { refreshTokensSilently } from "@/utils/auth/AuthTokens";
 import { getStorageUser } from "@/utils/auth/AuthUser";
+import { AuthUserContext } from "@/utils/auth/AuthUserContext";
+import type { UserType } from "@/utils/auth/UserTypes";
 
 /* ------------------ BREAK ------------------ */
 
@@ -21,8 +23,11 @@ export default function AuthLayout() {
   const [routeState, setRouteState] = useState<AuthRouteState>("checking");
   const [checkKey, setCheckKey] = useState(0);
   const pathname = usePathname();
+  const currentPath = useRef(pathname);
+  currentPath.current = pathname;
+  const [user, setUser] = useState<UserType | null>(null);
 
-  // Resolves the install and silently refreshes an existing session before rendering.
+  // Resolves authentication once before mounting account pages and supplies their verified user.
   useEffect(() => {
     let isMounted = true;
 
@@ -43,10 +48,11 @@ export default function AuthLayout() {
         if (!isMounted) return;
 
         if (!user) {
-          redirect("replace", { pathname: "/auth/login", params: { next: pathname } });
+          redirect("replace", { pathname: "/auth/login", params: { next: currentPath.current } });
           return;
         };//if ends
 
+        setUser(user);
         setRouteState("ready");
       } catch (error: unknown) {
         if (isMounted) {
@@ -60,13 +66,15 @@ export default function AuthLayout() {
     return () => {
       isMounted = false;
     };
-  }, [checkKey, pathname]);
+  }, [checkKey]);
 
   //Default Return
   return (
     <SafeAreaView style={styles.root} edges={["top", "left", "right"]}>
-      {routeState === "ready" ? (
-        <Stack screenOptions={{ headerShown: false, animation: Platform.OS === "ios" ? "none" : "default", ...(Platform.OS === "ios" ? { animationTypeForReplace: "pop" as const } : {}) }} />
+      {routeState === "ready" && user ? (
+        <AuthUserContext.Provider value={user}>
+          <Stack screenOptions={{ headerShown: false, gestureEnabled: false, animation: Platform.OS === "ios" ? "none" : "default", ...(Platform.OS === "ios" ? { animationTypeForReplace: "pop" as const } : {}) }} />
+        </AuthUserContext.Provider>
       ) : routeState === "install-error" ? (
         <View style={styles.message}>
           <Text style={styles.messageTitle}>Could not prepare this device</Text>

@@ -12,4 +12,5 @@ export type DigitalCardLayoutData<Photo = string> = {
   address: string;
   socialLinks: DigitalCardSocialLink[];
   photo: Photo | null;
+  featurePhoto?: Photo | null;
 };//export ends

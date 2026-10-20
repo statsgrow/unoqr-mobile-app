@@ -10,10 +10,12 @@ export type DigitalCardAnalyticsSummary = {
   contact_downloads_started: number;
   contacts_submitted: number;
 };//export ends
+export type DigitalCardAnalyticsLocation = { city: string; country: string | null; visitors: number };//export ends
 export type DigitalCardAnalyticsResponse = {
   card_uid: string;
   date_range: { start: number | null; end: number };
   summary: DigitalCardAnalyticsSummary;
+  locations: DigitalCardAnalyticsLocation[];
 };//export ends
 
 /* ------------------ BREAK ------------------ */

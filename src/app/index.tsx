@@ -1,12 +1,13 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useFocusEffect } from "expo-router";
+import { addDatabaseChangeListener } from "expo-sqlite";
 import {
   Barcode, CalendarDays, ChevronRight, ContactRound, File, FileText, Globe2,
   History, Link, Mail, MapPin, MessageSquare, Pencil, Phone, QrCode,
   ScanLine, Share2, ShieldKeyhole, Wallet, Wifi, type LucideIcon
 } from "lucide-react-native";
 import { Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
-import Svg, { Path, Rect } from "react-native-svg";
+import Svg, { Defs, RadialGradient, Rect, Stop } from "react-native-svg";
 
 import { PxCircularProgress } from "@/components/elements/PxCircularProgress";
 import { GeneralLayout } from "@/components/layout/GeneralLayout";
@@ -20,8 +21,6 @@ import { UpiPaymentIcon } from "@/helpers/scans/components/UpiPaymentIcon";
 import { getAllScans } from "@/helpers/scans/db/getQueries";
 import { getScanTypeInit, normalizeScanType } from "@/helpers/scans/identifiers";
 import { colors, fontFamilies, fontSizes, radii, spacing } from "@/theme/tokens";
-import { getStorageUser } from "@/utils/auth/AuthUser";
-import { useSessionRefreshPending } from "@/utils/auth/SessionRefreshContext";
 import { redirect } from "@/utils/general/Redirect";
 
 /* ------------------ BREAK ------------------ */
@@ -36,7 +35,6 @@ type ShortcutProps = { title: string; description: string; Icon: LucideIcon; onP
 
 // Leads Home with the user's digital card, sharing actions, and top scan categories.
 export default function HomeScreen() {
-  const isSessionRefreshPending = useSessionRefreshPending();
   const [loadingCard, setLoadingCard] = useState(true);
   const [card, setCard] = useState<RemoteCard | null>(null);
   const [cardError, setCardError] = useState(false);
@@ -47,6 +45,8 @@ export default function HomeScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [shareTab, setShareTab] = useState<ShareTab>("qr");
+  const cardRead = useRef(0);
+  const scansRead = useRef(0);
 
   const shareCard = useMemo(() => card ? restoreDigitalCard(card, createDigitalCard({
     userId: card.user_id, defaults: QR_DEFAULTS, uid: card.uid
@@ -54,36 +54,75 @@ export default function HomeScreen() {
   const scanTypes = useMemo(() => summarizeScanTypes(records), [records]);
   const topScanTypes = scanTypes.slice(0, 6);
 
-  // Refreshes the saved card and local scans independently without replacing either on failure.
-  const loadHome = useCallback(async (isActive: () => boolean = () => true, forceRefresh = false): Promise<void> => {
-    setLoadingCard(true);
-    setLoadingScans(true);
-    const [cardResult, scansResult] = await Promise.allSettled([loadSavedCard(forceRefresh), getAllScans()]);
-    if (!isActive()) return;
-    if (cardResult.status === "fulfilled") {
-      setCard(cardResult.value);
-    };//if ends
-    if (scansResult.status === "fulfilled") {
-      setRecords(scansResult.value);
-    };//if ends
-    setCardError(cardResult.status === "rejected");
-    setScanError(scansResult.status === "rejected");
-    setLoadingCard(false);
-    setLoadingScans(false);
+  // Displays the local card as soon as its read finishes, preserving it during later reads.
+  const loadCard = useCallback(async (isActive: () => boolean): Promise<void> => {
+    const read = ++cardRead.current;
+    try {
+      const saved = await getDigitalCard();
+      if (!isActive() || read !== cardRead.current) return;
+      setCard(saved);
+      setCardError(false);
+    } catch {
+      if (isActive() && read === cardRead.current) setCardError(true);
+    } finally {
+      if (isActive() && read === cardRead.current) setLoadingCard(false);
+    };//try-catch ends
   }, []);
 
-  // Reloads Home after scanning or editing, once the startup session check completes.
+  // Displays local scans independently of the card and keeps categories visible during rereads.
+  const loadScans = useCallback(async (isActive: () => boolean): Promise<void> => {
+    const read = ++scansRead.current;
+    try {
+      const saved = await getAllScans();
+      if (!isActive() || read !== scansRead.current) return;
+      setRecords(saved);
+      setScanError(false);
+    } catch {
+      if (isActive() && read === scansRead.current) setScanError(true);
+    } finally {
+      if (isActive() && read === scansRead.current) setLoadingScans(false);
+    };//try-catch ends
+  }, []);
+
+  // Reads both SQLite sections without waiting for authentication or coupling their display.
+  const loadHome = useCallback(async (isActive: () => boolean = () => true): Promise<void> => {
+    await Promise.all([loadCard(isActive), loadScans(isActive)]);
+  }, [loadCard, loadScans]);
+
+  // Rereads saved data immediately when Home opens or regains focus without resetting loaders.
   useFocusEffect(useCallback(() => {
-    if (isSessionRefreshPending) return;
     let active = true;
     void loadHome(() => active);
     return () => { active = false; };//return ends
-  }, [isSessionRefreshPending, loadHome]));
+  }, [loadHome]));
 
-  // Reloads the card and scan history for a pull-to-refresh gesture.
+  // Batches SQLite writes so saves, deletes and background sync silently refresh the affected section.
+  useEffect(() => {
+    let active = true;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const changedTables = new Set<string>();
+    const subscription = addDatabaseChangeListener(({ tableName }) => {
+      if (!["digital_cards", "digital_card_photos", "scans"].includes(tableName)) return;
+      changedTables.add(tableName);
+      if (timer !== null) return;
+      timer = setTimeout(() => {
+        timer = null;
+        if (changedTables.has("digital_cards") || changedTables.has("digital_card_photos")) void loadCard(() => active);
+        if (changedTables.has("scans")) void loadScans(() => active);
+        changedTables.clear();
+      }, 0);
+    });
+    return () => {
+      active = false;
+      subscription.remove();
+      if (timer !== null) clearTimeout(timer);
+    };//return ends
+  }, [loadCard, loadScans]);
+
+  // Reloads the card and scan history from SQLite for a pull-to-refresh gesture.
   const handleRefresh = async (): Promise<void> => {
     setRefreshing(true);
-    await loadHome(() => true, true);
+    await loadHome();
     setRefreshing(false);
   };//func ends
 
@@ -92,7 +131,7 @@ export default function HomeScreen() {
     redirect("push", { pathname: "/digital_cards/modify", params: { mode: "edit" } });
   };//func ends
 
-  // Shows the existing QR or link-sharing sheet for the selected card action.
+  // Shows the sharing sheet using the card already read from SQLite.
   const openShare = (tab: ShareTab): void => {
     setShareTab(tab);
     setShareOpen(true);
@@ -122,20 +161,52 @@ export default function HomeScreen() {
           <View style={styles.cardGroup}>
             <View style={styles.digitalCard}>
               <View pointerEvents="none" style={styles.cardPattern} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-                <Svg width="100%" height="100%" viewBox="0 0 400 240" preserveAspectRatio="xMidYMid slice">
-                  <Rect width={400} height={240} fill={colors.cream.cardLight} />
-                  <Path d="M140 0H400V196C260 190 176 114 140 0Z" fill={colors.cream.card} />
-                  <Path d="M190 240C258 188 328 188 400 176V240Z" fill={colors.cream.sand} opacity={0.7} />
-                  <Path d="M164 -20C182 100 278 162 420 150" fill="none" stroke={colors.cream.contour} strokeWidth={0.75} />
-                  <Path d="M190 -20C210 94 296 158 420 130M150 50C202 176 302 206 420 198" fill="none" stroke={colors.white.main} strokeWidth={0.75} opacity={0.8} />
+                <Svg width="100%" height="100%" viewBox="0 0 400 120" preserveAspectRatio="none">
+                  <Defs>
+                    <RadialGradient id="homeCardOrange" cx="10%" cy="0%" rx="58%" ry="135%">
+                      <Stop offset="0" stopColor={colors.secondary.main} stopOpacity={0.34} />
+                      <Stop offset="0.5" stopColor={colors.secondary.main} stopOpacity={0.12} />
+                      <Stop offset="1" stopColor={colors.secondary.light} stopOpacity={0} />
+                    </RadialGradient>
+                    <RadialGradient id="homeCardOrangeCorner" cx="96%" cy="100%" rx="65%" ry="140%">
+                      <Stop offset="0" stopColor={colors.secondary.main} stopOpacity={0.3} />
+                      <Stop offset="0.55" stopColor={colors.secondary.main} stopOpacity={0.1} />
+                      <Stop offset="1" stopColor={colors.secondary.light} stopOpacity={0} />
+                    </RadialGradient>
+                    <RadialGradient id="homeCardOrangeMist" cx="58%" cy="5%" rx="35%" ry="90%">
+                      <Stop offset="0" stopColor={colors.secondary.main} stopOpacity={0.15} />
+                      <Stop offset="1" stopColor={colors.secondary.light} stopOpacity={0} />
+                    </RadialGradient>
+                    <RadialGradient id="homeCardCream" cx="3%" cy="95%" rx="48%" ry="100%">
+                      <Stop offset="0" stopColor={colors.cream.sand} stopOpacity={0.95} />
+                      <Stop offset="1" stopColor={colors.cream.card} stopOpacity={0} />
+                    </RadialGradient>
+                    <RadialGradient id="homeCardCreamCorner" cx="100%" cy="0%" rx="36%" ry="100%">
+                      <Stop offset="0" stopColor={colors.cream.sand} stopOpacity={0.9} />
+                      <Stop offset="1" stopColor={colors.cream.card} stopOpacity={0} />
+                    </RadialGradient>
+                    <RadialGradient id="homeCardWhite" cx="34%" cy="48%" rx="36%" ry="95%">
+                      <Stop offset="0" stopColor={colors.white.main} stopOpacity={0.9} />
+                      <Stop offset="1" stopColor={colors.white.main} stopOpacity={0} />
+                    </RadialGradient>
+                    <RadialGradient id="homeCardWhiteCorner" cx="70%" cy="100%" rx="26%" ry="90%">
+                      <Stop offset="0" stopColor={colors.white.main} stopOpacity={0.95} />
+                      <Stop offset="1" stopColor={colors.white.main} stopOpacity={0} />
+                    </RadialGradient>
+                  </Defs>
+                  <Rect width={400} height={120} fill={colors.cream.cardLight} />
+                  <Rect width={400} height={120} fill="url(#homeCardOrange)" />
+                  <Rect width={400} height={120} fill="url(#homeCardOrangeCorner)" />
+                  <Rect width={400} height={120} fill="url(#homeCardOrangeMist)" />
+                  <Rect width={400} height={120} fill="url(#homeCardCream)" />
+                  <Rect width={400} height={120} fill="url(#homeCardCreamCorner)" />
+                  <Rect width={400} height={120} fill="url(#homeCardWhite)" />
+                  <Rect width={400} height={120} fill="url(#homeCardWhiteCorner)" />
                 </Svg>
               </View>
 
-              {loadingCard ? (
-                <View accessibilityLiveRegion="polite" style={styles.cardMessage}>
-                  <PxCircularProgress color={colors.mute.dark} />
-                  <Text style={styles.cardDescription}>Loading your card…</Text>
-                </View>
+              {loadingCard && !card ? (
+                <View style={styles.cardMessage} />
               ) : cardError && !card ? (
                 <View style={styles.cardMessage}>
                   <Text style={styles.cardDescription}>Your card could not be loaded.</Text>
@@ -227,7 +298,7 @@ export default function HomeScreen() {
           </View>
           {loadingScans ? (
             <View style={styles.scanMessage}>
-              <PxCircularProgress color={colors.secondary.main} />
+              <PxCircularProgress color={colors.secondary.main} size={24} />
               <Text style={styles.stateText}>Loading scan categories…</Text>
             </View>
           ) : scanError ? (
@@ -257,12 +328,6 @@ export default function HomeScreen() {
 };//export ends
 
 /* ------------------ BREAK ------------------ */
-
-// Loads a saved card only for signed-in accounts, leaving guests free to start the creation flow.
-async function loadSavedCard(forceRefresh = false): Promise<RemoteCard | null> {
-  const user = await getStorageUser();
-  return user ? getDigitalCard({ forceRefresh }) : null;
-};//func ends
 
 // Renders a compact shortcut underneath the digital card.
 function HomeShortcut({ title, description, Icon, onPress }: ShortcutProps) {

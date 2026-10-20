@@ -4,7 +4,7 @@ import { CalendarDays, Plus, X } from "lucide-react-native";
 import { Keyboard, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { PxButton } from "@/components/elements/PxButton";
-import { PxCircularProgress } from "@/components/elements/PxCircularProgress";
+import { PxSkeleton } from "@/components/elements/PxSkeleton";
 import { PxTextArea } from "@/components/form/PxTextArea";
 import { PxTextInput } from "@/components/form/PxTextInput";
 import { GeneralLayout } from "@/components/layout/GeneralLayout";
@@ -132,17 +132,16 @@ export default function DigitalCardContactScreen() {
 
   //Default Return
   return <GeneralLayout
+    fixedHeader={true}
     edges={["left", "right"]}
     pullToRefreshEnabled={!saving}
     refreshing={loading && reloadKey > 0}
     onRefresh={refreshContact}
     topView={<View style={styles.header}><HeaderBackButton onPress={goBack} /><Text style={styles.headerTitle}>Contact details</Text></View>}
     bodyStyle={styles.body}
-    bottomNav={contact ? <View><PxButton fullWidth loading={saving} onPress={() => void saveContact()}>Save changes</PxButton></View> : null}
+    bottomNav={loading ? <PxSkeleton width="100%" height={48} /> : contact ? <View><PxButton fullWidth loading={saving} onPress={() => void saveContact()}>Save changes</PxButton></View> : null}
   >
-    {loading ? <View accessibilityRole="progressbar" accessibilityLabel="Loading contact" style={styles.feedback}>
-      <PxCircularProgress size={36} color={colors.secondary.main} />
-    </View> : loadError ? <View style={styles.feedback}>
+    {loading ? <ContactDetailsSkeleton /> : loadError ? <View style={styles.feedback}>
       <Text accessibilityRole="alert" style={styles.error}>{loadError}</Text>
       <PxButton onPress={() => setReloadKey(key => key + 1)}>Try again</PxButton>
     </View> : contact ? <>
@@ -180,6 +179,34 @@ export default function DigitalCardContactScreen() {
 
 /* ------------------ BREAK ------------------ */
 
+// Matches the contact profile, information, tag controls and notes while the contact loads.
+function ContactDetailsSkeleton() {
+  //Default Return
+  return <View accessible accessibilityRole="progressbar" accessibilityLabel="Loading contact details" accessibilityState={{ busy: true }} style={styles.skeletonContent}>
+    <View style={styles.profile}>
+      <View style={styles.avatarFrame}><PxSkeleton width={88} height={88} type="round" /></View>
+      <PxSkeleton width="56%" height={34} />
+      <View style={styles.submitted}><PxSkeleton width={16} height={16} /><PxSkeleton width={184} height={16} /></View>
+    </View>
+    <View style={styles.section}>
+      <PxSkeleton width="65%" height={24} />
+      <View style={styles.names}>
+        <View style={styles.skeletonField}><PxSkeleton width="65%" height={16} /><PxSkeleton width="75%" height={24} /></View>
+        <View style={styles.skeletonField}><PxSkeleton width="65%" height={16} /><PxSkeleton width="75%" height={24} /></View>
+      </View>
+      <View style={styles.detail}><PxSkeleton width={48} height={16} /><PxSkeleton width="80%" height={24} /></View>
+      <View style={styles.detail}><PxSkeleton width={56} height={16} /><PxSkeleton width="65%" height={24} /></View>
+    </View>
+    <View style={styles.section}>
+      <PxSkeleton width={56} height={24} />
+      <View style={styles.tagInput}><View style={styles.tagField}><PxSkeleton width="100%" height={48} /></View><PxSkeleton width={48} height={48} /></View>
+    </View>
+    <View style={styles.detail}><PxSkeleton width={56} height={16} /><PxSkeleton width="100%" height={144} /></View>
+  </View>;//return ends
+};//func ends
+
+/* ------------------ BREAK ------------------ */
+
 // Keeps lowercase letters, numbers and spaces, removing empty and duplicate tags before saving.
 function appendContactTag(tags: string[], value: string): string[] {
   return [...new Set([...tags, value].map(tag => tag.toLowerCase().replace(/[^a-z0-9 ]/g, "").replace(/ +/g, " ").trim()).filter(Boolean))];
@@ -199,6 +226,8 @@ const styles = StyleSheet.create({
   header: { minHeight: 64, flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.sm, backgroundColor: colors.white.main },
   headerTitle: { color: colors.primary.main, fontFamily: fontFamilies.primaryBold, fontSize: fontSizes.navigationTitle },
   body: { padding: spacing.md, gap: spacing.lg },
+  skeletonContent: { gap: spacing.lg },
+  skeletonField: { flex: 1, gap: spacing.xxs },
   profile: { alignItems: "center", gap: spacing.sm, paddingVertical: spacing.md },
   avatarFrame: { padding: spacing.xxs, borderRadius: radii.pill, backgroundColor: colors.neutral.light },
   avatar: { width: 88, height: 88, alignItems: "center", justifyContent: "center", borderRadius: radii.pill, backgroundColor: colors.black.light },

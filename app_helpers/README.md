@@ -1,5 +1,15 @@
 # Native build helpers
 
+## Meta app events
+
+`src/utils/meta/MetaAppEvents.ios.ts` and `MetaAppEvents.android.ts` initialize the Facebook SDK for Meta app `1127503266516100`. The root layout starts the matching platform helper. The plain `.ts` file keeps the native SDK out of web builds.
+
+The SDK reports installs on first launch and app activations/sessions. There are no scan, QR creation, digital-card or account events. Automatic purchase logging is disabled for both platforms in Meta's App Events settings. Keep the separate automatic event logging override at `Unspecified` so the app's SDK flags remain in control.
+
+iOS requests tracking permission and enables advertising identifier collection only when granted, rechecking permission when the app returns to the foreground. Basic install/session measurement remains enabled when tracking is declined so the SDK's privacy-preserving attribution can operate. Android initializes once per process. Expo config includes Meta's client token (a client-side SDK value, not the app secret), the tracking permission description and Meta's SKAdNetwork identifiers through the SDK plugin.
+
+SDK or config changes require a new native build; an OTA JavaScript update cannot add these native modules. Check delivery using Meta Events Manager's Test Events with a rebuilt app on a real device. Store privacy/data-safety declarations must reflect the advertising SDK before the new build is submitted.
+
 ## Release environment check
 
 Platform release hooks live in `android/release/` and `ios/release/`. The shared environment validation lives in `shared/`.

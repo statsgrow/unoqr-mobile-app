@@ -12,7 +12,7 @@ export const isLocalDatabaseAvailable = Platform.OS !== 'web';
 
 // Opens the native SQLite connection used by database setup and migrations.
 export const sqliteDB = isLocalDatabaseAvailable
-  ? SQLite.openDatabaseSync(sqliteSettings.dbName)
+  ? SQLite.openDatabaseSync(sqliteSettings.dbName, { enableChangeListener: true })
   : null;
 
 // Initializes Drizzle only when the native SQLite connection is available.

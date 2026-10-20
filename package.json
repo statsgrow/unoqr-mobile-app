@@ -1,6 +1,6 @@
 {
   "name": "unoqr-mobile-app",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "main": "index.ts",
   "dependencies": {
     "@expo-google-fonts/bricolage-grotesque": "^0.4.0",
@@ -36,6 +36,7 @@
     "expo-sqlite": "~57.0.2",
     "expo-status-bar": "~57.0.1",
     "expo-system-ui": "~57.0.3",
+    "expo-tracking-transparency": "~57.0.2",
     "expo-updates": "~57.0.19",
     "expo-web-browser": "~57.0.2",
     "jwt-decode": "^4.0.0",
@@ -47,6 +48,7 @@
     "react-dom": "19.2.3",
     "react-hook-form": "^7.65.0",
     "react-native": "0.86.3",
+    "react-native-fbsdk-next": "^13.4.3",
     "react-native-paper": "^5.14.5",
     "react-native-safe-area-context": "~5.7.0",
     "react-native-screens": "~4.26.0",

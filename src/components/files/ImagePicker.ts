@@ -22,6 +22,21 @@ export async function selectImage(): Promise<ImagePickerFile | null> {
 
 /* ------------------ BREAK ------------------ */
 
+// Requests camera access and returns one full-quality captured photo.
+export async function takePhoto(): Promise<ImagePickerFile | null> {
+  const permission = await ExpoImagePicker.requestCameraPermissionsAsync();
+  if (!permission.granted) throw new Error("Camera access is required to take a photo. Please allow it in your device settings.");
+
+  const result = await ExpoImagePicker.launchCameraAsync({
+    mediaTypes: "images",
+    allowsEditing: false,
+    quality: 1
+  });
+  return getSelectedFile(result);
+};//export ends
+
+/* ------------------ BREAK ------------------ */
+
 // Requests iOS Photos access and returns the selected image file.
 async function selectIosImage(): Promise<ImagePickerFile | null> {
   const permission = await ExpoImagePicker.requestMediaLibraryPermissionsAsync();

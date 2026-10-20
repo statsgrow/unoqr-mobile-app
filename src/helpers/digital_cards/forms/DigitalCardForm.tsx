@@ -1,14 +1,16 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Pencil, Plus, Trash2 } from "lucide-react-native";
 import { useFieldArray, useForm, type FieldPathByValue, type UseFormReturn } from "react-hook-form";
 import { Pressable, StyleSheet, Text, View, type KeyboardTypeOptions } from "react-native";
 
 import { PxCircularProgress } from "@/components/elements/PxCircularProgress";
+import { PxPhoneInput } from "@/components/form/PxPhoneInput";
 import { PxTextInput } from "@/components/form/PxTextInput";
 import { PxTextArea } from "@/components/form/PxTextArea";
 import { GeneralLayout } from "@/components/layout/GeneralLayout";
 import { uploadCardPhoto, deleteCardPhoto } from "@/helpers/digital_cards/api/files";
-import PxFileInput from "@/components/form/PxFileInput";
+import PxFileInput, { type FileInputValue } from "@/components/form/PxFileInput";
+import GetError from "@/utils/general/Error";
 import type { DigitalCardDetails, DigitalCardSocialLink } from "@/helpers/digital_cards/model";
 import SocialLinkDialog from "@/helpers/digital_cards/dialogs/SocialLinkDialog";
 import { colors, fontFamilies, fontSizes, radii, spacing } from "@/theme/tokens";
@@ -20,8 +22,10 @@ type DigitalCardFormProps = {
   onRefresh: () => void;
   details: DigitalCardDetails;
   onDraftChange: (values: DigitalCardDetails) => void;
-  onSave: (details: DigitalCardDetails) => Promise<void>;
+  onSave: (details: DigitalCardDetails) => Promise<DigitalCardDetails>;
+  onSavePhoto: (photo: FileInputValue, field: CardPhotoField) => Promise<FileInputValue | null>;
 };
+type CardPhotoField = "profilePicture" | "featurePhoto";
 type CardFieldName = FieldPathByValue<DigitalCardDetails, string>;
 type CardFieldProps = {
   form: UseFormReturn<DigitalCardDetails>;
@@ -38,7 +42,10 @@ type FieldButtonProps = { label: string; onPress: () => void; disabled: boolean 
 /* ------------------ BREAK ------------------ */
 
 // Edits the card details with RHF and keeps its draft intact while other sections are shown.
-export default function DigitalCardForm({ refreshing, onRefresh, details, onDraftChange, onSave }: DigitalCardFormProps) {
+export default function DigitalCardForm({ refreshing, onRefresh, details, onDraftChange, onSave, onSavePhoto }: DigitalCardFormProps) {
+  const retiredPhotos = useRef(new Map<string, FileInputValue>());
+  const savedPhotos = useRef<Record<CardPhotoField, FileInputValue | null>>({ profilePicture: details.profilePicture, featurePhoto: details.featurePhoto });
+  const [cleaningPhotos, setCleaningPhotos] = useState(false);
   const [socialLinkIndex, setSocialLinkIndex] = useState<number | null>(null);
   const form = useForm<DigitalCardDetails>({ defaultValues: details, mode: "onBlur" });
   const phones = useFieldArray({ control: form.control, name: "phones", rules: { maxLength: { value: 2, message: "Add up to two phone numbers." } } });
@@ -57,10 +64,62 @@ export default function DigitalCardForm({ refreshing, onRefresh, details, onDraf
     form.clearErrors("root.save");
     try {
       const details = normalizeCardDetails(values);
-      await onSave(details);
-      reset(details);
+      const confirmed = await onSave(details);
+      rememberRetiredPhoto(savedPhotos.current.profilePicture);
+      rememberRetiredPhoto(savedPhotos.current.featurePhoto);
+      savedPhotos.current = { profilePicture: confirmed.profilePicture, featurePhoto: confirmed.featurePhoto };
+      reset(confirmed);
+      await cleanupRetiredPhotos([confirmed.profilePicture, confirmed.featurePhoto]);
     } catch (saveError: unknown) {
       form.setError("root.save", { type: "manual", message: saveError instanceof Error ? saveError.message : "Your card could not be saved. Try again." });
+    };//try-catch ends
+  };//func ends
+
+  // Remembers a replaced photo without deleting anything still referenced by the saved card.
+  function rememberRetiredPhoto(photo: FileInputValue | null): void {
+    if (photo?.uid) retiredPhotos.current.set(photo.uid, photo);
+  };//func ends
+
+  // Saves a replacement on Apply before deleting its previous saved or draft photo.
+  async function handleUploadPhoto(file: FileInputValue, field: CardPhotoField): Promise<FileInputValue> {
+    const uploaded = await uploadCardPhoto(file);
+    const confirmed = await onSavePhoto(uploaded, field);
+    rememberRetiredPhoto(form.getValues(field));
+    if (confirmed) {
+      rememberRetiredPhoto(savedPhotos.current[field]);
+      savedPhotos.current[field] = confirmed;
+      // Reset only the photo default; preserve every other field's value and dirty state.
+      form.resetField(field, { defaultValue: confirmed });
+    };//if ends
+    const activePhoto = confirmed ?? uploaded;
+    const values = form.getValues();
+    await cleanupRetiredPhotos([activePhoto, field === "profilePicture" ? values.featurePhoto : values.profilePicture, ...Object.values(savedPhotos.current)]);
+    return activePhoto;
+  };//func ends
+
+  // Defers removal of the selected photo until the card is saved without that reference.
+  async function handleRemovePhoto(file: FileInputValue): Promise<void> {
+    rememberRetiredPhoto(file);
+  };//func ends
+
+  // Deletes retired uploads only after API and SQLite saving succeeds, retaining failures for retry.
+  async function cleanupRetiredPhotos(activePhotos: (FileInputValue | null)[]): Promise<void> {
+    setCleaningPhotos(true);
+    form.clearErrors("root.photoCleanup");
+    try {
+      for (const [uid, photo] of retiredPhotos.current) {
+        if (activePhotos.some((activePhoto) => uid === activePhoto?.uid || (photo.url && photo.url === activePhoto?.url))) {
+          retiredPhotos.current.delete(uid);
+          continue;
+        };//if ends
+        await deleteCardPhoto(photo);
+        retiredPhotos.current.delete(uid);
+      };//for ends
+    } catch (error: unknown) {
+      const message = GetError({ error, message: "Please try again." }).message;
+      form.setError("root.photoCleanup", { type: "manual", message: `An old photo could not be deleted. Your current photo has been kept. ${message}` });
+    } finally {
+      setCleaningPhotos(false);
     };//try-catch ends
   };//func ends
 
@@ -84,14 +143,21 @@ export default function DigitalCardForm({ refreshing, onRefresh, details, onDraf
       bodyStyle={styles.formContent}
       onRefresh={onRefresh}
       refreshing={refreshing}
-      pullToRefreshEnabled={!isSubmitting}
+      pullToRefreshEnabled={!isSubmitting && !cleaningPhotos}
       hideBottomViewOnKeyboard
-      bottomNav={isDirty || isSubmitting || errors.root?.save?.message ? <View style={styles.formFooter}>
+      bottomNav={isDirty || isSubmitting || errors.root?.save?.message || errors.root?.photoCleanup?.message ? <View style={styles.formFooter}>
         {errors.root?.save?.message ? <Text accessibilityRole="alert" style={styles.fieldError}>{errors.root.save.message}</Text> : null}
+        {errors.root?.photoCleanup?.message ? <>
+          <Text accessibilityRole="alert" style={styles.fieldError}>{errors.root.photoCleanup.message}</Text>
+          <Pressable accessibilityRole="button" disabled={isSubmitting || cleaningPhotos}
+            onPress={() => void cleanupRetiredPhotos(Object.values(savedPhotos.current))} style={styles.addButton}>
+            <Text style={styles.addText}>{cleaningPhotos ? "Deleting old photos…" : "Retry photo cleanup"}</Text>
+          </Pressable>
+        </> : null}
         {isDirty || isSubmitting ? <Pressable
           accessibilityRole="button"
-          accessibilityState={{ disabled: isSubmitting || refreshing, busy: isSubmitting }}
-          disabled={isSubmitting || refreshing}
+          accessibilityState={{ disabled: isSubmitting || cleaningPhotos || refreshing, busy: isSubmitting }}
+          disabled={isSubmitting || cleaningPhotos || refreshing}
           onPress={() => void form.handleSubmit(handleSaveDetails)()}
           style={({ pressed }) => [styles.saveButton, (pressed || isSubmitting) && styles.disabledButton]}
         >
@@ -101,6 +167,22 @@ export default function DigitalCardForm({ refreshing, onRefresh, details, onDraf
       </View> : null}
     >
       <View style={styles.formSection}>
+        <Text style={styles.sectionTitle}>Feature photo</Text>
+        <PxFileInput
+          RHF={form}
+          name="featurePhoto"
+          label="Cover image"
+          type="image"
+          filename="feature-photo"
+          placeholder="Add feature photo"
+          ratio="2.7:1"
+          onUpload={(file) => handleUploadPhoto(file, "featurePhoto")}
+          onRemove={handleRemovePhoto}
+          disabled={isSubmitting || cleaningPhotos}
+        />
+      </View>
+
+      <View style={styles.formSection}>
         <Text style={styles.sectionTitle}>Personal details</Text>
         <PxFileInput
           RHF={form}
@@ -109,9 +191,9 @@ export default function DigitalCardForm({ refreshing, onRefresh, details, onDraf
           type="image"
           filename="profile-photo"
           placeholder="Add photo"
-          onUpload={uploadCardPhoto}
-          onRemove={deleteCardPhoto}
-          disabled={isSubmitting}
+          onUpload={(file) => handleUploadPhoto(file, "profilePicture")}
+          onRemove={handleRemovePhoto}
+          disabled={isSubmitting || cleaningPhotos}
         />
         <CardField form={form} name="fullname" label="Full name *" placeholder="Your full name" required disabled={isSubmitting} />
         <CardField form={form} name="company" label="Company" placeholder="Company name" disabled={isSubmitting} />
@@ -126,7 +208,7 @@ export default function DigitalCardForm({ refreshing, onRefresh, details, onDraf
         {phones.fields.map((phone, index) => (
           <View key={phone.id} style={styles.contactRow}>
             <View style={styles.fieldColumn}>
-              <CardField form={form} name={"phones." + index + ".value" as CardFieldName} label={"Phone " + (index + 1)} placeholder="+91 98765 43210" keyboardType="phone-pad" disabled={isSubmitting} />
+              <PxPhoneInput RHF={form} name={`phones.${index}.value`} label={"Phone " + (index + 1)} placeholder="98765 43210" disabled={isSubmitting} />
             </View>
             {phones.fields.length > 1 ? <RemoveFieldButton label={"Remove phone " + (index + 1)} onPress={() => phones.remove(index)} disabled={isSubmitting} /> : null}
           </View>
@@ -228,6 +310,7 @@ function validateCardField(value: string, keyboardType: KeyboardTypeOptions, req
 function normalizeCardDetails(values: DigitalCardDetails): DigitalCardDetails {
   return {
     profilePicture: values.profilePicture,
+    featurePhoto: values.featurePhoto,
     fullname: values.fullname.trim(),
     company: values.company.trim(),
     position: values.position.trim(),

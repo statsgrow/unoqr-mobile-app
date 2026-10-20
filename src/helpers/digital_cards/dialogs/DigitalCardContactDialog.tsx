@@ -5,7 +5,7 @@ import { Keyboard, StyleSheet, Text, View } from "react-native";
 
 import { PxButton } from "@/components/elements/PxButton";
 import { PxModal } from "@/components/elements/PxModal";
-import { PxMobileInput } from "@/components/form/PxMobileInput";
+import { PxPhoneInput } from "@/components/form/PxPhoneInput";
 import { PxTextInput } from "@/components/form/PxTextInput";
 import { submitDigitalCardContact, type DigitalCardContactSubmission } from "@/helpers/digital_cards/contacts/api";
 import { digitalCardContactSchema } from "@/helpers/digital_cards/contacts/validations";
@@ -87,7 +87,7 @@ export default function DigitalCardContactDialog({ uid, fullname, required, open
       <PxTextInput RHF={RHF} name="first_name" label="First name" autoComplete="given-name" maxLength={100} disabled={busy} />
       <PxTextInput RHF={RHF} name="last_name" label="Last name" autoComplete="family-name" maxLength={100} disabled={busy} />
       <PxTextInput RHF={RHF} name="email" label="Email" type="email" autoComplete="email" maxLength={254} disabled={busy} />
-      <PxMobileInput RHF={RHF} name="mobile" label="Mobile" placeholder="9876543210" disabled={busy} />
+      <PxPhoneInput RHF={RHF} name="mobile" label="Mobile" placeholder="9876543210" disabled={busy} />
       {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
     </View>
   </PxModal>;//return ends

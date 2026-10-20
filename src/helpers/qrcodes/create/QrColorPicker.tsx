@@ -16,6 +16,7 @@ type QrColorPickerProps = {
   hint?: string;
   onReset?: () => void;
   presets?: string[];
+  applyOnChange?: boolean;
 };
 
 /* ------------------ BREAK ------------------ */
@@ -28,10 +29,10 @@ const HEX_COLOR = /^#[0-9A-Fa-f]{6}$/;
 
 /* ------------------ BREAK ------------------ */
 
-// Opens a custom color editor from the first palette swatch and applies it with the arrow.
+// Shows preset and custom colors, optionally applying custom changes immediately.
 export default function QrColorPicker({
   name, color, onChangeColor, hint = "Use a dark color for reliable scanning.",
-  onReset, presets = PRESET_COLORS
+  onReset, presets = PRESET_COLORS, applyOnChange = false
 }: QrColorPickerProps) {
   const [hexValue, setHexValue] = useState(color);
   const [draftColor, setDraftColor] = useState(color);
@@ -42,14 +43,17 @@ export default function QrColorPicker({
   useEffect(() => {
     setHexValue(color);
     setDraftColor(color);
-    setPickerOpen(false);
-  }, [color]);
+    if (!applyOnChange) setPickerOpen(false);
+  }, [color, applyOnChange]);
 
   // Keeps partial hex input editable and updates the draft when it is complete.
   function handleHexChange(value: string): void {
     const hex = value.startsWith("#") ? value : `#${value}`;
     setHexValue(hex);
-    if (HEX_COLOR.test(hex)) setDraftColor(hex.toUpperCase());
+    if (HEX_COLOR.test(hex)) {
+      setDraftColor(hex.toUpperCase());
+      if (applyOnChange) onChangeColor(hex.toUpperCase());
+    };//if ends
   };//func ends
 
   // Opens the editor with the currently selected color.
@@ -63,6 +67,7 @@ export default function QrColorPicker({
   function handleDraftChange(value: string): void {
     setDraftColor(value);
     setHexValue(value);
+    if (applyOnChange) onChangeColor(value);
   };//func ends
 
   // Applies the completed custom color and returns to the palette.
@@ -117,14 +122,14 @@ export default function QrColorPicker({
               />
             </View>
             <Pressable
-              accessibilityLabel={`Apply custom ${name.toLowerCase()} color`}
+              accessibilityLabel={`${applyOnChange ? "Confirm" : "Apply custom"} ${name.toLowerCase()} color`}
               accessibilityRole="button"
               accessibilityState={{ disabled: !validHex }}
               disabled={!validHex}
               onPress={applyCustomColor}
-              style={[styles.applyButton, !validHex && styles.disabledButton]}
+              style={[applyOnChange ? styles.confirmColorButton : styles.applyButton, !validHex && styles.disabledButton]}
             >
-              <ArrowRight color={colors.white.main} size={24} strokeWidth={1.25} />
+              {applyOnChange ? <Check color={colors.white.main} size={24} strokeWidth={1.25} /> : <ArrowRight color={colors.white.main} size={24} strokeWidth={1.25} />}
             </Pressable>
           </View>
           {!validHex ? <Text style={styles.colorHint}>Enter a six-digit hex color, such as #FF5528.</Text> : null}
@@ -177,6 +182,7 @@ const styles = StyleSheet.create({
   hexField: { flex: 1, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.sm, borderWidth: 1, borderColor: colors.border.main, borderRadius: radii.xl },
   inputSwatch: { width: 30, height: 30, borderRadius: radii.pill, borderWidth: 1, borderColor: colors.border.main },
   applyButton: { width: 48, height: 48, alignItems: "center", justifyContent: "center", borderRadius: radii.xl, backgroundColor: colors.secondary.main },
+  confirmColorButton: { width: 48, height: 48, alignItems: "center", justifyContent: "center", borderRadius: radii.pill, backgroundColor: colors.black.main },
   disabledButton: { opacity: 0.4 },
   hexInput: {
     flex: 1,

@@ -21,7 +21,6 @@ import { createDigitalCard, type AppDigitalCardQr } from "@/helpers/digital_card
 import { validateDigitalCard } from "@/helpers/digital_cards/validations";
 import { QR_DEFAULTS } from "@/helpers/qrcodes/create/QrCreateScreen";
 import { colors, fontFamilies, fontSizes, radii, spacing } from "@/theme/tokens";
-import { getStorageUser } from "@/utils/auth/AuthUser";
 import GetError from "@/utils/general/Error";
 
 /* ------------------ BREAK ------------------ */
@@ -57,22 +56,20 @@ export default function DigitalCardViewScreen({ embedded = false, savedCard, onP
   // Reflects confirmed section saves without a web reload or another card API request.
   useEffect(() => { if (savedCard) setCard(savedCard); }, [savedCard]);
 
-  // Uses SQLite on initial opening and refreshes the API only after an explicit pull gesture.
+  // Rereads SQLite on opening Preview or refreshing, independently of unsaved editor drafts.
   useEffect(() => {
-    if (!embedded || (loadKey === 0 && savedCard)) return;
+    if (!embedded) return;
     let active = true;
     const loadCard = async (): Promise<void> => {
       setError(null);
       setRefreshing(true);
       try {
-        const user = await getStorageUser();
-        if (!user) throw new Error("Sign in to view your digital business card.");
-        const remote = await getDigitalCard({ forceRefresh: loadKey > 0 });
+        const remote = await getDigitalCard({ uid: savedCard?.uid });
         if (!remote) {
           if (active) setCard(null);
           throw new Error("Add your card details before previewing it.");
         };//if ends
-        const loaded = restoreDigitalCard(remote, createDigitalCard({ userId: user.id, defaults: QR_DEFAULTS, uid: remote.uid }));
+        const loaded = restoreDigitalCard(remote, createDigitalCard({ userId: remote.user_id, defaults: QR_DEFAULTS, uid: remote.uid }));
         if (active) {
           setCard(loaded);
           onCardRefreshed?.(loaded);
@@ -87,7 +84,7 @@ export default function DigitalCardViewScreen({ embedded = false, savedCard, onP
     return () => { active = false; };//return ends
   }, [embedded, loadKey]);
 
-  // Requests fresh saved values while retaining the current preview during the request.
+  // Reloads SQLite values while retaining the current preview during the read.
   const reloadCard = (): void => { setLoadKey((key) => key + 1); };//func ends
 
   // Publishes the reviewed card and updates SQLite before sharing its public link.

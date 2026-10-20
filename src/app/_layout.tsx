@@ -19,11 +19,13 @@ import {
   checkUnCrawledUrls,
   startUnCrawledUrlsTrigger
 } from "@/helpers/scans/scanSync";
+import { checkUnSyncedDigitalCards, DIGITAL_CARDS_SYNC_INTERVAL_MS } from "@/helpers/digital_cards/utils/SyncDigitalCards";
 import { refreshTokensSilently, triggerTokenChecking } from "@/utils/auth/AuthTokens";
 import { SessionRefreshContext } from "@/utils/auth/SessionRefreshContext";
 import { checkPendingQrCodes } from "@/helpers/qrcodes/QrSync";
 import { refreshAppInstallMetadata } from "@/utils/auth/AppInstall";
 import { AppVersionDialog } from "@/utils/general/AppVersion";
+import { startMetaAppEvents } from "@/utils/meta/MetaAppEvents";
 
 /* ------------------ BREAK ------------------ */
 
@@ -37,6 +39,12 @@ export default function RootLayout() {
     BricolageGrotesque_600SemiBold,
     BricolageGrotesque_700Bold
   });
+
+  // Starts Meta install and activation events after the app content is ready.
+  useEffect(() => {
+    if (!fontsLoaded) return;
+    return startMetaAppEvents();
+  }, [fontsLoaded]);
 
   // Checks installation metadata silently on startup, foreground and every 24 hours while open.
   useEffect(() => {
@@ -121,6 +129,23 @@ export default function RootLayout() {
     return () => subscription.remove();
   }, [isSessionRefreshPending]);
 
+  // Checks all owned digital cards at startup, on foreground, and every five minutes while active.
+  useEffect(() => {
+    if (isSessionRefreshPending) return;
+    // Runs silently so Home continues displaying its SQLite data during network checks.
+    const syncCards = (): void => {
+      void checkUnSyncedDigitalCards().catch((error: unknown) => console.error("Unable to sync digital cards:", error));
+    };//func ends
+    syncCards();
+    const timer = setInterval(() => {
+      if (AppState.currentState === "active") syncCards();
+    }, DIGITAL_CARDS_SYNC_INTERVAL_MS);
+    const subscription = AppState.addEventListener("change", (nextState) => {
+      if (nextState === "active") syncCards();
+    });
+    return () => { clearInterval(timer); subscription.remove(); };//return ends
+  }, [isSessionRefreshPending]);
+
   // Prevents rendering until fonts are loaded to avoid layout shifts.
   if (!fontsLoaded) {
     return null;
@@ -130,7 +155,7 @@ export default function RootLayout() {
   const appContent = (
     <>
       <SessionRefreshContext.Provider value={isSessionRefreshPending}>
-        <Stack screenOptions={{ headerShown: false, animation: Platform.OS === "ios" ? "none" : "default", ...(Platform.OS === "ios" ? { animationTypeForReplace: "pop" as const } : {}) }} />
+        <Stack screenOptions={{ headerShown: false, gestureEnabled: false, animation: Platform.OS === "ios" ? "none" : "default", ...(Platform.OS === "ios" ? { animationTypeForReplace: "pop" as const } : {}) }} />
         <StatusBar style="dark" />
         <AppVersionDialog />
       </SessionRefreshContext.Provider>

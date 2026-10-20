@@ -34,6 +34,7 @@ type GeneralLayoutProps = {
 	children: GeneralLayoutChildren;
 	fixedFooter?: ReactNode;
 	topView?: ReactNode;
+	fixedHeader?: boolean;
 	bottomView?: ReactNode;
 	bottomNav?: ReactElement | null;
 	floatingAction?: ReactElement;
@@ -60,6 +61,7 @@ export function GeneralLayout({
 	children,
 	fixedFooter,
 	topView,
+	fixedHeader = false,
 	bottomView,
 	bottomNav,
 	floatingAction,
@@ -265,6 +267,7 @@ export function GeneralLayout({
 	//Default Return
 	return (
 		<SafeAreaView style={[styles.root, style]} edges={resolvedEdges}>
+			{fixedHeader ? resolvedTopView : null}
 			<View style={styles.viewport}>
 			{scroll ? <ScrollView
 				ref={resolvedScrollRef}
@@ -288,7 +291,7 @@ export function GeneralLayout({
 					colors={[colors.secondary.main]}
 				/> : undefined}
 			>
-				{resolvedTopView}
+				{!fixedHeader ? resolvedTopView : null}
 				<View key={refreshKey} onFocus={handleInputFocus} style={[styles.body, bodyStyle]}>{resolvedChildren}</View>
 				<Animated.View style={{ height: keyboardSpace }} />
 			</ScrollView> : <KeyboardAvoidingView
@@ -297,7 +300,7 @@ export function GeneralLayout({
 				style={styles.keyboardView}
 			>
 				<View style={[styles.content, styles.staticContent, contentContainerStyle]}>
-					{resolvedTopView}
+					{!fixedHeader ? resolvedTopView : null}
 					<View style={[styles.body, styles.staticBody, bodyStyle]}>{resolvedChildren}</View>
 				</View>
 			</KeyboardAvoidingView>}

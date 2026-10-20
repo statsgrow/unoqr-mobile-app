@@ -190,7 +190,8 @@ export function PxButton({
 					lineHeight: labelConfig.lineHeight,
 					marginVertical: 0
 				},
-				compact && styles.compactLabel
+				compact && styles.compactLabel,
+				compact && Boolean(resolvedIcon) && styles.compactIconLabel
 			]}
 		/>
 	);//return ends
@@ -201,6 +202,9 @@ export function PxButton({
 const styles = StyleSheet.create({
 	fullWidth: {
 		width: "100%"
+	},
+	compactIconLabel: {
+		marginHorizontal: 4
 	},
 	compactLabel: {
 		marginHorizontal: 0

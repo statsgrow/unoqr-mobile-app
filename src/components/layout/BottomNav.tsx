@@ -1,10 +1,11 @@
 import type { ReactNode } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { Platform, Pressable, StyleSheet, View } from "react-native";
 import { usePathname, type Href } from "expo-router";
-import { ContactRound, Grip, History, House, ScanLine, type LucideIcon } from "lucide-react-native";
+import { ContactRound, Grip, History, House, type LucideIcon } from "lucide-react-native";
 import { Text } from "react-native-paper";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import UnoQrIcon from "@/assets/svg/unoqr_icon.svg";
 import { redirect } from "@/utils/general/Redirect";
 import { colors, fontFamilies, fontSizes, radii, spacing } from "@/theme/tokens";
 
@@ -55,10 +56,13 @@ const moreItem: StandardNavItem = {
 export function BottomNav({ footerAction, hideMenu = false }: BottomNavProps) {
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
+  // Adds a small action gap above Android gesture insets without enlarging three-button bars.
+  const gestureGap = Platform.OS === "android" && insets.bottom > 0 && insets.bottom <= spacing.lg ? spacing.xs : 0;
+  const actionBottomPadding = Math.max(spacing.md, insets.bottom + gestureGap);
 
   //Default Return
   return (
-    <View style={[styles.root, footerAction != null && [styles.actionFooter, { paddingBottom: Math.max(spacing.md, insets.bottom) }]]}>
+    <View style={[styles.root, footerAction != null && [styles.actionFooter, { paddingBottom: actionBottomPadding }]]}>
       {footerAction}
       {!hideMenu ? <View style={styles.container}>
         <NavItem item={homeItem} isActive={pathname === homeItem.matchingPath} />
@@ -77,7 +81,7 @@ export function BottomNav({ footerAction, hideMenu = false }: BottomNavProps) {
             onPress={() => redirect("push", "/scans/scanner")}
             style={({ pressed }) => [styles.scanButton, pressed && styles.pressedButton]}
           >
-            <ScanLine size={30} strokeWidth={1.25} color={colors.white.main} />
+            <UnoQrIcon width={36} height={36} fill={colors.white.main} />
           </Pressable>
         </View>
 
@@ -155,14 +159,14 @@ const styles = StyleSheet.create({
   scanButton: {
     position: "absolute",
     left: "50%",
-    marginLeft: -32,
+    marginLeft: -35,
     bottom: 18,
-    width: 64,
-    height: 64,
+    width: 70,
+    height: 70,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 4,
-    borderColor: colors.cream.main,
+    borderWidth: 1,
+    borderColor: colors.white.main,
     borderRadius: radii.pill,
     backgroundColor: colors.secondary.main,
     shadowColor: colors.secondary.dark,

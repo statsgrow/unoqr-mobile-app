@@ -31,7 +31,7 @@ export default function SyncMyQrCodesScreen() {
         });
         if (controller.signal.aborted) return;
         if (!completed) throw new Error("Unable to sync your account on this device. Please try again.");
-        redirect("replace", "/");
+        redirect("replace", "/sync/mydigitalcards");
       } catch (failure: unknown) {
         if (!controller.signal.aborted) {
           setError(GetError({ error: failure, message: "Could not sync your saved history. Please try again.", errorType: "response" }).message);

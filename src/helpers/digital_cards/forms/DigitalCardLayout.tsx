@@ -20,18 +20,19 @@ type DigitalCardLayoutProps = {
   onRefresh: () => void;
   layout: DigitalCardLayoutType;
   primaryColor: string;
+  featurePhotoUrl?: string | null;
   onDraftChange: (layout: DigitalCardLayoutType, primaryColor: string) => void;
   onSave: (layout: DigitalCardLayoutType, primaryColor: string) => Promise<void>;
 };
 type LayoutFormValues = { layout: DigitalCardLayoutType; primaryColor: string };
-type LayoutThumbnailProps = { layout: DigitalCardLayoutType; primaryColor: string; width: number };
+type LayoutThumbnailProps = { layout: DigitalCardLayoutType; primaryColor: string; width: number; featurePhotoUrl?: string | null };
 const PREVIEW_WIDTH = 360;
 const PRIMARY_COLORS = [colors.secondary.main, "#315E9C", "#214D3A", "#5B2A69", "#C04A74", "#953B24", "#D68A16"];
 
 /* ------------------ BREAK ------------------ */
 
 // Shows the current frontend card designs and saves the chosen layout and primary color.
-export default function DigitalCardLayout({ refreshing, onRefresh, layout, primaryColor, onDraftChange, onSave }: DigitalCardLayoutProps) {
+export default function DigitalCardLayout({ refreshing, onRefresh, layout, primaryColor, featurePhotoUrl, onDraftChange, onSave }: DigitalCardLayoutProps) {
   const form = useForm<LayoutFormValues>({ defaultValues: { layout, primaryColor } });
   const [previewLayout, setPreviewLayout] = useState<DigitalCardLayoutType | null>(null);
   const selectedLayout = form.watch("layout");
@@ -115,7 +116,7 @@ export default function DigitalCardLayout({ refreshing, onRefresh, layout, prima
                 onPress={() => handleSelect(option.value)}
                 style={({ pressed }) => pressed && styles.pressedOption}
               >
-                <LayoutThumbnail layout={option.value} primaryColor={selectedColor} width={optionWidth - 4} />
+                <LayoutThumbnail layout={option.value} primaryColor={selectedColor} width={optionWidth - 4} featurePhotoUrl={featurePhotoUrl} />
                 <View style={[styles.optionFooter, selected && styles.selectedOptionFooter]}>
                   <Text numberOfLines={1} style={[styles.optionLabel, selected && styles.selectedOptionLabel]}>{option.label}</Text>
                 </View>
@@ -145,7 +146,7 @@ export default function DigitalCardLayout({ refreshing, onRefresh, layout, prima
         onRequestClose={() => setPreviewLayout(null)}
       >
         <View pointerEvents="none" style={styles.sampleCard}>
-          <PreviewLayout data={{ ...sampleLayoutData, photo: sampleLayoutPortraits[previewLayout] }} primaryColor={selectedColor} isPreview />
+          <PreviewLayout data={{ ...sampleLayoutData, photo: sampleLayoutPortraits[previewLayout], featurePhoto: featurePhotoUrl ? { uri: featurePhotoUrl } : null }} primaryColor={selectedColor} isPreview />
         </View>
       </PxModal> : null}
     </GeneralLayout>
@@ -155,13 +156,13 @@ export default function DigitalCardLayout({ refreshing, onRefresh, layout, prima
 /* ------------------ BREAK ------------------ */
 
 // Crops the shared native layout to a compact identity thumbnail for the picker.
-function LayoutThumbnail({ layout, primaryColor, width }: LayoutThumbnailProps) {
+function LayoutThumbnail({ layout, primaryColor, width, featurePhotoUrl }: LayoutThumbnailProps) {
   const Layout = getDigitalCardLayout(layout);
   const scale = width / PREVIEW_WIDTH;
   //Default Return
   return <View pointerEvents="none" style={[styles.preview, { height: width }]}>
     <View style={[styles.previewCanvas, { transform: [{ scale }] }]}>
-      <View style={styles.sampleCard}><Layout data={{ ...sampleLayoutData, photo: sampleLayoutPortraits[layout] }} primaryColor={primaryColor} isPreview /></View>
+      <View style={styles.sampleCard}><Layout data={{ ...sampleLayoutData, photo: sampleLayoutPortraits[layout], featurePhoto: featurePhotoUrl ? { uri: featurePhotoUrl } : null }} primaryColor={primaryColor} isPreview /></View>
     </View>
   </View>;//return ends
 };//func ends

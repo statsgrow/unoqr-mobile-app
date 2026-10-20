@@ -7,15 +7,18 @@ import { digitalCardPhotosTable, digitalCardsTable, initDigitalCardsTable } from
 /* ------------------ BREAK ------------------ */
 
 // Removes confirmed-deleted card data and photo metadata, optionally restricted to one card UID.
-export async function deleteCachedDigitalCard(userId: string, uid?: string): Promise<void> {
+export async function deleteCachedDigitalCard(userId: string, uid?: string, version?: number): Promise<void> {
   if (!db) return;
   await initDigitalCardsTable();
   db.transaction((transaction) => {
-    const deleted = transaction.delete(digitalCardsTable).where(uid
-      ? and(eq(digitalCardsTable.user_id, userId), eq(digitalCardsTable.uid, uid))
-      : eq(digitalCardsTable.user_id, userId)).run();
-    if (!uid || deleted.changes > 0) {
-      transaction.delete(digitalCardPhotosTable).where(eq(digitalCardPhotosTable.user_id, userId)).run();
-    };//if ends
+    const deleted = transaction.delete(digitalCardsTable).where(and(
+      eq(digitalCardsTable.user_id, userId),
+      uid ? eq(digitalCardsTable.uid, uid) : undefined,
+      version !== undefined ? eq(digitalCardsTable.version, version) : undefined
+    )).run();
+    if (version !== undefined && deleted.changes === 0) return;
+    transaction.delete(digitalCardPhotosTable).where(uid
+      ? and(eq(digitalCardPhotosTable.user_id, userId), eq(digitalCardPhotosTable.card_uid, uid))
+      : eq(digitalCardPhotosTable.user_id, userId)).run();
   });
 };//export ends

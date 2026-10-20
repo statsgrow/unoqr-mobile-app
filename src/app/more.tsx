@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
+import { ChevronRight } from "lucide-react-native";
 import { Image, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import * as Application from "expo-application";
 import * as Clipboard from "expo-clipboard";
 import * as WebBrowser from "expo-web-browser";
 
@@ -88,7 +90,7 @@ export default function MoreScreen() {
         contentContainerStyle={styles.content}
       >
         {isAuthResolved && authUser ? (
-          <View style={[styles.accountCard, styles.userAccountCard]}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Open My Account" onPress={() => redirect("push", "/auth/myaccount")} style={({ pressed }) => [styles.accountCard, styles.userAccountCard, pressed && styles.pressedButton]}>
             {authUser.avatar_url ? (
               <Image source={{ uri: authUser.avatar_url }} style={styles.userAvatar} />
             ) : (
@@ -104,7 +106,8 @@ export default function MoreScreen() {
                 <Text style={styles.accountDescription}>{authUser.email}</Text>
               ) : null}
             </View>
-          </View>
+            <ChevronRight size={22} strokeWidth={1.25} color={colors.mute.light} />
+          </Pressable>
         ) : isAuthResolved ? (
           <View style={styles.accountCard}>
             <View style={styles.accountIcon}>
@@ -175,6 +178,7 @@ export default function MoreScreen() {
         ) : null}
 
         <View style={styles.footerInfo}>
+          <Text style={styles.installIdText}>Version {Application.nativeApplicationVersion || "Unavailable"} (Build {Application.nativeBuildVersion || "Unavailable"})</Text>
           <View style={styles.installIdBlock}>
             <Text style={styles.installIdLabel}>Install ID</Text>
             <View style={styles.installIdValueRow}>
@@ -284,7 +288,7 @@ const styles = StyleSheet.create({
   userAccountCard: {
     flexDirection: "row",
     justifyContent: "flex-start",
-    paddingVertical: spacing.xs
+    paddingVertical: spacing.md
   },
   accountIcon: {
     width: 56,

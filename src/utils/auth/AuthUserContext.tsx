@@ -1,31 +1,15 @@
+import { createContext, useContext } from "react";
 
+import type { UserType } from "./UserTypes";
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { UserType } from './UserTypes';
+/* ------------------ BREAK ------------------ */
 
-// Context type
-type AuthUserContextType = {
-   user: UserType | null;
-   setUser: React.Dispatch<React.SetStateAction<UserType | null>>;
-};
+// Shares the account already verified by the protected route layout.
+export const AuthUserContext = createContext<UserType | null>(null);
 
-//MAIN CONTEXT
-const UserContext = createContext<AuthUserContextType | undefined>(undefined);
-
-/* --------------- EXPORT ------------------ */
-export function UserContextProvider({ children }: { children: ReactNode }) {
-   //STATE
-   const [user, setUser] = useState<UserType | null>(null);
-
-   //return
-   return (
-      <UserContext.Provider value={{ user, setUser }}>
-         {children}
-      </UserContext.Provider>
-   );
-};//func ends 
-/* --------------- EXPORT ------------------ */
-
-export const useUser = () => useContext(UserContext);
-
-/* --------------- EXPORT ------------------ */
+// Returns the layout-verified account without repeating storage or network checks in pages.
+export function useUser(): UserType {
+  const user = useContext(AuthUserContext);
+  if (!user) throw new Error("Account pages must be rendered inside the authenticated layout.");
+  return user;
+};//export ends

@@ -1,0 +1,18 @@
+{
+  "name": "Aarav Mehta",
+  "position": "Senior Product Manager",
+  "company": "Tata Consultancy Services",
+  "phone": "+91 00000 00000",
+  "email": "aarav.mehta@example.com",
+  "bio": "Building digital experiences that simplify work and connect people. Passionate about product strategy, customer success and meaningful partnerships. Based in Mumbai.",
+  "address": "Suite 1204, Demo Business Centre, Bandra Kurla Complex, Mumbai, Maharashtra 400051, India",
+  "links": {
+    "Website": "https://example.com/aarav-mehta",
+    "Facebook": "https://www.facebook.com/unoqr.demo.aarav",
+    "Instagram": "https://www.instagram.com/unoqr.demo.aarav",
+    "LinkedIn": "https://www.linkedin.com/in/unoqr-demo-aarav-mehta"
+  },
+  "note": "Fictional identity for UnoQR marketing screenshots; no actual employment or endorsement. Card saved unpublished with indexing off.",
+  "portrait": "aarav-mehta-portrait.png",
+  "image_generation_tool": "Built-in image_gen"
+}

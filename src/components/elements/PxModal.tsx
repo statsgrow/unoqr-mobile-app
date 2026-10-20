@@ -14,6 +14,8 @@ import {
 	useWindowDimensions,
 	View,
 	type LayoutChangeEvent,
+	type StyleProp,
+	type ViewStyle,
 	type NativeScrollEvent,
 	type NativeSyntheticEvent
 } from "react-native";
@@ -32,6 +34,9 @@ type PxModalProps = {
 	open?: boolean;
 	setOpen?: (open: boolean) => void;
 	children: ReactNode;
+	scrollEnabled?: boolean;
+	appearance?: "light" | "dark";
+	contentContainerStyle?: StyleProp<ViewStyle>;
 	position?: "bottom" | "top" | "center";
 	showHandle?: boolean;
 	autoHeight?: boolean;
@@ -62,6 +67,9 @@ export function PxModal({
 	open,
 	setOpen,
 	children,
+	scrollEnabled = true,
+	appearance = "light",
+	contentContainerStyle,
 	position = "bottom",
 	showHandle = true,
 	autoHeight = true,
@@ -79,6 +87,8 @@ export function PxModal({
 
 	// Resolves the visible state and the caller's close action.
 	const isOpen = visible ?? open ?? false;
+	const isDark = appearance === "dark";
+	const surfaceColor = isDark ? tokenColors.primary.light : tokenColors.white.main;
 	const requestClose = onRequestClose ?? (setOpen ? () => setOpen(false) : undefined);
 	const insets = useSafeAreaInsets();
 	const { height: windowHeight } = useWindowDimensions();
@@ -295,14 +305,14 @@ export function PxModal({
 						]}
 					>
 						{showSheetSurface ? (
-							<View style={[styles.handleContentSurface, { maxHeight: windowHeight - insets.top - spacing.md }, surfaceHeightStyle, bottomInsetStyle]}>
+							<View style={[styles.handleContentSurface, { backgroundColor: surfaceColor, maxHeight: windowHeight - insets.top - spacing.md }, surfaceHeightStyle, bottomInsetStyle]}>
 								{showHandle ? <View style={styles.defaultHandle} /> : null}
 								{hasHeader ? (
 									<View style={styles.sheetHeader}>
-										<Text style={styles.sheetTitle}>{name}</Text>
+										<Text style={[styles.sheetTitle, isDark && { color: tokenColors.white.main }]}>{name}</Text>
 										{!hideCloseButton ? (
 											<Pressable accessibilityLabel="Close" accessibilityRole="button" hitSlop={spacing.sm} onPress={handleRequestClose} style={styles.closeButton}>
-												<X color={tokenColors.mute.main} size={24} strokeWidth={1.25} />
+												<X color={isDark ? tokenColors.white.main : tokenColors.mute.main} size={24} strokeWidth={1.25} />
 											</Pressable>
 										) : null}
 									</View>
@@ -311,12 +321,13 @@ export function PxModal({
 									<ScrollView
 										ref={scrollRef}
 										style={[styles.scrollView, hasFixedHeight && styles.fixedScrollView]}
-										contentContainerStyle={[styles.scrollContent, showFooterAction && styles.scrollContentWithFooter]}
+										contentContainerStyle={[styles.scrollContent, showFooterAction && styles.scrollContentWithFooter, contentContainerStyle]}
 										onLayout={handleScrollLayout}
 										onContentSizeChange={(_width, height) => { contentHeight.current = height; setScrollContentHeight(height); scrollFocusedInput(); }}
 										onScroll={handleScroll}
 										scrollEventThrottle={16}
 										showsVerticalScrollIndicator
+										scrollEnabled={scrollEnabled}
 										nestedScrollEnabled
 										keyboardShouldPersistTaps="handled"
 										keyboardDismissMode="on-drag"
@@ -325,7 +336,7 @@ export function PxModal({
 									</ScrollView>
 								</View>
 								{showFooterAction ? <View onLayout={handleFooterLayout} style={styles.fixedFooter}>{footerAction}</View> : null}
-								<Animated.View pointerEvents="none" style={[styles.keyboardSpace, { height: keyboardSpace }]} />
+								<Animated.View pointerEvents="none" style={[styles.keyboardSpace, { height: keyboardSpace, backgroundColor: surfaceColor }]} />
 								{hasMoreContentBelow ? (
 									<Animated.View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={[styles.scrollHint, { bottom: Animated.add(keyboardSpace, bottomPadding + (showFooterAction ? footerHeight : 0) + spacing.xs) }]}>
 										<ChevronDown size={24} strokeWidth={1.25} color={tokenColors.primary.main} />

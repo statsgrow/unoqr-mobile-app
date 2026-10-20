@@ -49,3 +49,5 @@ QR-card SVG/image composition is separate under frontend `helpers/digital_cards/
 4. Report which projects were updated and which are intentionally unaffected.
 
 There is no package version to synchronize, no archive to generate, and no library build or update command. Each project compiles and deploys its own source normally. Do not reintroduce local npm dependencies, sync scripts or unused platform folders.
+
+Modern and Centered use optional `data.featurePhoto` as a full-width 2.7:1 header, matching the cover editor crop. Without a feature photo they retain their original primary-color patterns. Spotlight and Minimal keep their existing designs. Mobile layout thumbnails and sample modals receive the saved feature photo while retaining sample identities.

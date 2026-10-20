@@ -19,6 +19,7 @@ export type DigitalCardSettingsValues = {
 };
 export type DigitalCardDetails = {
   profilePicture: FileInputValue | null;
+  featurePhoto: FileInputValue | null;
   fullname: string;
   company: string;
   position: string;
@@ -28,12 +29,13 @@ export type DigitalCardDetails = {
   bio: string;
   address: string;
 };
-export type AppDigitalCardQr = { id?: string; uid: string; userId: string; settings: QrCreateFormValues; details: DigitalCardDetails; layout: DigitalCardLayoutType; primaryColor: string; cardSettings: DigitalCardSettingsValues };
+export type AppDigitalCardQr = { id?: string; version?: number; updated_at?: string; uid: string; userId: string; settings: QrCreateFormValues; details: DigitalCardDetails; layout: DigitalCardLayoutType; primaryColor: string; cardSettings: DigitalCardSettingsValues };
 
 /* ------------------ BREAK ------------------ */
 
 export const DIGITAL_CARD_DEFAULTS: DigitalCardDetails = {
   profilePicture: null,
+  featurePhoto: null,
   fullname: "",
   company: "",
   position: "",

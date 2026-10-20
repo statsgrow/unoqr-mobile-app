@@ -4,7 +4,7 @@ import { ChevronRight } from "lucide-react-native";
 import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
 
 import { PxButton } from "@/components/elements/PxButton";
-import { PxCircularProgress } from "@/components/elements/PxCircularProgress";
+import { PxSkeleton } from "@/components/elements/PxSkeleton";
 import { colors, fontFamilies, fontSizes, radii, spacing } from "@/theme/tokens";
 import GetError from "@/utils/general/Error";
 
@@ -43,8 +43,12 @@ export default function DigitalCardContacts({ uid }: DigitalCardContactsProps) {
     return () => controller.abort();//return ends
   }, [uid, from, reloadKey]);
 
-  // Replaces the list with the latest first page while retaining visible contacts during refresh.
+  // Clears the previous contacts immediately so refresh displays only the loading skeletons.
   function refreshContacts(): void {
+    setContacts([]);
+    setCount(0);
+    setLoading(true);
+    setError(null);
     setFrom(0);
     setReloadKey(key => key + 1);
   };//func ends
@@ -71,8 +75,8 @@ export default function DigitalCardContacts({ uid }: DigitalCardContactsProps) {
     </View>}
     ListEmptyComponent={!loading && !error ? <Text style={styles.message}>No contacts have been submitted for this card yet.</Text> : null}
     ListFooterComponent={<View style={styles.feedback}>
-      {loading ? <View accessibilityRole="progressbar" accessibilityLabel="Loading submitted contacts" style={styles.loader}>
-        <PxCircularProgress size={32} color={colors.secondary.main} />
+      {loading ? <View accessible accessibilityRole="progressbar" accessibilityLabel="Loading submitted contacts" accessibilityState={{ busy: true }} style={styles.loader}>
+        {[1, 0.8, 0.6].map(opacity => <PxSkeleton key={opacity} width="100%" height={styles.avatar.height + 2 * (styles.avatarFrame.padding + styles.contact.padding + styles.contact.borderWidth)} opacity={opacity} />)}
       </View> : error ? <>
         <Text accessibilityRole="alert" style={styles.error}>{error}</Text>
         <PxButton onPress={retryContacts}>Try again</PxButton>
@@ -116,6 +120,6 @@ const styles = StyleSheet.create({
   date: { color: colors.mute.main, fontFamily: fontFamilies.primaryRegular, fontSize: fontSizes.caption },
   message: { color: colors.mute.main, fontFamily: fontFamilies.primaryRegular, fontSize: fontSizes.body2 },
   feedback: { gap: spacing.md, alignItems: "center" },
-  loader: { paddingVertical: spacing.xl },
+  loader: { width: "100%", gap: spacing.sm },
   error: { color: colors.error.main, fontFamily: fontFamilies.primaryRegular, fontSize: fontSizes.body2, textAlign: "center" }
 });

@@ -4,7 +4,7 @@ import { Image, Pressable, StyleSheet, Text, useWindowDimensions, View } from "r
 
 import { PxCircularProgress } from "@/components/elements/PxCircularProgress";
 import type { AppDigitalCardQr } from "@/helpers/digital_cards/model";
-import { getQrCardImageKey, loadQrCardImage } from "@/helpers/digital_cards/qrcards/image";
+import { getQrCardImageKey, loadQrCardImage } from "@/helpers/digital_cards/files/qrCardFiles";
 import { colors, fontFamilies, fontSizes, radii, spacing } from "@/theme/tokens";
 
 /* ------------------ BREAK ------------------ */
@@ -14,7 +14,7 @@ type Props = { card: AppDigitalCardQr; draft?: boolean; fit?: boolean; exportRef
 
 /* ------------------ BREAK ------------------ */
 
-// Displays the server's Standard portrait directly and shares the same cached PNG without a WebView.
+// Displays the locally stored Standard portrait and shares the same PNG without a WebView.
 export default function DigitalCardQrPreview({ card, draft = false, fit = false, exportRef, onReadyChange }: Props) {
   const [image, setImage] = useState<{ uri: string; key: string } | null>(null);
   const [loaded, setLoaded] = useState<string | null>(null);
@@ -53,7 +53,7 @@ export default function DigitalCardQrPreview({ card, draft = false, fit = false,
   // Enables sharing only after the current local PNG has been displayed successfully.
   useEffect(() => { onReadyChange?.(Boolean(ready)); }, [ready, onReadyChange]);
 
-  // Reads the endpoint's original PNG bytes instead of capturing or generating an image on the device.
+  // Reads the stored PNG bytes so sharing reuses the same file as the preview.
   useImperativeHandle(exportRef, () => ({
     exportPng: async (): Promise<string> => {
       if (!ready || !imageFile.current) throw new Error("The QR card is not ready yet.");
