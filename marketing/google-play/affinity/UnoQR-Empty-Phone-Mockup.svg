@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="500" height="1024" viewBox="0 0 500 1024"><defs></defs><g id="Reusable empty phone" transform="translate(28 30) rotate(0 215.0 466.0) scale(1.0)">
+ <rect id="Orange sharp shadow - optional" x="12" y="14" width="430" height="932" rx="56" fill="#FF5528"/>
+ <rect id="Black rounded frame" width="430" height="932" rx="56" fill="#191414"/>
+ <rect id="White display" x="9" y="9" width="412" height="914" rx="47" fill="#FFFFFF"/>
+ <rect id="SCREENSHOT AREA - place your screenshot here" x="10" y="86" width="410" height="790" fill="#FAF7F2"/>
+ <g id="Status bar">
+ <text id="Editable time" x="40" y="54" font-family="Bricolage Grotesque" font-size="19" font-weight="700" fill="#191414">9:41</text>
+ <rect id="Black camera pill" x="155" y="26" width="120" height="33" rx="16.5" fill="#000000"/>
+ <g id="Signal bars" fill="#191414"><rect x="305" y="46" width="4" height="6" rx="1"/><rect x="311" y="42" width="4" height="10" rx="1"/><rect x="317" y="38" width="4" height="14" rx="1"/><rect x="323" y="34" width="4" height="18" rx="1"/></g>
+ <g id="Wi-Fi" fill="none" stroke="#191414" stroke-width="2.5" stroke-linecap="round"><path d="M337 39 Q346 31 355 39"/><path d="M340 43 Q346 37.5 352 43"/><path d="M343.5 47 Q346 44.5 348.5 47"/></g><circle cx="346" cy="50" r="1.7" fill="#191414"/>
+ <g id="Battery"><rect x="366" y="35" width="28" height="16" rx="4" fill="none" stroke="#191414" stroke-width="1.5"/><rect x="369" y="38" width="22" height="10" rx="2" fill="#191414"/><rect x="396" y="40" width="2" height="6" rx="1" fill="#191414"/></g>
+ </g>
+ <rect id="Home indicator" x="155" y="899" width="120" height="5" rx="2.5" fill="#191414"/>
+ </g></svg>

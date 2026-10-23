@@ -187,6 +187,6 @@ const styles = StyleSheet.create({
   selectedBadge: { position: "absolute", top: spacing.xs, right: spacing.xs, padding: spacing.xxs, borderRadius: radii.pill, backgroundColor: colors.secondary.main },
   footer: { gap: spacing.xs },
   errorText: { fontFamily: fontFamilies.primaryRegular, fontSize: fontSizes.body2, color: colors.error.main, textAlign: "center" },
-  saveButton: { minHeight: 50, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.xs, backgroundColor: colors.secondary.main, borderRadius: radii.lg },
+  saveButton: { minHeight: 50, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.xs, backgroundColor: colors.primary.main, borderRadius: radii.lg },
   saveText: { color: colors.white.main, fontFamily: fontFamilies.primarySemiBold, fontSize: fontSizes.button }
 });

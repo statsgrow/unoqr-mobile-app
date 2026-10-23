@@ -23,7 +23,7 @@ type DigitalCardFormProps = {
   details: DigitalCardDetails;
   onDraftChange: (values: DigitalCardDetails) => void;
   onSave: (details: DigitalCardDetails) => Promise<DigitalCardDetails>;
-  onSavePhoto: (photo: FileInputValue, field: CardPhotoField) => Promise<FileInputValue | null>;
+  onSavePhoto: (photo: FileInputValue | null, field: CardPhotoField) => Promise<FileInputValue | null>;
 };
 type CardPhotoField = "profilePicture" | "featurePhoto";
 type CardFieldName = FieldPathByValue<DigitalCardDetails, string>;
@@ -97,9 +97,15 @@ export default function DigitalCardForm({ refreshing, onRefresh, details, onDraf
     return activePhoto;
   };//func ends
 
-  // Defers removal of the selected photo until the card is saved without that reference.
-  async function handleRemovePhoto(file: FileInputValue): Promise<void> {
+  // Clears the saved card reference before removing its old upload, preserving other RHF drafts.
+  async function handleRemovePhoto(file: FileInputValue, field: CardPhotoField): Promise<void> {
+    await onSavePhoto(null, field);
     rememberRetiredPhoto(file);
+    rememberRetiredPhoto(savedPhotos.current[field]);
+    savedPhotos.current[field] = null;
+    form.resetField(field, { defaultValue: null });
+    const values = form.getValues();
+    await cleanupRetiredPhotos([values.profilePicture, values.featurePhoto, ...Object.values(savedPhotos.current)]);
   };//func ends
 
   // Deletes retired uploads only after API and SQLite saving succeeds, retaining failures for retry.
@@ -177,7 +183,7 @@ export default function DigitalCardForm({ refreshing, onRefresh, details, onDraf
           placeholder="Add feature photo"
           ratio="2.7:1"
           onUpload={(file) => handleUploadPhoto(file, "featurePhoto")}
-          onRemove={handleRemovePhoto}
+          onRemove={(file) => handleRemovePhoto(file, "featurePhoto")}
           disabled={isSubmitting || cleaningPhotos}
         />
       </View>
@@ -192,7 +198,7 @@ export default function DigitalCardForm({ refreshing, onRefresh, details, onDraf
           filename="profile-photo"
           placeholder="Add photo"
           onUpload={(file) => handleUploadPhoto(file, "profilePicture")}
-          onRemove={handleRemovePhoto}
+          onRemove={(file) => handleRemovePhoto(file, "profilePicture")}
           disabled={isSubmitting || cleaningPhotos}
         />
         <CardField form={form} name="fullname" label="Full name *" placeholder="Your full name" required disabled={isSubmitting} />
@@ -344,6 +350,6 @@ const styles = StyleSheet.create({
   fieldActionButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   disabledButton: { opacity: 0.65 },
   formFooter: { gap: spacing.xs },
-  saveButton: { minHeight: 50, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.xs, borderRadius: radii.lg, backgroundColor: colors.secondary.main },
+  saveButton: { minHeight: 50, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.xs, borderRadius: radii.lg, backgroundColor: colors.primary.main },
   saveText: { color: colors.white.main, fontFamily: fontFamilies.primarySemiBold, fontSize: fontSizes.button }
 });

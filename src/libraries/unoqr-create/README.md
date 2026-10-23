@@ -36,7 +36,7 @@ Mobile also supports hidden branding and uploaded center logos, using high error
 | Dot, eye, frame or wordmark geometry | Matching files under `src/libraries/unoqr-create/` in **unoqr-frontend** and **unoqr-mobile-app** |
 | Dynamic colors, defaults, matrix behavior or supported shape names | `index.ts`, `types.ts` and affected shape files in both projects; retain intentional platform-specific options |
 | Native uploaded logo or file export | Mobile `logo/` and its native helpers; frontend needs no added files unless its product flow starts using that feature |
-| QR-card composition or raster conversion | Frontend `helpers/digital_cards/qrcards/`; mobile uses the image endpoint and should be checked for API compatibility |
+| QR-card composition or raster conversion | Mobile previews use `libraries/qrcards-layouts/standard/` and this QR generator locally. Frontend `helpers/digital_cards/qrcards/` still owns saved image/export generation; check both for shared design changes |
 
 **unoqr-app** also has QR generation under `src/helpers/content/qrcodes/qrPreview/` (including `QrEyes.ts` and `QrFrames.tsx`). Review that implementation when changing QR styling or the stored design contract. It has not been reorganized into this library directory; do not add files there merely because this project's library changes. **unoqr-api** and **unoqr-page-blocks** do not use these local generator folders.
 

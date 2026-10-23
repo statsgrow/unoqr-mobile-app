@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Platform, Pressable, StyleSheet, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 import { usePathname, type Href } from "expo-router";
 import { ContactRound, Grip, History, House, type LucideIcon } from "lucide-react-native";
 import { Text } from "react-native-paper";
@@ -21,6 +21,8 @@ type StandardNavItem = {
 };
 
 /* ------------------ BREAK ------------------ */
+
+const FOOTER_BOTTOM_GAP = 10;
 
 const homeItem: StandardNavItem = {
   label: "Home",
@@ -56,9 +58,8 @@ const moreItem: StandardNavItem = {
 export function BottomNav({ footerAction, hideMenu = false }: BottomNavProps) {
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
-  // Adds a small action gap above Android gesture insets without enlarging three-button bars.
-  const gestureGap = Platform.OS === "android" && insets.bottom > 0 && insets.bottom <= spacing.lg ? spacing.xs : 0;
-  const actionBottomPadding = Math.max(spacing.md, insets.bottom + gestureGap);
+  // Adds visible spacing above the safe area for the layout's fixed footer actions.
+  const actionBottomPadding = Math.max(spacing.md, insets.bottom) + FOOTER_BOTTOM_GAP;
 
   //Default Return
   return (
@@ -125,7 +126,7 @@ const styles = StyleSheet.create({
   root: {
     width: "100%",
     paddingTop: spacing.xs,
-    paddingBottom: spacing.xxs,
+    paddingBottom: FOOTER_BOTTOM_GAP,
     overflow: "visible",
     borderTopWidth: 1,
     borderTopColor: colors.border.main,

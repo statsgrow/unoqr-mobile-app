@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Crop } from "lucide-react-native";
-import { PixelRatio, Platform, StyleSheet, Text, useWindowDimensions, View, type GestureResponderEvent } from "react-native";
+import { Image, PixelRatio, Platform, StyleSheet, Text, useWindowDimensions, View, type GestureResponderEvent } from "react-native";
 import Svg, { Image as SvgImage, Line, Path, Rect } from "react-native-svg";
 import { File, Paths } from "expo-file-system";
 import { manipulateAsync, SaveFormat } from "expo-image-manipulator";
@@ -54,9 +54,10 @@ export default function PxPhotoEditor({ open, setOpen, file, ratio = 1, bgcolor 
   const [saving, setSaving] = useState(false);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const previewSvgRef = useRef<Svg | null>(null);
   const exportSvgRef = useRef<Svg | null>(null);
-  const exportResolve = useRef<((value: string) => void) | null>(null);
-  const [exportSize, setExportSize] = useState<{ width: number; height: number } | null>(null);
+  const cancelExport = useRef<(() => void) | null>(null);
+  const [exportSize, setExportSize] = useState<{ width: number; height: number; onLoad: () => void } | null>(null);
   const [visibleModal, setVisibleModal] = useState<PhotoEditorModal>("editor");
   const cropDraft = useRef<PhotoTransform>(INITIAL_TRANSFORM);
   const isCropping = visibleModal === "crop";
@@ -90,7 +91,7 @@ export default function PxPhotoEditor({ open, setOpen, file, ratio = 1, bgcolor 
     }).catch((cause: unknown) => {
       if (active) setError(GetError({ error: cause, message: "This photo could not be opened. Please choose another photo." }).message);
     }).finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
+    return () => { active = false; cancelExport.current?.(); };
   }, [open, file, ratio, bgcolor]);
 
   // Switches editor views in one native modal so the underlying page never appears between them.
@@ -113,12 +114,47 @@ export default function PxPhotoEditor({ open, setOpen, file, ratio = 1, bgcolor 
     let output: File | null = null;
     try {
       const { width, height } = getPhotoExportSize(frameWidth / (baseScale * transform.scale), frameHeight / (baseScale * transform.scale));
-      // iOS exports the SVG's actual bounds at screen density; render matching bounds first.
-      const density = Platform.OS === "ios" ? PixelRatio.get() : 1;
       const base64 = await new Promise<string>((resolve, reject) => {
-        const timeout = setTimeout(() => { exportResolve.current = null; reject(new Error("Your photo could not be prepared. Please try again.")); }, 15000);
-        exportResolve.current = (value) => { clearTimeout(timeout); resolve(value); };
-        setExportSize({ width: width / density, height: height / density });
+        let settled = false;
+        // Keeps native callbacks bound to this attempt so an expired export cannot finish a retry.
+        function finish(value?: string, cause?: Error): void {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timeout);
+          if (cancelExport.current === cancel) cancelExport.current = null;
+          if (cause) reject(cause);
+          else if (value) resolve(value);
+          else reject(new Error("Your photo could not be prepared. Please try again."));
+        };//func ends
+        // Cancels preparation when the source changes or the editor closes before export completes.
+        function cancel(): void {
+          finish(undefined, new Error("Photo preparation was cancelled. Please try again."));
+        };//func ends
+        const timeout = setTimeout(() => finish(), 15000);
+        cancelExport.current = cancel;
+        try {
+          if (Platform.OS === "android") {
+            // Cached Android SVG photos omit onLoad; export the visible preview after native Image loads.
+            if (!previewSvgRef.current) throw new Error("The photo preview is not ready. Please try again.");
+            previewSvgRef.current.toDataURL((value) => finish(value), { width, height });
+          } else {
+            // iOS exports at screen density; defer capture until the image's native assignment can finish.
+            const density = Platform.OS === "ios" ? PixelRatio.get() : 1;
+            setExportSize({ width: width / density, height: height / density, onLoad: () => {
+              requestAnimationFrame(() => {
+                if (settled) return;
+                try {
+                  if (!exportSvgRef.current) throw new Error("The photo preview is not ready. Please try again.");
+                  exportSvgRef.current.toDataURL((value) => finish(value));
+                } catch (cause: unknown) {
+                  finish(undefined, cause instanceof Error ? cause : new Error("Your photo could not be prepared. Please try again."));
+                };//try-catch ends
+              });
+            } });
+          };//if ends
+        } catch (cause: unknown) {
+          finish(undefined, cause instanceof Error ? cause : new Error("Your photo could not be prepared. Please try again."));
+        };//try-catch ends
       });
       if (!base64) throw new Error("Your photo could not be prepared. Please try again.");
       output = new File(Paths.cache, `edited-photo-${Date.now()}.png`);
@@ -132,7 +168,7 @@ export default function PxPhotoEditor({ open, setOpen, file, ratio = 1, bgcolor 
       applying.current = false;
       setSaving(false);
       setExportSize(null);
-      exportResolve.current = null;
+      cancelExport.current = null;
     };//try-catch ends
   };//func ends
 
@@ -148,11 +184,16 @@ export default function PxPhotoEditor({ open, setOpen, file, ratio = 1, bgcolor 
       background={background} frameWidth={frameWidth} frameHeight={frameHeight} /> : <View style={styles.content} pointerEvents={saving ? "none" : "auto"}>
       <View style={[styles.cropWindow, { width: frameWidth, height: frameHeight, backgroundColor: background }]}
         accessibilityLabel={`Photo preview, ratio ${ratio}`}>
-        {image ? <Svg width={frameWidth} height={frameHeight} viewBox={`0 0 ${frameWidth} ${frameHeight}`} pointerEvents="none">
+        {image ? <Svg ref={previewSvgRef} width={frameWidth} height={frameHeight} viewBox={`0 0 ${frameWidth} ${frameHeight}`} pointerEvents="none">
           <Rect width={frameWidth} height={frameHeight} fill={background} />
           <SvgImage href={image.uri} x={(frameWidth - imageWidth) / 2 + transform.x} y={(frameHeight - imageHeight) / 2 + transform.y}
-            width={imageWidth} height={imageHeight} preserveAspectRatio="none" onLoad={() => setReady(true)} />
+            width={imageWidth} height={imageHeight} preserveAspectRatio="none" onLoad={() => { if (Platform.OS !== "android") setReady(true); }} />
         </Svg> : null}
+        {/* Native Image reports Android cache hits too, keeping Apply available when the same photo reopens. */}
+        {image && Platform.OS === "android" ? <Image source={{ uri: image.uri }} resizeMode="stretch" accessible={false}
+          style={[styles.androidPreview, { left: (frameWidth - imageWidth) / 2 + transform.x, top: (frameHeight - imageHeight) / 2 + transform.y, width: imageWidth, height: imageHeight }]}
+          onLoad={() => setReady(true)}
+          onError={() => setError("This photo could not be opened. Please choose another photo.")} /> : null}
         {loading ? <View style={styles.loading}><PxCircularProgress color={colors.primary.main} size={28} /></View> : null}
       </View>
       <PxButton mode="outlined" onPress={() => changeModal("crop")} disabled={loading || !ready || saving}
@@ -164,7 +205,7 @@ export default function PxPhotoEditor({ open, setOpen, file, ratio = 1, bgcolor 
           <Rect width={frameWidth} height={frameHeight} fill={background} />
           <SvgImage href={image.uri} x={(frameWidth - imageWidth) / 2 + transform.x} y={(frameHeight - imageHeight) / 2 + transform.y}
             width={imageWidth} height={imageHeight} preserveAspectRatio="none"
-            onLoad={() => exportSvgRef.current?.toDataURL((value) => exportResolve.current?.(value))} />
+            onLoad={exportSize.onLoad} />
         </Svg>
       </View> : null}
       {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
@@ -322,6 +363,7 @@ const styles = StyleSheet.create({
   content: { paddingHorizontal: spacing.lg, gap: spacing.md },
   hint: { color: colors.mute.main, fontFamily: fontFamilies.primaryRegular, fontSize: fontSizes.body2 },
   cropWindow: { alignSelf: "center", overflow: "hidden", borderWidth: 1, borderColor: colors.border.main, borderRadius: radii.md },
+  androidPreview: { position: "absolute" },
   loading: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, alignItems: "center", justifyContent: "center" },
   error: { color: colors.error.main, fontFamily: fontFamilies.primaryRegular, fontSize: fontSizes.body2 }
 });

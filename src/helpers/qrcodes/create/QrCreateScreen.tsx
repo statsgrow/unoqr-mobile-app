@@ -327,7 +327,8 @@ export default function CreateQrScreen({ qrId, digitalCard }: CreateQrScreenProp
   // Applies a form change and regenerates its preview immediately.
   function updateQrSetting(change: () => void) {
     change();
-    updateQrPreview();
+    // The digital card preview renders the current RHF design locally through its own SVG layout.
+    if (!digitalCard) updateQrPreview();
   };//func ends
 
   // Saves pending edits before returning to the previous page.
@@ -547,7 +548,7 @@ export default function CreateQrScreen({ qrId, digitalCard }: CreateQrScreenProp
           {cardSaveError ? <Text accessibilityRole="alert" style={styles.cardSaveError}>{cardSaveError}</Text> : null}
           {isDirty || savingCardQr ? <Pressable accessibilityRole="button" disabled={savingCardQr || digitalCard.refreshing} onPress={() => void form.handleSubmit(handleSaveCardQr)()} style={styles.cardSaveButton}>
             {savingCardQr ? <PxCircularProgress color={colors.white.main} /> : null}
-            <Text style={styles.downloadText}>{savingCardQr ? "Saving…" : "Save Now"}</Text>
+            <Text style={styles.downloadText}>{savingCardQr ? "Saving…" : "Save"}</Text>
           </Pressable> : null}
         </> : <Pressable
           accessibilityRole="button"
@@ -659,6 +660,7 @@ export default function CreateQrScreen({ qrId, digitalCard }: CreateQrScreenProp
       </PxModal>
 
       <EyeDialog
+        applyOnChange={Boolean(digitalCard)}
         visible={isEyeDialogOpen}
         onClose={() => setIsEyeDialogOpen(false)}
         eyeStyle={eye.type}
@@ -668,6 +670,7 @@ export default function CreateQrScreen({ qrId, digitalCard }: CreateQrScreenProp
       />
 
       <DotDialog
+        applyOnChange={Boolean(digitalCard)}
         visible={isDotDialogOpen}
         onClose={() => setIsDotDialogOpen(false)}
         dotStyle={dot.type}
@@ -677,6 +680,7 @@ export default function CreateQrScreen({ qrId, digitalCard }: CreateQrScreenProp
       />
 
       <FrameDialog
+        applyOnChange={Boolean(digitalCard)}
         visible={isFrameDialogOpen}
         onClose={() => setIsFrameDialogOpen(false)}
         frameStyle={frame.type}
@@ -686,6 +690,7 @@ export default function CreateQrScreen({ qrId, digitalCard }: CreateQrScreenProp
       />
 
       {digitalCard ? <ColorDialog
+        applyOnChange
         visible={isCardColorDialogOpen}
         onClose={() => setIsCardColorDialogOpen(false)}
         foregroundLabel="Primary Color"
@@ -702,6 +707,7 @@ export default function CreateQrScreen({ qrId, digitalCard }: CreateQrScreenProp
       /> : null}
 
       <ColorDialog
+        applyOnChange={Boolean(digitalCard)}
         name={digitalCard ? "QR Color" : "Color"}
         visible={isColorDialogOpen}
         onClose={() => setIsColorDialogOpen(false)}
@@ -872,7 +878,7 @@ const styles = StyleSheet.create({
   cardToolsContent: { paddingHorizontal: spacing.lg, paddingBottom: spacing.md },
   cardSettingsText: { color: colors.primary.main, fontFamily: fontFamilies.primarySemiBold, fontSize: fontSizes.button },
   cardSettingsButton: { width: 140, height: 52, flexDirection: "row", gap: spacing.xs, alignItems: "center", justifyContent: "center", borderRadius: radii.pill, borderWidth: 1, borderColor: colors.primary.main, backgroundColor: colors.white.main, elevation: 3, shadowColor: colors.primary.main, shadowOpacity: 0.12, shadowRadius: 6, shadowOffset: { width: 0, height: 2 } },
-  cardSaveButton: { minHeight: 50, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.xs, borderRadius: radii.lg, backgroundColor: colors.secondary.main },
+  cardSaveButton: { minHeight: 50, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.xs, borderRadius: radii.lg, backgroundColor: colors.primary.main },
   downloadButton: {
     minHeight: 50,
     alignItems: "center",

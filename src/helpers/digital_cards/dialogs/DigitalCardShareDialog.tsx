@@ -4,6 +4,7 @@ import { File, Paths } from "expo-file-system";
 import { Platform, Pressable, Share, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { CheckCircle2, ChevronRight, Copy, Download, QrCode, Share2 } from "lucide-react-native";
 
+import { PxButton } from "@/components/elements/PxButton";
 import { PxCircularProgress } from "@/components/elements/PxCircularProgress";
 import { PxModal } from "@/components/elements/PxModal";
 import { fileDownload } from "@/components/files/FileDownload";
@@ -128,9 +129,7 @@ export default function DigitalCardShareDialog({ card, publicLink, open, setOpen
         onDismiss={() => { dismissResolve.current?.(); dismissResolve.current = null; }}
         footerAction={activeTab === "qr" ? (
           <View style={styles.actions}>
-            <Pressable accessibilityRole="button" disabled={!ready} onPress={() => void openQrOptions()} style={[styles.action, !ready && styles.disabled]}>
-              <Text style={styles.actionText}>Share QR Card</Text>
-            </Pressable>
+            <PxButton mode="contained" color="primary" fullWidth disabled={!ready} onPress={() => void openQrOptions()}>Share QR Card</PxButton>
           </View>
         ) : (
           <View>
@@ -178,10 +177,7 @@ export default function DigitalCardShareDialog({ card, publicLink, open, setOpen
               </Pressable>
             ) : (
               <>
-                <Pressable accessibilityRole="button" disabled={busy} onPress={() => void handleShare("share-image")} style={[styles.action, busy && styles.disabled]}>
-                  <Share2 size={20} strokeWidth={1.25} color={colors.white.main} />
-                  <Text style={styles.actionText}>Share Image</Text>
-                </Pressable>
+                <PxButton mode="contained" color="primary" fullWidth disabled={busy} onPress={() => void handleShare("share-image")} icon={({ color, size }) => <Share2 size={size} strokeWidth={1.25} color={color} />}>Share Image</PxButton>
                 <Pressable accessibilityRole="button" disabled={busy} onPress={() => void handleShare("save-image")} style={[styles.secondaryAction, busy && styles.disabled]}>
                   <Download size={20} strokeWidth={1.25} color={colors.primary.main} />
                   <Text style={styles.secondaryText}>Download Image</Text>

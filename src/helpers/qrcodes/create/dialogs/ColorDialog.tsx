@@ -8,6 +8,7 @@ import { colors, spacing } from "@/theme/tokens";
 
 type ColorDialogProps = {
   visible: boolean;
+  applyOnChange?: boolean;
   name?: string;
   foregroundLabel?: string;
   foregroundHint?: string;
@@ -30,18 +31,20 @@ const BACKGROUND_COLORS = [
 /* ------------------ BREAK ------------------ */
 
 // Edits the shared QR foreground fallback and the QR background color.
-export default function ColorDialog({ visible, onClose, foregroundColor, backgroundColor, onChangeForeground, onChangeBackground, name = "Color", foregroundLabel = "Foreground", foregroundHint = "Used by dots, eyes, and frames unless they have their own color.", backgroundHint = "Choose a light background for reliable scanning.", onReset }: ColorDialogProps) {
+export default function ColorDialog({ visible, onClose, foregroundColor, backgroundColor, onChangeForeground, onChangeBackground, name = "Color", foregroundLabel = "Foreground", foregroundHint = "Used by dots, eyes, and frames unless they have their own color.", backgroundHint = "Choose a light background for reliable scanning.", onReset, applyOnChange = false }: ColorDialogProps) {
   //Default Return
   return (
     <PxModal visible={visible} onRequestClose={onClose} name={name} height="auto" maxHeight={820} keyboardAvoiding>
       <View style={styles.content}>
         <QrColorPicker
+          applyOnChange={applyOnChange}
           name={foregroundLabel}
           color={foregroundColor}
           onChangeColor={onChangeForeground}
           hint={foregroundHint}
         />
         <QrColorPicker
+          applyOnChange={applyOnChange}
           name="Background"
           color={backgroundColor}
           onChangeColor={onChangeBackground}

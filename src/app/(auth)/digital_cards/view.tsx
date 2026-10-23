@@ -5,6 +5,7 @@ import { ChartNoAxesCombined, CheckCircle2, QrCode, Share2, UserRound, type Luci
 import { Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { PxButton } from "@/components/elements/PxButton";
 import { PxCircularProgress } from "@/components/elements/PxCircularProgress";
 import { PxModal } from "@/components/elements/PxModal";
 import { fileDownload } from "@/components/files/FileDownload";
@@ -169,7 +170,7 @@ export default function DigitalCardViewScreen({ embedded = false, savedCard, onP
     {actionError ? <Text accessibilityRole="alert" style={[styles.error, styles.feedback]}>{actionError}</Text> : null}
     {card ? <>
       {side === "profile" ? <CardFooter primaryColor={card.primaryColor} allowSaveContact={card.cardSettings.allowSaveContact} saving={savingContact} onSaveContact={() => void saveContact()} /> : side === "qr" ? <View style={styles.qrFooter}>
-        <Pressable accessibilityRole="button" disabled={refreshing || publishing} onPress={() => setShareOpen(true)} style={styles.retry}><Text style={styles.retryText}>Share QR Card</Text></Pressable>
+        <PxButton mode="contained" color="primary" fullWidth disabled={refreshing || publishing} onPress={() => setShareOpen(true)}>Share QR Card</PxButton>
       </View> : null}
       <DigitalCardShareDialog card={card} open={shareOpen} setOpen={setShareOpen} onPublish={handlePublish} initialTab={side === "qr" ? "qr" : "social"} />
     </> : null}

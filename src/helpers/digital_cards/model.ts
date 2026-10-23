@@ -48,7 +48,7 @@ export const DIGITAL_CARD_DEFAULTS: DigitalCardDetails = {
 
 export const DIGITAL_CARD_SETTINGS_DEFAULTS: DigitalCardSettingsValues = {
   name: "My Card",
-  status: "unpublished",
+  status: "published",
   seoTitle: "",
   seoDescription: "",
   allowIndexing: false,

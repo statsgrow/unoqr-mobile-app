@@ -18,6 +18,7 @@ import { selectedFirst } from "./selectedFirst";
 
 type EyeDialogProps = {
   visible: boolean;
+  applyOnChange?: boolean;
   onClose: () => void;
   eyeStyle: EyeStyle;
   eyeColor: string;
@@ -44,7 +45,7 @@ const EYE_OPTIONS: EyeOption[] = [
 /* ------------------ BREAK ------------------ */
 
 // Lets users choose a finder eye shape and color for the QR preview and exports.
-export default function EyeDialog({ visible, onClose, eyeStyle, eyeColor, onChangeStyle, onChangeColor }: EyeDialogProps) {
+export default function EyeDialog({ visible, onClose, eyeStyle, eyeColor, onChangeStyle, onChangeColor, applyOnChange = false }: EyeDialogProps) {
   //Default Return
   return (
     <PxModal visible={visible} onRequestClose={onClose} name="Eye" height="auto" maxHeight={760} keyboardAvoiding>
@@ -66,7 +67,7 @@ export default function EyeDialog({ visible, onClose, eyeStyle, eyeColor, onChan
           ))}
         </ScrollView>
 
-        <QrColorPicker name="Eye" color={eyeColor} onChangeColor={onChangeColor} onReset={() => onChangeColor("")} />
+        <QrColorPicker name="Eye" color={eyeColor} onChangeColor={onChangeColor} onReset={() => onChangeColor("")} applyOnChange={applyOnChange} />
       </View>
     </PxModal>
   );//return ends

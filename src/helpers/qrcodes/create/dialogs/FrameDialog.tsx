@@ -12,6 +12,7 @@ import { selectedFirst } from "./selectedFirst";
 
 type FrameDialogProps = {
   visible: boolean;
+  applyOnChange?: boolean;
   onClose: () => void;
   frameStyle: FrameStyle;
   frameColor: string;
@@ -36,7 +37,7 @@ const FRAME_OPTIONS: FrameOption[] = [
 /* ------------------ BREAK ------------------ */
 
 // Lets users choose a compact QR frame shape and color.
-export default function FrameDialog({ visible, onClose, frameStyle, frameColor, onChangeStyle, onChangeColor }: FrameDialogProps) {
+export default function FrameDialog({ visible, onClose, frameStyle, frameColor, onChangeStyle, onChangeColor, applyOnChange = false }: FrameDialogProps) {
   //Default Return
   return (
     <PxModal visible={visible} onRequestClose={onClose} name="Frame" height="auto" maxHeight={760} keyboardAvoiding>
@@ -60,6 +61,7 @@ export default function FrameDialog({ visible, onClose, frameStyle, frameColor, 
 
         {frameStyle !== "none" ? (
           <QrColorPicker
+            applyOnChange={applyOnChange}
             name="Frame"
             color={frameColor}
             onChangeColor={onChangeColor}

@@ -96,10 +96,8 @@ export function PxModal({
 	const hasFooterAction = footerAction != null;
 	const hasFixedHeight = height === "full" || typeof height === "number";
 	const showSheetSurface = position === "bottom" && (showHandle || hasHeader || hasFooterAction);
-	// Android reserves its navigation area; keep button spacing inside the sheet.
-	const bottomPadding = Platform.OS === "android"
-		? Math.max(insets.bottom, spacing.md)
-		: Math.max(insets.bottom + spacing.xs, 20);
+	// Keeps a visible content gap above the safe area, including sheets with fixed footer actions.
+	const bottomPadding = insets.bottom + spacing.lg;
 	const maxSheetHeight = Math.min(maxHeight ?? (typeof height === "number" ? height : 520), windowHeight - insets.top - spacing.md);
 	const maxScrollableHeight = height === "full"
 		? windowHeight - insets.top - bottomPadding - (hasHeader ? 90 : 34)

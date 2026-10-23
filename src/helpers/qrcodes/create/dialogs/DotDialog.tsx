@@ -18,6 +18,7 @@ import { selectedFirst } from "./selectedFirst";
 
 type DotDialogProps = {
   visible: boolean;
+  applyOnChange?: boolean;
   onClose: () => void;
   dotStyle: DotStyle;
   dotColor: string;
@@ -44,7 +45,7 @@ const DOT_OPTIONS: DotOption[] = [
 /* ------------------ BREAK ------------------ */
 
 // Lets users choose a QR data module shape and color without changing the eyes.
-export default function DotDialog({ visible, onClose, dotStyle, dotColor, onChangeStyle, onChangeColor }: DotDialogProps) {
+export default function DotDialog({ visible, onClose, dotStyle, dotColor, onChangeStyle, onChangeColor, applyOnChange = false }: DotDialogProps) {
   //Default Return
   return (
     <PxModal visible={visible} onRequestClose={onClose} name="Dot" height="auto" maxHeight={760} keyboardAvoiding>
@@ -66,7 +67,7 @@ export default function DotDialog({ visible, onClose, dotStyle, dotColor, onChan
           ))}
         </ScrollView>
 
-        <QrColorPicker name="Dot" color={dotColor} onChangeColor={onChangeColor} onReset={() => onChangeColor("")} />
+        <QrColorPicker name="Dot" color={dotColor} onChangeColor={onChangeColor} onReset={() => onChangeColor("")} applyOnChange={applyOnChange} />
       </View>
     </PxModal>
   );//return ends

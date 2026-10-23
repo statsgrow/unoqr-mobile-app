@@ -313,6 +313,8 @@ async function requestPendingUrlCrawl(scan: InsertScanInput): Promise<void> {
       sync_status: "synced"
     });
   } catch (error: unknown) {
+    // Keep deferred crawls pending without recording installation verification as a scan failure.
+    if (isInstallVerificationPending(error)) return;
     await appendScanError(scan.id, getErrorMessage(error));
     console.error(`Unable to crawl pending URL scan ${scan.id}:`, error);
   };//try-catch ends

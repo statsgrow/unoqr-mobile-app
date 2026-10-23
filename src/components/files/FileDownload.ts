@@ -43,9 +43,18 @@ export async function fileDownload(input: FileDownloadInput): Promise<Downloaded
   try {
     const directory = await Directory.pickDirectoryAsync();
     const source = new File(input.uri);
-    const destination = new File(directory, input.fileName);
+    const extensionIndex = input.fileName.lastIndexOf(".");
+    const name = extensionIndex > 0 ? input.fileName.slice(0, extensionIndex) : input.fileName;
+    const extension = extensionIndex > 0 ? input.fileName.slice(extensionIndex) : "";
+    let fileName = input.fileName;
+    let destination = new File(directory, fileName);
+    let copyNumber = 1;
+    while (destination.exists) {
+      fileName = `${name} (${copyNumber++})${extension}`;
+      destination = new File(directory, fileName);
+    };//while ends
     await source.copy(destination);
-    return { ...input, savedUri: destination.uri, location: "Files" };
+    return { ...input, fileName, savedUri: destination.uri, location: "Files" };
   } catch (error: unknown) {
     if (isPickerCancellation(error)) return null;
     throw error;

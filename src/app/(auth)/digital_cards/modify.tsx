@@ -30,7 +30,7 @@ type DigitalCardStep = "form" | "layout" | "qr" | "settings";
 // Opens the saved card in Preview and keeps its editor sections mounted beneath the header.
 export default function ModifyDigitalCardScreen() {
   const user = useUser();
-  const params = useLocalSearchParams<{ mode?: string }>();
+  const params = useLocalSearchParams<{ mode?: string; uid?: string }>();
   const initialScreen: DigitalCardScreen = params.mode === "edit" ? "edit" : "preview";
   const [screen, setScreen] = useState<DigitalCardScreen>(initialScreen);
   const [activeStep, setActiveStep] = useState<DigitalCardStep>("form");
@@ -49,7 +49,8 @@ export default function ModifyDigitalCardScreen() {
     setRefreshing(true);
     const loadCard = async (): Promise<void> => {
       try {
-        const remote = await getDigitalCard();
+        const remote = await getDigitalCard({ uid: params.uid });
+        if (params.uid && !remote) throw new Error("This digital card is not available in your account.");
         const defaults = createDigitalCard({ userId: user.id, defaults: QR_DEFAULTS, uid: remote?.uid });
         const loaded = remote ? restoreDigitalCard(remote, defaults) : defaults;
         if (isMounted) {
@@ -67,7 +68,7 @@ export default function ModifyDigitalCardScreen() {
     };//func ends
     void loadCard();
     return () => { isMounted = false; };//return ends
-  }, [loadKey, initialScreen, user.id]);
+  }, [loadKey, initialScreen, user.id, params.uid]);
 
   // Saves only the selected section and commits API-confirmed values without replacing other RHF drafts.
   const persistCard = useCallback(async (changes: Partial<AppDigitalCardQr>, saveSection: (uid: string) => Promise<RemoteCard>): Promise<AppDigitalCardQr> => {
@@ -127,15 +128,16 @@ export default function ModifyDigitalCardScreen() {
     return saved.details;
   }, [persistCard]);
 
-  // Saves a replacement photo independently while preserving every other unsaved Details field.
-  const handleSavePhoto = useCallback(async (photo: FileInputValue, field: "profilePicture" | "featurePhoto"): Promise<FileInputValue | null> => {
+  // Saves or clears one photo independently while preserving other unsaved Details fields.
+  const handleSavePhoto = useCallback(async (photo: FileInputValue | null, field: "profilePicture" | "featurePhoto"): Promise<FileInputValue | null> => {
     const current = latestCard.current;
     if (!current?.id) return null;
-    if (!photo.url) throw new Error("Your uploaded photo URL is missing. Please try again.");
-    const remote = await updateDigitalCardFile(current.uid, field === "featurePhoto" ? "feature_photo_url" : "photo_url", photo.url);
+    if (photo && !photo.url) throw new Error("Your uploaded photo URL is missing. Please try again.");
+    const remote = await updateDigitalCardFile(current.uid, field === "featurePhoto" ? "feature_photo_url" : "photo_url", photo?.url ?? null);
     const saved = restoreDigitalCard(remote, current);
-    const confirmed = saved.details[field] ? { ...photo, ...saved.details[field] } : null;
-    if (!confirmed) throw new Error("Your photo could not be saved.");
+    const confirmed = photo && saved.details[field] ? { ...photo, ...saved.details[field] } : null;
+    if (photo && !confirmed) throw new Error("Your photo could not be saved.");
+    if (!photo && saved.details[field]) throw new Error("Your photo could not be removed.");
     latestCard.current = saved;
     const draft = draftCard.current ?? saved;
     draftCard.current = { ...draft, details: { ...draft.details, [field]: confirmed } };
@@ -211,7 +213,7 @@ export default function ModifyDigitalCardScreen() {
               <DigitalCardLayout key={revision} refreshing={refreshing} onRefresh={handleRefresh} layout={card.layout} primaryColor={card.primaryColor} featurePhotoUrl={card.details.featurePhoto?.url} onDraftChange={handleLayoutDraft} onSave={handleSaveLayout} />
             </View>
             <View style={[styles.panel, activeStep !== "qr" && styles.hiddenPanel]}>
-              <CreateQrScreen key={revision} digitalCard={{ primaryColor: card.primaryColor, settings: card.settings, onSave: handleSaveQr, onDraftChange: handleQrDraft, refreshing, onRefresh: handleRefresh, renderPreview: () => screen === "edit" && activeStep === "qr" ? <DigitalCardQrPreview card={card} /> : null }} />
+              <CreateQrScreen key={revision} digitalCard={{ primaryColor: card.primaryColor, settings: card.settings, onSave: handleSaveQr, onDraftChange: handleQrDraft, refreshing, onRefresh: handleRefresh, renderPreview: (settings) => screen === "edit" && activeStep === "qr" ? <DigitalCardQrPreview card={{ ...card, settings }} draft /> : null }} />
             </View>
             <View style={[styles.panel, activeStep !== "settings" && styles.hiddenPanel]}>
               <DigitalCardSettings key={revision} refreshing={refreshing} onRefresh={handleRefresh} settings={card.cardSettings} cardUrl={`https://unoqr.com/dc/${card.uid}`} fullname={card.details.fullname} bio={card.details.bio} onDraftChange={handleSettingsDraft} onSave={handleSaveSettings} onDelete={card.id ? handleDeleteCard : undefined} />

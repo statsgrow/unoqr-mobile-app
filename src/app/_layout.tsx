@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { StatusBar } from "expo-status-bar";
-import { Stack } from "expo-router";
+import { Stack, useRootNavigationState } from "expo-router";
 import { AppState, Platform, StyleSheet, View, type ViewStyle } from "react-native";
 import {
   BricolageGrotesque_400Regular,
@@ -26,19 +26,28 @@ import { checkPendingQrCodes } from "@/helpers/qrcodes/QrSync";
 import { refreshAppInstallMetadata } from "@/utils/auth/AppInstall";
 import { AppVersionDialog } from "@/utils/general/AppVersion";
 import { startMetaAppEvents } from "@/utils/meta/MetaAppEvents";
+import { startNotificationNavigation } from "@/utils/general/PushNotifications";
 
 /* ------------------ BREAK ------------------ */
 
 // Renders the app shell and shared providers.
 export default function RootLayout() {
+  const navigationState = useRootNavigationState();
   const [isSessionRefreshPending, setIsSessionRefreshPending] = useState(true);
   // Loads custom fonts for consistent typography across the app.
   const [fontsLoaded] = useFonts({
     BricolageGrotesque_400Regular,
     BricolageGrotesque_500Medium,
     BricolageGrotesque_600SemiBold,
-    BricolageGrotesque_700Bold
+    BricolageGrotesque_700Bold,
+    "Schibsted Grotesk": require("@/assets/fonts/digital-cards/SchibstedGrotesk.ttf"),
   });
+
+  // Waits for session refresh and the root navigator before handling notification links.
+  useEffect(() => {
+    if (!fontsLoaded || isSessionRefreshPending || !navigationState?.key) return;
+    return startNotificationNavigation();
+  }, [fontsLoaded, isSessionRefreshPending, navigationState?.key]);
 
   // Starts Meta install and activation events after the app content is ready.
   useEffect(() => {

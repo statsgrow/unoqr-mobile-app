@@ -6,6 +6,7 @@ import type { UserType } from "@/utils/auth/UserTypes";
 import type { RemoteCard } from "@/helpers/digital_cards/api/cards";
 import type { AppDigitalCardQr } from "@/helpers/digital_cards/model";
 import { hashValue } from "@/libraries/unoqr-create/frame/dots";
+import { layoutSettings } from "@/libraries/qrcards-layouts/standard/dataJson";
 import { frontendSettings, userTokenSettings } from "@/settings";
 import { getUserTokens } from "@/utils/auth/AuthTokens";
 
@@ -23,7 +24,7 @@ type ImageDownload = { format: QrCardImageFormat; bytes: Uint8Array };
 type SavedImageRequest = { key: string; request: Promise<File> };
 const IMAGE_FORMATS: QrCardImageFormat[] = ["png", "jpg", "svg"];
 const savedRequests = new Map<string, SavedImageRequest>();
-const QR_CARD_LAYOUT_VERSION = "standard-svg-2";
+const QR_CARD_LAYOUT_VERSION = layoutSettings.version;
 const requests = new Set<AbortController>();
 let requestsPaused = false;
 
@@ -124,6 +125,7 @@ async function downloadImageFiles(source: QrCardImageSource, draft: boolean, for
     const downloads = await Promise.all(formats.map(async (format): Promise<ImageDownload> => {
       const url = frontendSettings.getFrontendUrl({ path: `/dc/${source.uid}/qrcard` });
       url.searchParams.set("type", format);
+      url.searchParams.set("layout", QR_CARD_LAYOUT_VERSION);
       url.searchParams.set("preview", "true");
       if (source.version) url.searchParams.set("v", String(source.version));
       if (draft) url.searchParams.set("design", key);

@@ -1,5 +1,7 @@
 import * as Device from "expo-device";
 import Constants, { ExecutionEnvironment } from "expo-constants";
+import { router } from "expo-router";
+import type { NotificationResponse } from "expo-notifications";
 import { Platform } from "react-native";
 
 /* ------------------ BREAK ------------------ */
@@ -19,7 +21,8 @@ export async function getExpoPushToken({ requestPermission = true }: { requestPe
     return null;
   };//if ends
 
-  const Notifications = await import("expo-notifications");
+  // Metro's synchronous module loader preserves the SDK's re-exported native methods.
+  const Notifications = require("expo-notifications") as typeof import("expo-notifications");
   if (Platform.OS === "android") {
     await Notifications.setNotificationChannelAsync("default", {
       name: "Default",
@@ -55,4 +58,46 @@ export async function getExpoPushToken({ requestPermission = true }: { requestPe
     token,
     updated_at: token ? new Date().toISOString() : null
   };
+};//export ends
+
+/* ------------------ BREAK ------------------ */
+
+// Opens card previews from notification taps, including the tap that launched a closed app.
+export function startNotificationNavigation(): () => void {
+  if (Platform.OS === "web" || Constants.executionEnvironment === ExecutionEnvironment.StoreClient) return () => undefined;
+  let disposed = false;
+  let subscription: { remove: () => void } | null = null;
+  const handled = new Set<string>();
+
+  try {
+    const Notifications = require("expo-notifications") as typeof import("expo-notifications");
+    const openNotification = (response: NotificationResponse): void => {
+      if (disposed || response.actionIdentifier !== Notifications.DEFAULT_ACTION_IDENTIFIER) return;
+      const request = response.notification.request;
+      const destination = getCardPreviewNotificationRoute(request.content.data);
+      if (!destination || handled.has(request.identifier)) return;
+      handled.add(request.identifier);
+      // Construct the known route from the card UID rather than opening an arbitrary payload URL.
+      router.push(destination);
+      void Notifications.clearLastNotificationResponseAsync().catch(() => undefined);
+    };
+    subscription = Notifications.addNotificationResponseReceivedListener(openNotification);
+    void Notifications.getLastNotificationResponseAsync().then((lastResponse) => {
+      if (lastResponse) openNotification(lastResponse);
+    }).catch((error: unknown) => console.error("Unable to read the launch notification:", error));
+  } catch (error: unknown) {
+    console.error("Unable to observe notification taps:", error);
+  };//try-catch ends
+
+  return () => { disposed = true; subscription?.remove(); };
+};//export ends
+
+/* ------------------ BREAK ------------------ */
+
+// Accepts only card-created notifications with a valid public card UID.
+export function getCardPreviewNotificationRoute(data: Record<string, unknown> = {}): {
+  pathname: "/digital_cards/modify"; params: { uid: string; mode: "preview" };
+} | null {
+  if (data.type !== "onCardCreated" || typeof data.card_uid !== "string" || !/^[A-Za-z0-9_-]+$/.test(data.card_uid)) return null;
+  return { pathname: "/digital_cards/modify", params: { uid: data.card_uid, mode: "preview" } };
 };//export ends

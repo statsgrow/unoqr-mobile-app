@@ -39,7 +39,7 @@ All four layouts use icon-only social links with accessible labels. Centered kee
 
 **unoqr-app** is not a consumer of these profile-layout folders. Review its UI/API contract if a change affects an existing digital-card editor, but do not populate it with unused library files. **unoqr-api** supplies data and needs review for contract changes, not ordinary styling. **unoqr-page-blocks** remains a separate managed library and needs no changes for ordinary digital-card styling.
 
-QR-card SVG/image composition is separate under frontend `helpers/digital_cards/qrcards/`. This library renders digital business-card profiles; changing it does not change QR-card images. QR generation lives in each project's own `unoqr-create` folder.
+QR-card composition is separate: mobile renders local SVG through `src/libraries/qrcards-layouts/standard/`; frontend still prepares saved images under `helpers/digital_cards/qrcards/`. This library renders digital business-card profiles; changing it does not change QR-card layouts. QR generation lives in each project's own `unoqr-create` folder.
 
 ## Work and deployment rules
 

@@ -43,6 +43,10 @@ npm run check:release-env
 
 The `expo-build-properties` plugin enables the UIKit scene lifecycle with `ios.enableSceneSupport`. It requires Expo SDK 57.0.23 or newer.
 
+It also sets `ios.usePrecompiledModules: false` so Expo modules compile with the installed Xcode toolchain. The precompiled Expo modules built with Swift 6.3.1 fail to import under Xcode 27.1's Swift 6.4 compiler. Keep this setting when regenerating the native project and reinstall Pods after changing it.
+
+After an Xcode SDK update, ExpoModulesJSI may reuse a cached framework even when its SDK is incompatible. If an archive fails with `Cannot find type '__ObjC::expo' in scope`, remove the generated `node_modules/expo-modules-jsi/apple/Products/ExpoModulesJSI.xcframework/ios-arm64/.build-hash` stamp and archive again to rebuild the device slice with the current SDK. Restart Xcode if dependency regeneration leaves an `unable to initiate PIF transfer session` error.
+
 After changing native configuration, run:
 
 ```bash
