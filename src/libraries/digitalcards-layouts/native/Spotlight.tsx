@@ -19,6 +19,6 @@ export default function Spotlight({ data, primaryColor, onOpenLink, isPreview = 
 /* ------------------ BREAK ------------------ */
 
 const styles = StyleSheet.create({
-  card: { borderRadius: radii.xl + spacing.sm, overflow: "hidden", borderWidth: 1, borderColor: colors.primary.light, backgroundColor: colors.black.main },
+  card: { borderRadius: radii.xl + spacing.sm, overflow: "hidden", backgroundColor: colors.black.main },
   accent: { height: spacing.xs },
 });

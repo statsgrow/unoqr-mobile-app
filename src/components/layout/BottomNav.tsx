@@ -41,7 +41,7 @@ const scansItem: StandardNavItem = {
 const cardItem: StandardNavItem = {
   label: "My Cards",
   icon: ContactRound,
-  href: "/digital_cards/modify" as Href,
+  href: "/digital_cards/list" as Href,
   matchingPath: "/digital_cards"
 };
 
@@ -63,7 +63,7 @@ export function BottomNav({ footerAction, hideMenu = false }: BottomNavProps) {
 
   //Default Return
   return (
-    <View style={[styles.root, footerAction != null && [styles.actionFooter, { paddingBottom: actionBottomPadding }]]}>
+    <View style={[styles.root, { paddingBottom: insets.bottom + FOOTER_BOTTOM_GAP }, footerAction != null && [styles.actionFooter, { paddingBottom: actionBottomPadding }]]}>
       {footerAction}
       {!hideMenu ? <View style={styles.container}>
         <NavItem item={homeItem} isActive={pathname === homeItem.matchingPath} />

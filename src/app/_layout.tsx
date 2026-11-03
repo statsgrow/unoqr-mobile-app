@@ -21,6 +21,9 @@ import {
 } from "@/helpers/scans/scanSync";
 import { checkUnSyncedDigitalCards, DIGITAL_CARDS_SYNC_INTERVAL_MS } from "@/helpers/digital_cards/utils/SyncDigitalCards";
 import { refreshTokensSilently, triggerTokenChecking } from "@/utils/auth/AuthTokens";
+import { getStorageUser } from "@/utils/auth/AuthUser";
+import { subscribeAuthUser } from "@/utils/auth/AuthUserStorage";
+import { startPostLoginSync, usePostLoginSync } from "@/utils/auth/PostLoginSync";
 import { SessionRefreshContext } from "@/utils/auth/SessionRefreshContext";
 import { checkPendingQrCodes } from "@/helpers/qrcodes/QrSync";
 import { refreshAppInstallMetadata } from "@/utils/auth/AppInstall";
@@ -34,6 +37,8 @@ import { startNotificationNavigation } from "@/utils/general/PushNotifications";
 export default function RootLayout() {
   const navigationState = useRootNavigationState();
   const [isSessionRefreshPending, setIsSessionRefreshPending] = useState(true);
+  const [postLoginUserId, setPostLoginUserId] = useState<string | null | undefined>(undefined);
+  const postLoginSync = usePostLoginSync();
   // Loads custom fonts for consistent typography across the app.
   const [fontsLoaded] = useFonts({
     BricolageGrotesque_400Regular,
@@ -69,6 +74,40 @@ export default function RootLayout() {
       subscription.remove();
     };//return ends
   }, []);
+
+  // Tracks login and logout even while Home or the scanner remains outside the account navigator.
+  useEffect(() => {
+    if (isSessionRefreshPending) return;
+    let active = true;
+    let revision = 0;
+    const unsubscribe = subscribeAuthUser(user => {
+      revision += 1;
+      if (active) setPostLoginUserId(user?.id ?? null);
+    });
+    const readRevision = revision;
+    void getStorageUser().then(user => {
+      if (active && revision === readRevision) setPostLoginUserId(user?.id ?? null);
+    }).catch((error: unknown) => {
+      console.error("Unable to read the account for initial synchronization:", error);
+      if (active && revision === readRevision) setPostLoginUserId(null);
+    });
+    return () => { active = false; unsubscribe(); };//return ends
+  }, [isSessionRefreshPending]);
+
+  // Restores pending account collections without blocking navigation and retries interruptions on foreground.
+  useEffect(() => {
+    if (isSessionRefreshPending || postLoginUserId === undefined) return;
+    const synchronize = (): void => {
+      void startPostLoginSync(postLoginUserId).catch((error: unknown) => {
+        console.error("Unable to start post-login synchronization:", error);
+      });
+    };//func ends
+    synchronize();
+    const subscription = AppState.addEventListener("change", state => {
+      if (state === "active") synchronize();
+    });
+    return () => subscription.remove();//return ends
+  }, [isSessionRefreshPending, postLoginUserId]);
 
   // Refreshes a stored session in the background while the home screen renders.
   useEffect(() => {
@@ -140,7 +179,7 @@ export default function RootLayout() {
 
   // Checks all owned digital cards at startup, on foreground, and every five minutes while active.
   useEffect(() => {
-    if (isSessionRefreshPending) return;
+    if (isSessionRefreshPending || postLoginSync.cards !== "completed") return;
     // Runs silently so Home continues displaying its SQLite data during network checks.
     const syncCards = (): void => {
       void checkUnSyncedDigitalCards().catch((error: unknown) => console.error("Unable to sync digital cards:", error));
@@ -153,7 +192,7 @@ export default function RootLayout() {
       if (nextState === "active") syncCards();
     });
     return () => { clearInterval(timer); subscription.remove(); };//return ends
-  }, [isSessionRefreshPending]);
+  }, [isSessionRefreshPending, postLoginSync.cards]);
 
   // Prevents rendering until fonts are loaded to avoid layout shifts.
   if (!fontsLoaded) {

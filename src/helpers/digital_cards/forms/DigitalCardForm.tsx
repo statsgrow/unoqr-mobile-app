@@ -25,7 +25,7 @@ type DigitalCardFormProps = {
   onSave: (details: DigitalCardDetails) => Promise<DigitalCardDetails>;
   onSavePhoto: (photo: FileInputValue | null, field: CardPhotoField) => Promise<FileInputValue | null>;
 };
-type CardPhotoField = "profilePicture" | "featurePhoto";
+type CardPhotoField = "profilePicture" | "featurePhoto" | "companyLogo";
 type CardFieldName = FieldPathByValue<DigitalCardDetails, string>;
 type CardFieldProps = {
   form: UseFormReturn<DigitalCardDetails>;
@@ -44,7 +44,7 @@ type FieldButtonProps = { label: string; onPress: () => void; disabled: boolean 
 // Edits the card details with RHF and keeps its draft intact while other sections are shown.
 export default function DigitalCardForm({ refreshing, onRefresh, details, onDraftChange, onSave, onSavePhoto }: DigitalCardFormProps) {
   const retiredPhotos = useRef(new Map<string, FileInputValue>());
-  const savedPhotos = useRef<Record<CardPhotoField, FileInputValue | null>>({ profilePicture: details.profilePicture, featurePhoto: details.featurePhoto });
+  const savedPhotos = useRef<Record<CardPhotoField, FileInputValue | null>>({ profilePicture: details.profilePicture, featurePhoto: details.featurePhoto, companyLogo: details.companyLogo });
   const [cleaningPhotos, setCleaningPhotos] = useState(false);
   const [socialLinkIndex, setSocialLinkIndex] = useState<number | null>(null);
   const form = useForm<DigitalCardDetails>({ defaultValues: details, mode: "onBlur" });
@@ -67,9 +67,10 @@ export default function DigitalCardForm({ refreshing, onRefresh, details, onDraf
       const confirmed = await onSave(details);
       rememberRetiredPhoto(savedPhotos.current.profilePicture);
       rememberRetiredPhoto(savedPhotos.current.featurePhoto);
-      savedPhotos.current = { profilePicture: confirmed.profilePicture, featurePhoto: confirmed.featurePhoto };
+      rememberRetiredPhoto(savedPhotos.current.companyLogo);
+      savedPhotos.current = { profilePicture: confirmed.profilePicture, featurePhoto: confirmed.featurePhoto, companyLogo: confirmed.companyLogo };
       reset(confirmed);
-      await cleanupRetiredPhotos([confirmed.profilePicture, confirmed.featurePhoto]);
+      await cleanupRetiredPhotos(Object.values(savedPhotos.current));
     } catch (saveError: unknown) {
       form.setError("root.save", { type: "manual", message: saveError instanceof Error ? saveError.message : "Your card could not be saved. Try again." });
     };//try-catch ends
@@ -93,7 +94,7 @@ export default function DigitalCardForm({ refreshing, onRefresh, details, onDraf
     };//if ends
     const activePhoto = confirmed ?? uploaded;
     const values = form.getValues();
-    await cleanupRetiredPhotos([activePhoto, field === "profilePicture" ? values.featurePhoto : values.profilePicture, ...Object.values(savedPhotos.current)]);
+    await cleanupRetiredPhotos([activePhoto, values.profilePicture, values.featurePhoto, values.companyLogo, ...Object.values(savedPhotos.current)]);
     return activePhoto;
   };//func ends
 
@@ -105,7 +106,7 @@ export default function DigitalCardForm({ refreshing, onRefresh, details, onDraf
     savedPhotos.current[field] = null;
     form.resetField(field, { defaultValue: null });
     const values = form.getValues();
-    await cleanupRetiredPhotos([values.profilePicture, values.featurePhoto, ...Object.values(savedPhotos.current)]);
+    await cleanupRetiredPhotos([values.profilePicture, values.featurePhoto, values.companyLogo, ...Object.values(savedPhotos.current)]);
   };//func ends
 
   // Deletes retired uploads only after API and SQLite saving succeeds, retaining failures for retry.
@@ -202,7 +203,23 @@ export default function DigitalCardForm({ refreshing, onRefresh, details, onDraf
           disabled={isSubmitting || cleaningPhotos}
         />
         <CardField form={form} name="fullname" label="Full name *" placeholder="Your full name" required disabled={isSubmitting} />
-        <CardField form={form} name="company" label="Company" placeholder="Company name" disabled={isSubmitting} />
+      </View>
+
+      <View style={styles.formSection}>
+        <Text style={styles.sectionTitle}>Company</Text>
+        <PxFileInput
+          RHF={form}
+          name="companyLogo"
+          label="Company logo"
+          type="image"
+          filename="company-logo"
+          placeholder="Add logo"
+          ratio="3:1"
+          onUpload={(file) => handleUploadPhoto(file, "companyLogo")}
+          onRemove={(file) => handleRemovePhoto(file, "companyLogo")}
+          disabled={isSubmitting || cleaningPhotos}
+        />
+        <CardField form={form} name="company" label="Company name" placeholder="Company name" disabled={isSubmitting} />
         <CardField form={form} name="position" label="Position" placeholder="Job title" disabled={isSubmitting} />
       </View>
 
@@ -317,6 +334,7 @@ function normalizeCardDetails(values: DigitalCardDetails): DigitalCardDetails {
   return {
     profilePicture: values.profilePicture,
     featurePhoto: values.featurePhoto,
+    companyLogo: values.companyLogo,
     fullname: values.fullname.trim(),
     company: values.company.trim(),
     position: values.position.trim(),

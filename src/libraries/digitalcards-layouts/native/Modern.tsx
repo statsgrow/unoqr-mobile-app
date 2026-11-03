@@ -37,7 +37,7 @@ export default function Modern({ data, primaryColor, onOpenLink, isPreview = fal
 /* ------------------ BREAK ------------------ */
 
 const styles = StyleSheet.create({
-  card: { borderRadius: radii.xl + spacing.sm, overflow: "hidden", borderWidth: 1, borderColor: colors.line.main, backgroundColor: colors.white.main },
+  card: { borderRadius: radii.xl + spacing.sm, overflow: "hidden", backgroundColor: colors.white.main },
   cover: { height: 128, overflow: "hidden" },
   featureCover: { height: undefined, width: "100%", aspectRatio: 2.7 },
   featureImage: { width: "100%", height: "100%" },

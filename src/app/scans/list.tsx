@@ -15,6 +15,7 @@ import {
   type NativeSyntheticEvent
 } from "react-native";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
+import { addDatabaseChangeListener } from "expo-sqlite";
 import {
   Barcode, CalendarDays, ChevronLeft, ChevronRight, CircleAlert, CircleX, CloudAlert, CloudCheck,
   ContactRound, File, FileText, Globe2, History, Link, ListFilter, Mail, MapPin, MessageSquare,
@@ -40,6 +41,7 @@ import { SCAN_HISTORY_SYNC_WINDOW_MS, restoreUserScans } from "@/helpers/scans/s
 import { colors, fontFamilies, fontSizes, radii, spacing } from "@/theme/tokens";
 import { scansSettings } from "@/settings";
 import { getData } from "@/utils/general/Storage";
+import { retryPostLoginSync, usePostLoginSync } from "@/utils/auth/PostLoginSync";
 
 /* ------------------ BREAK ------------------ */
 
@@ -74,6 +76,7 @@ type TypeFilterScrollerProps = {
 
 // Renders saved scan history with local SQLite-backed search and refresh controls.
 export default function ScansListScreen() {
+  const postLoginSync = usePostLoginSync();
   const params = useLocalSearchParams<{ type?: string | string[] }>();
   const typeFilter = getRouteParam(params.type);
   const normalizedTypeFilter = typeFilter ? normalizeScanType(typeFilter) : "";
@@ -147,6 +150,15 @@ export default function ScansListScreen() {
 
   // Restores account history within the freshness window or when explicitly forced.
   const loadCloudScans = useCallback(async (force = false): Promise<void> => {
+    if (postLoginSync.checking || postLoginSync.scans === "pending") {
+      setCloudState({ status: "loading", received: 0, total: null, error: null });
+      return;
+    };//if ends
+    if (postLoginSync.scans === "failed") {
+      if (force) await retryPostLoginSync();
+      else setCloudState({ status: "error", received: 0, total: null, error: "Your scan history could not finish syncing. Try again." });
+      return;
+    };//if ends
     if (cloudControllerRef.current) return;
     const controller = new AbortController();
     cloudControllerRef.current = controller;
@@ -170,7 +182,7 @@ export default function ScansListScreen() {
     } finally {
       if (cloudControllerRef.current === controller) cloudControllerRef.current = null;
     };//try-catch ends
-  }, [loadScans]);
+  }, [loadScans, postLoginSync.checking, postLoginSync.scans]);
 
   useFocusEffect(
     useCallback(() => {
@@ -178,6 +190,11 @@ export default function ScansListScreen() {
       let syncTimer: ReturnType<typeof setInterval> | null = null;
       let checksStarted = false;
       let checkGeneration = 0;
+      let readTimer: ReturnType<typeof setTimeout> | null = null;
+      const databaseSubscription = addDatabaseChangeListener(({ tableName }) => {
+        if (tableName !== "scans" || readTimer !== null) return;
+        readTimer = setTimeout(() => { readTimer = null; void loadScans(false, true); }, 0);
+      });
 
       // Checks cloud history every five minutes only while this list is visible.
       const startCloudChecks = (): void => {
@@ -208,6 +225,8 @@ export default function ScansListScreen() {
       return () => {
         stopCloudChecks();
         subscription.remove();
+        databaseSubscription.remove();
+        if (readTimer !== null) clearTimeout(readTimer);
       };
     }, [loadScans, loadCloudScans])
   );

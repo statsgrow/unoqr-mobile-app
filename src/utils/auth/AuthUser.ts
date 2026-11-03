@@ -1,6 +1,6 @@
 import { Directory, File, Paths } from "expo-file-system";
 
-import { apiSettings, installSettings, scansSettings, userTokenSettings } from "@/settings";
+import { installSettings, scansSettings, userTokenSettings } from "@/settings";
 import { disconnectUserAppInstall, insertAppInstall } from "@/utils/auth/AppInstall";
 import {
   getUserTokens,
@@ -17,12 +17,14 @@ import { initQrCodes } from "@/helpers/qrcodes/db/initQrCodes";
 import { initScansTable } from "@/helpers/scans/db/init";
 import { sqliteDB } from "@/utils/sqlite/db";
 import type { UserType } from "@/utils/auth/UserTypes";
+import { requestAppUser } from "@/utils/auth/requestAppUser";
 import { getData, removeData, setData } from "@/utils/general/Storage";
 
 /* ------------------ BREAK ------------------ */
 
 type GetUserOptions = {
   errorOnFail?: boolean;
+  signal?: AbortSignal;
   allowedRoles?: Array<"user">;
   activeSpaceUid?: string;
 };
@@ -31,11 +33,6 @@ type AddUserDataInput = {
   userData?: UserType | null;
   accessToken: string;
   refreshToken: string;
-};
-
-type ApiUserResponse = {
-  data?: UserType | null;
-  message?: string;
 };
 
 type LogoutOptions = {
@@ -47,40 +44,25 @@ type LogoutOptions = {
 
 // Fetches the authenticated UnoQR user and persists refreshed tokens returned in headers.
 export async function getUser({
-  errorOnFail = true
+  errorOnFail = true,
+  signal
 }: GetUserOptions = {}): Promise<UserType | null> {
   try {
-    const { accessToken, refreshToken } = await getUserTokens();
-    if (!accessToken || !refreshToken) return null;
-
-    const authApiUrl = apiSettings.getApiUrl({ path: "/auth/user" });
-    const response = await fetch(authApiUrl.href, {
-      cache: "no-store",
-      headers: {
-        [userTokenSettings.headerTokens.accessToken.name]: accessToken,
-        [userTokenSettings.headerTokens.refreshToken.name]: refreshToken
-      }
-    });
-
-    if (!response.ok) {
-      if (response.status === 401) await clearStoredUserSession();
-      const responseBody = await response.json().catch(() => null) as ApiUserResponse | null;
-      throw new Error(responseBody?.message || "Unable to load the authenticated user.");
+    let { accessToken, refreshToken } = await getUserTokens();
+    if (!refreshToken) return null;
+    if (!accessToken || isTokenExpired(accessToken)) {
+      const result = await refreshTokensSilently();
+      if (result === "failed" || result === "missing") throw new Error("Unable to refresh the authenticated app session.");
+      const refreshedUser = await getData({ key: userTokenSettings.storageTokens.userData.name }) as UserType | null;
+      if (refreshedUser?.subscription?.plan) return refreshedUser;
+      ({ accessToken, refreshToken } = await getUserTokens());
+      if (!refreshToken) return null;
     };//if ends
-
-    await persistResponseTokens(response);
-    const responseBody = await response.json() as ApiUserResponse;
-    const user = responseBody.data || null;
-
-    if (user) {
-      await setData({
-        key: userTokenSettings.storageTokens.userData.name,
-        value: user
-      });
-    };//if ends
-
-    return user;
+    const result = await requestAppUser({ accessToken, refreshToken, signal });
+    //Default Return
+    return result.user;
   } catch (error: unknown) {
+    if (error instanceof Error && "statusCode" in error && error.statusCode === 401) await clearStoredUserSession();
     if (errorOnFail) throw error;
     return null;
   };//try-catch ends
@@ -88,26 +70,24 @@ export async function getUser({
 
 /* ------------------ BREAK ------------------ */
 
-// Stores a completed session and awaits installation registration before the sync pages open.
+// Stores a completed session and prepares its downloads to run after navigation.
 export async function addUserData({
-  userData,
   accessToken,
   refreshToken
 }: AddUserDataInput): Promise<UserType> {
   // Begin every login without another account's local rows, tokens or installation link.
   await resetLocalUserSession();
+  const { initializePostLoginSync } = await import("@/utils/auth/PostLoginSync");
+  await initializePostLoginSync();
   await setUserTokens({
     access_token: accessToken,
     refresh_token: refreshToken
   });
 
-  const user = userData || await getStorageUser() || await getUser();
+  // Login-provider metadata does not contain the authoritative subscription.
+  const user = await getUser();
   if (!user) throw new Error("Authenticated user data was not returned.");
 
-  await setData({
-    key: userTokenSettings.storageTokens.userData.name,
-    value: user
-  });
   const install = await insertAppInstall();
   if (!install?.id) throw new Error("Unable to register this app installation. Please try again.");
 
@@ -129,7 +109,7 @@ export async function getStorageUser(): Promise<UserType | null> {
   const storedUser = await getData({
     key: userTokenSettings.storageTokens.userData.name
   });
-  if (storedUser && typeof storedUser === "object") return storedUser as UserType;
+  if (storedUser && typeof storedUser === "object" && (storedUser as UserType).subscription?.plan) return storedUser as UserType;
 
   return getUser({ errorOnFail: false });
 };//export ends
@@ -144,22 +124,24 @@ export async function processUserLogout({ installationConfirmed = false, onInsta
 // Resets account tables while retaining their schema and the shared SQLite connection.
 async function resetLocalUserSession(logoutInstall = false, onInstallationConfirmed?: () => void): Promise<void> {
   // Load reset controls after session modules initialize to avoid circular startup imports.
-  const [{ pauseScanSync, resumeScanSync }, { pauseQrCodeSync, resumeQrCodeSync }, { pauseDigitalCardRequests, resumeDigitalCardRequests }, { pauseDigitalCardSync, resumeDigitalCardSync }] = await Promise.all([
+  const [{ pauseScanSync, resumeScanSync }, { pauseQrCodeSync, resumeQrCodeSync }, { pauseDigitalCardRequests, resumeDigitalCardRequests }, { pauseDigitalCardSync, resumeDigitalCardSync }, { pausePostLoginSync, resumePostLoginSync, resetPostLoginSync }] = await Promise.all([
     import("@/helpers/scans/scanSync"),
     import("@/helpers/qrcodes/QrSync"),
     import("@/helpers/digital_cards/api/cards"),
-    import("@/helpers/digital_cards/utils/SyncDigitalCards")
+    import("@/helpers/digital_cards/utils/SyncDigitalCards"),
+    import("@/utils/auth/PostLoginSync")
   ]);
   pauseQrCardImageRequests();
   await pauseTokenRefresh();
   try {
     // Finish old requests before new credentials can be used by background synchronization.
-    await Promise.all([pauseQrCodeSync(), pauseScanSync(), pauseDigitalCardRequests(), pauseDigitalCardSync()]);
+    await Promise.all([pausePostLoginSync(), pauseQrCodeSync(), pauseScanSync(), pauseDigitalCardRequests(), pauseDigitalCardSync()]);
     if (logoutInstall) {
       await disconnectUserAppInstall();
       onInstallationConfirmed?.();
     };//if ends
     await removeData({ key: scansSettings.lastCheckedAtKey });
+    await resetPostLoginSync();
     clearLocalAccountFiles();
     // Installation proof belongs to the device, so account changes retain its credentials.
     const install = await getData({ key: installSettings.storageKeys.installInfo.name });
@@ -186,6 +168,7 @@ async function resetLocalUserSession(logoutInstall = false, onInstallationConfir
     resumeDigitalCardSync();
     resumeQrCodeSync();
     resumeScanSync();
+    resumePostLoginSync();
     resumeTokenRefresh();
   };//try-catch ends
 };//func ends
@@ -206,30 +189,7 @@ function clearLocalAccountFiles(): void {
   };//for ends
 };//func ends
 
-// Stores any rotated tokens emitted by the UnoQR API auth-user response.
-async function persistResponseTokens(response: Response): Promise<void> {
-  const accessToken = response.headers.get(userTokenSettings.headerTokens.newAccessToken.name);
-  const refreshToken = response.headers.get(userTokenSettings.headerTokens.newRefreshToken.name);
-
-  if (accessToken) {
-    await setData({
-      key: userTokenSettings.storageTokens.accessToken.name,
-      value: accessToken
-    });
-  };//if ends
-
-  if (refreshToken) {
-    await setData({
-      key: userTokenSettings.storageTokens.refreshToken.name,
-      value: refreshToken
-    });
-  };//if ends
-};//func ends
-
 // Removes the cached user together with all access and refresh token variants.
 async function clearStoredUserSession(): Promise<void> {
-  await Promise.all([
-    removeUserTokens(),
-    removeData({ key: userTokenSettings.storageTokens.userData.name })
-  ]);
+  await removeUserTokens();
 };//func ends

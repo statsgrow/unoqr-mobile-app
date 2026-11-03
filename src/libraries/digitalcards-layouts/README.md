@@ -51,3 +51,7 @@ QR-card composition is separate: mobile renders local SVG through `src/libraries
 There is no package version to synchronize, no archive to generate, and no library build or update command. Each project compiles and deploys its own source normally. Do not reintroduce local npm dependencies, sync scripts or unused platform folders.
 
 Modern and Centered use optional `data.featurePhoto` as a full-width 2.7:1 header, matching the cover editor crop. Without a feature photo they retain their original primary-color patterns. Spotlight and Minimal keep their existing designs. Mobile layout thumbnails and sample modals receive the saved feature photo while retaining sample identities.
+
+All four layouts support optional `data.companyLogo` below the company name, in a rounded horizontal 3:1 area capped at 40% of the identity width. Centered centers the logo; the other layouts align it left. Sample layouts include a local Acme Studio PNG. The mobile Company section uploads logos through the shared file editor at 3:1. `companyLogo` maps to `app_digital_cards.logo_url`; owned file metadata is returned as `logo` and retained in SQLite for replacement and removal. Public and owner card renderers forward the saved logo URL.
+
+Native layout renderers do not draw outer borders. Mobile screens and picker/deck wrappers own the outer border, including its color and width, so nested previews do not double the outline. This is a native wrapper responsibility; the web renderer is unchanged.

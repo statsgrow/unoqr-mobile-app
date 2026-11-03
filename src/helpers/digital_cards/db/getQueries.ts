@@ -17,7 +17,7 @@ export async function getCachedDigitalCard(userId: string, uid?: string): Promis
 export async function getCachedDigitalCards(userId: string, uid?: string): Promise<RemoteCard[]> {
   if (!db) return [];
   await initDigitalCardsTable();
-  const rows = await db.select({ card: digitalCardsTable, photo: digitalCardPhotosTable.photo, feature_photo: digitalCardPhotosTable.feature_photo })
+  const rows = await db.select({ card: digitalCardsTable, photo: digitalCardPhotosTable.photo, feature_photo: digitalCardPhotosTable.feature_photo, logo: digitalCardPhotosTable.logo })
     .from(digitalCardsTable)
     .leftJoin(digitalCardPhotosTable, and(
       eq(digitalCardPhotosTable.card_uid, digitalCardsTable.uid),
@@ -25,5 +25,5 @@ export async function getCachedDigitalCards(userId: string, uid?: string): Promi
     ))
     .where(and(eq(digitalCardsTable.user_id, userId), uid ? eq(digitalCardsTable.uid, uid) : undefined))
     .orderBy(asc(digitalCardsTable.created_at), asc(digitalCardsTable.uid));
-  return rows.map((row) => ({ ...row.card, photo: row.photo, feature_photo: row.feature_photo }));
+  return rows.map((row) => ({ ...row.card, photo: row.photo, feature_photo: row.feature_photo, logo: row.logo }));
 };//export ends

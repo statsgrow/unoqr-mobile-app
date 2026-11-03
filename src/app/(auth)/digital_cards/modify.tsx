@@ -8,6 +8,7 @@ import { PxCircularProgress } from "@/components/elements/PxCircularProgress";
 import { HeaderBackButton } from "@/components/layout/HeaderBackButton";
 import { createDigitalCard, type AppDigitalCardQr, type DigitalCardDetails, type DigitalCardLayoutType, type DigitalCardSettingsValues } from "@/helpers/digital_cards/model";
 import { deleteDigitalCard, getDigitalCard, restoreDigitalCard, saveDigitalCard, saveDigitalCardQrDesign, saveDigitalCardDetails, updateDigitalCardFile, saveDigitalCardLayout, saveDigitalCardSettings, type RemoteCard } from "@/helpers/digital_cards/api/cards";
+import { addGroupCard, getGroupCard } from "@/helpers/digital_cards/groups/api";
 import { validateDigitalCard } from "@/helpers/digital_cards/validations";
 import DigitalCardForm from "@/helpers/digital_cards/forms/DigitalCardForm";
 import DigitalCardLayout from "@/helpers/digital_cards/forms/DigitalCardLayout";
@@ -30,7 +31,7 @@ type DigitalCardStep = "form" | "layout" | "qr" | "settings";
 // Opens the saved card in Preview and keeps its editor sections mounted beneath the header.
 export default function ModifyDigitalCardScreen() {
   const user = useUser();
-  const params = useLocalSearchParams<{ mode?: string; uid?: string }>();
+  const params = useLocalSearchParams<{ mode?: string; uid?: string; new?: string; group_uid?: string }>();
   const initialScreen: DigitalCardScreen = params.mode === "edit" ? "edit" : "preview";
   const [screen, setScreen] = useState<DigitalCardScreen>(initialScreen);
   const [activeStep, setActiveStep] = useState<DigitalCardStep>("form");
@@ -38,6 +39,7 @@ export default function ModifyDigitalCardScreen() {
   const draftCard = useRef<AppDigitalCardQr | null>(null);
   const latestCard = useRef<AppDigitalCardQr | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [groupError, setGroupError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [revision, setRevision] = useState(0);
   const [loadKey, setLoadKey] = useState(0);
@@ -45,16 +47,19 @@ export default function ModifyDigitalCardScreen() {
   // Reads saved SQLite values when the card opens while retaining mounted RHF drafts across tabs.
   useEffect(() => {
     let isMounted = true;
+    const controller = new AbortController();
+    if (params.group_uid && params.uid) setCard(null);
     setError(null);
     setRefreshing(true);
     const loadCard = async (): Promise<void> => {
       try {
-        const remote = await getDigitalCard({ uid: params.uid });
+        const remote = params.new === "1" ? null : params.group_uid && params.uid ? await getGroupCard(params.uid, params.group_uid, controller.signal) : await getDigitalCard({ uid: params.uid });
         if (params.uid && !remote) throw new Error("This digital card is not available in your account.");
         const defaults = createDigitalCard({ userId: user.id, defaults: QR_DEFAULTS, uid: remote?.uid });
         const loaded = remote ? restoreDigitalCard(remote, defaults) : defaults;
         if (isMounted) {
-          if (loadKey === 0 || !remote?.id) setScreen(remote?.id ? initialScreen : "edit");
+          if (remote && remote.user_id !== user.id) setScreen("preview");
+          else if (loadKey === 0 || !remote?.id) setScreen(remote?.id ? initialScreen : "edit");
           latestCard.current = loaded;
           draftCard.current = loaded;
           setCard(loaded);
@@ -67,14 +72,15 @@ export default function ModifyDigitalCardScreen() {
       };//try-catch ends
     };//func ends
     void loadCard();
-    return () => { isMounted = false; };//return ends
-  }, [loadKey, initialScreen, user.id, params.uid]);
+    return () => { isMounted = false; controller.abort(); };//return ends
+  }, [loadKey, initialScreen, user.id, params.uid, params.new, params.group_uid]);
 
   // Saves only the selected section and commits API-confirmed values without replacing other RHF drafts.
   const persistCard = useCallback(async (changes: Partial<AppDigitalCardQr>, saveSection: (uid: string) => Promise<RemoteCard>): Promise<AppDigitalCardQr> => {
     const current = latestCard.current;
     if (!current) throw new Error("Your digital business card is not ready.");
-    const next = { ...current, ...changes };
+    if (current.userId !== user.id) throw new Error("Contact the card owner to edit this card.");
+    const next = { ...(current.id ? current : draftCard.current ?? current), ...changes };
     let remote: RemoteCard;
     if (current.id) {
       remote = await saveSection(current.uid);
@@ -86,8 +92,13 @@ export default function ModifyDigitalCardScreen() {
     latestCard.current = saved;
     draftCard.current = { ...(draftCard.current ?? saved), ...changes, id: saved.id };
     setCard(saved);
+    if (params.new === "1") router.setParams({ uid: saved.uid, new: undefined });
+    if (!current.id && params.group_uid) {
+      try { await addGroupCard(params.group_uid, saved.uid); }
+      catch { setGroupError("Your card was saved, but it could not be added to this group. Use Add existing card in the group to try again."); };//try-catch ends
+    };//if ends
     return saved;
-  }, []);
+  }, [params.group_uid, params.new, user.id]);
 
   // Reloads saved card values into each mounted form after a pull gesture.
   const handleRefresh = useCallback((): void => {
@@ -95,7 +106,7 @@ export default function ModifyDigitalCardScreen() {
     setLoadKey((value) => value + 1);
   }, []);
 
-  // Deletes the saved card remotely and locally before returning to the Home screen.
+  // Deletes the saved card remotely and locally before returning to My Cards.
   const handleDeleteCard = useCallback(async (): Promise<void> => {
     const current = latestCard.current;
     if (!current?.id) throw new Error("Save your digital card before deleting it.");
@@ -104,7 +115,7 @@ export default function ModifyDigitalCardScreen() {
     latestCard.current = null;
     draftCard.current = null;
     setCard(null);
-    router.replace("/");
+    router.replace("/digital_cards/list");
   }, []);
 
   // Saves QR appearance through the API without changing publication status.
@@ -129,11 +140,11 @@ export default function ModifyDigitalCardScreen() {
   }, [persistCard]);
 
   // Saves or clears one photo independently while preserving other unsaved Details fields.
-  const handleSavePhoto = useCallback(async (photo: FileInputValue | null, field: "profilePicture" | "featurePhoto"): Promise<FileInputValue | null> => {
+  const handleSavePhoto = useCallback(async (photo: FileInputValue | null, field: "profilePicture" | "featurePhoto" | "companyLogo"): Promise<FileInputValue | null> => {
     const current = latestCard.current;
     if (!current?.id) return null;
     if (photo && !photo.url) throw new Error("Your uploaded photo URL is missing. Please try again.");
-    const remote = await updateDigitalCardFile(current.uid, field === "featurePhoto" ? "feature_photo_url" : "photo_url", photo?.url ?? null);
+    const remote = await updateDigitalCardFile(current.uid, field === "companyLogo" ? "logo_url" : field === "featurePhoto" ? "feature_photo_url" : "photo_url", photo?.url ?? null);
     const saved = restoreDigitalCard(remote, current);
     const confirmed = photo && saved.details[field] ? { ...photo, ...saved.details[field] } : null;
     if (photo && !confirmed) throw new Error("Your photo could not be saved.");
@@ -172,18 +183,20 @@ export default function ModifyDigitalCardScreen() {
     setCard(loaded);
   }, []);
 
+  const readOnly = Boolean(card && card.userId !== user.id);
+
   //Default Return
   return (
     <View style={styles.root}>
       <View style={styles.header}>
-        <HeaderBackButton accessibilityLabel={screen === "edit" && card?.id ? "Back to card preview" : "Back to Home"} onPress={() => { Keyboard.dismiss(); if (screen === "edit" && card?.id) setScreen("preview"); else router.back(); }} />
+        <HeaderBackButton accessibilityLabel={screen === "edit" && card?.id ? "Back to card preview" : "Back to My Cards"} onPress={() => { Keyboard.dismiss(); if (screen === "edit" && card?.id) setScreen("preview"); else if (router.canGoBack()) router.back(); else router.replace("/digital_cards/list"); }} />
         <Text numberOfLines={1} style={styles.title}>{card?.cardSettings.name || "My Card"}</Text>
-        {card?.id ? <Pressable accessibilityRole="button" accessibilityLabel={screen === "preview" ? "Edit digital business card" : "Preview digital business card"} onPress={() => { Keyboard.dismiss(); setScreen(screen === "preview" ? "edit" : "preview"); }} style={styles.editButton}>
+        {card?.id && !readOnly ? <Pressable accessibilityRole="button" accessibilityLabel={screen === "preview" ? "Edit digital business card" : "Preview digital business card"} onPress={() => { Keyboard.dismiss(); setScreen(screen === "preview" ? "edit" : "preview"); }} style={styles.editButton}>
           {screen === "preview" ? <Pencil size={18} strokeWidth={1.25} color={colors.primary.main} /> : <Eye size={18} strokeWidth={1.25} color={colors.primary.main} />}
           <Text style={styles.editText}>{screen === "preview" ? "Edit" : "Preview"}</Text>
         </Pressable> : null}
       </View>
-      {screen === "edit" ? (
+      {screen === "edit" && !readOnly ? (
         <View style={styles.stepsArea}>
           <View accessibilityRole="tablist" style={styles.steps}>
             {(["form", "layout", "qr", "settings"] as const).map((step) => (
@@ -202,10 +215,10 @@ export default function ModifyDigitalCardScreen() {
           </View>
         </View>
       ) : null}
-      {error && card ? <Text accessibilityRole="alert" style={styles.messageText}>{error}</Text> : null}
+      {(error || groupError) && card ? <Text accessibilityRole="alert" style={styles.messageText}>{error || groupError}</Text> : null}
       {card ? (
         <>
-          <View style={[styles.panel, screen !== "edit" && styles.hiddenPanel]}>
+          {!readOnly ? <View style={[styles.panel, screen !== "edit" && styles.hiddenPanel]}>
             <View style={[styles.panel, activeStep !== "form" && styles.hiddenPanel]}>
               <DigitalCardForm key={revision} refreshing={refreshing} onRefresh={handleRefresh} details={card.details} onDraftChange={handleDetailsDraft} onSave={handleSaveDetails} onSavePhoto={handleSavePhoto} />
             </View>
@@ -218,8 +231,8 @@ export default function ModifyDigitalCardScreen() {
             <View style={[styles.panel, activeStep !== "settings" && styles.hiddenPanel]}>
               <DigitalCardSettings key={revision} refreshing={refreshing} onRefresh={handleRefresh} settings={card.cardSettings} cardUrl={`https://unoqr.com/dc/${card.uid}`} fullname={card.details.fullname} bio={card.details.bio} onDraftChange={handleSettingsDraft} onSave={handleSaveSettings} onDelete={card.id ? handleDeleteCard : undefined} />
             </View>
-          </View>
-          {screen === "preview" ? <DigitalCardViewScreen embedded savedCard={card} onPublished={handlePublished} onCardRefreshed={handleCardRefreshed} /> : null}
+          </View> : null}
+          {screen === "preview" || readOnly ? <DigitalCardViewScreen key={card.uid} embedded savedCard={card} groupUid={params.group_uid} readOnly={readOnly} onPublished={handlePublished} onCardRefreshed={handleCardRefreshed} /> : null}
         </>
       ) : (
         <View style={styles.message}>

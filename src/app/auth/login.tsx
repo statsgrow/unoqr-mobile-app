@@ -358,7 +358,7 @@ async function completeAuthenticatedLogin(
     refreshToken: session.refresh_token
   });
   Toast.success({ message: "You are now logged in." });
-  redirect("replace", "/sync/myscans");
+  redirect("replace", "/");
 };//func ends
 
 // Converts an unknown request failure into readable login feedback.

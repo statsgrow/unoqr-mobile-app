@@ -30,6 +30,7 @@ export function CardBody({ data, primaryColor, onOpenLink, centered = false, dar
       <Text style={[styles.name, { color: textColor }, centered && styles.centeredText]}>{data.fullname}</Text>
       {data.position ? <Text style={[styles.position, { color: mutedColor }, centered && styles.centeredText]}>{data.position}</Text> : null}
       {data.company ? <Text style={[styles.company, { color: mutedColor }, centered && styles.centeredText]}>{data.company}</Text> : null}
+      {data.companyLogo ? <View style={[styles.companyLogo, centered && styles.centeredLogo]}><Image source={data.companyLogo} resizeMode="contain" accessibilityLabel={`${data.company || "Company"} logo`} style={styles.companyLogoImage} /></View> : null}
     </View>
     {data.bio ? <Text style={[styles.bio, { color: textColor }, centered && styles.centeredText]}>{data.bio}</Text> : null}
     {data.socialLinks.length ? <View style={[styles.socials, centered && styles.centeredSocials]}>
@@ -88,6 +89,9 @@ const styles = StyleSheet.create({
   name: { fontSize: fontSizes.h3, lineHeight: 38, fontFamily: fontFamilies.primaryBold },
   position: { marginTop: spacing.sm, fontSize: fontSizes.body1, lineHeight: 24, fontFamily: fontFamilies.primaryRegular },
   company: { marginTop: spacing.xxs, fontSize: fontSizes.body1, lineHeight: 24, fontFamily: fontFamilies.primaryRegular },
+  companyLogo: { width: "40%", maxWidth: "40%", aspectRatio: 3, marginTop: spacing.sm, borderRadius: radii.sm, backgroundColor: colors.white.main, overflow: "hidden", alignSelf: "flex-start" },
+  companyLogoImage: { width: "100%", height: "100%" },
+  centeredLogo: { alignSelf: "center" },
   bio: { marginTop: spacing.lg + spacing.xxs, fontSize: fontSizes.button, lineHeight: 28, fontFamily: fontFamilies.primaryRegular },
   centeredText: { textAlign: "center" },
   socials: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs, marginTop: spacing.lg },

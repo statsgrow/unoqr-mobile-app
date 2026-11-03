@@ -14,7 +14,7 @@ import GetError from "@/utils/general/Error";
 
 /* ------------------ BREAK ------------------ */
 
-export type PhotoRatio = 1 | "1" | "3:4" | "4:5" | "9:16" | "2.7:1";
+export type PhotoRatio = 1 | "1" | "3:4" | "4:5" | "9:16" | "2.7:1" | "3:1";
 export type PhotoEditorResult = { file: File; base64: string; width: number; height: number; bgcolor: string };
 type PxPhotoEditorProps = {
   open: boolean;

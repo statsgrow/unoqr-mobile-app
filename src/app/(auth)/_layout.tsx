@@ -4,12 +4,16 @@ import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { PxCircularProgress } from "@/components/elements/PxCircularProgress";
+import { PxAlert } from "@/components/elements/PxAlert";
+import { PxButton } from "@/components/elements/PxButton";
 import { redirect } from "@/utils/general/Redirect";
 import { colors, fontFamilies, fontSizes, radii, spacing } from "@/theme/tokens";
 import { insertAppInstall } from "@/utils/auth/AppInstall";
 import { refreshTokensSilently } from "@/utils/auth/AuthTokens";
 import { getStorageUser } from "@/utils/auth/AuthUser";
+import { subscribeAuthUser } from "@/utils/auth/AuthUserStorage";
 import { AuthUserContext } from "@/utils/auth/AuthUserContext";
+import { retryPostLoginSync, usePostLoginSync } from "@/utils/auth/PostLoginSync";
 import type { UserType } from "@/utils/auth/UserTypes";
 
 /* ------------------ BREAK ------------------ */
@@ -26,6 +30,18 @@ export default function AuthLayout() {
   const currentPath = useRef(pathname);
   currentPath.current = pathname;
   const [user, setUser] = useState<UserType | null>(null);
+  const sync = usePostLoginSync();
+  const syncErrors = [
+    sync.cards === "failed" ? "Your digital cards could not finish syncing." : null,
+    sync.scans === "failed" ? "Your scan history could not finish syncing." : null,
+    sync.qrcodes === "failed" ? "Your QR codes could not finish syncing." : null
+  ].filter((message): message is string => message !== null);
+
+  // Keep mounted account pages in sync when token refresh replaces the cached subscription.
+  useEffect(() => subscribeAuthUser(nextUser => {
+    setUser(nextUser);
+    if (!nextUser) redirect("replace", { pathname: "/auth/login", params: { next: currentPath.current } });
+  }), []);
 
   // Resolves authentication once before mounting account pages and supplies their verified user.
   useEffect(() => {
@@ -73,6 +89,14 @@ export default function AuthLayout() {
     <SafeAreaView style={styles.root} edges={["top", "left", "right"]}>
       {routeState === "ready" && user ? (
         <AuthUserContext.Provider value={user}>
+          {syncErrors.length ? <View style={styles.syncAlert}>
+            <PxAlert messages={syncErrors} color="error" />
+            <PxButton mode="text" size="sm" onPress={() => {
+              void retryPostLoginSync().catch((error: unknown) => {
+                console.error("Unable to retry account synchronization:", error);
+              });
+            }}>Retry sync</PxButton>
+          </View> : null}
           <Stack screenOptions={{ headerShown: false, gestureEnabled: false, animation: Platform.OS === "ios" ? "none" : "default", ...(Platform.OS === "ios" ? { animationTypeForReplace: "pop" as const } : {}) }} />
         </AuthUserContext.Provider>
       ) : routeState === "install-error" ? (
@@ -103,6 +127,11 @@ export default function AuthLayout() {
 /* ------------------ BREAK ------------------ */
 
 const styles = StyleSheet.create({
+  syncAlert: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    gap: spacing.xs
+  },
   root: {
     flex: 1,
     backgroundColor: colors.white.main

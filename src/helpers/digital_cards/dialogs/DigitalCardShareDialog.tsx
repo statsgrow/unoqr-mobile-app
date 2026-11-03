@@ -15,7 +15,7 @@ import { colors, fontFamilies, fontSizes, radii, spacing } from "@/theme/tokens"
 
 /* ------------------ BREAK ------------------ */
 
-type Props = { open: boolean; setOpen: (open: boolean) => void; initialTab?: "qr" | "social" } & (
+type Props = { publicQrExport?: boolean; open: boolean; setOpen: (open: boolean) => void; initialTab?: "qr" | "social" } & (
   | { card: AppDigitalCardQr; onPublish: () => Promise<AppDigitalCardQr | null>; publicLink?: never }
   | { publicLink: { url: string; fullname: string }; card?: never; onPublish?: never }
 );
@@ -24,7 +24,7 @@ type ShareAction = "share-image" | "save-image" | "share-link" | "copy-link";
 /* ------------------ BREAK ------------------ */
 
 // Shares an owner QR card or an already published scanned card through the same modal.
-export default function DigitalCardShareDialog({ card, publicLink, open, setOpen, onPublish, initialTab }: Props) {
+export default function DigitalCardShareDialog({ card, publicLink, open, setOpen, onPublish, initialTab, publicQrExport = false }: Props) {
   const { height: windowHeight } = useWindowDimensions();
   const [tab, setTab] = useState<"qr" | "social">("qr");
   const activeTab = publicLink ? "social" : tab;
@@ -156,7 +156,7 @@ export default function DigitalCardShareDialog({ card, publicLink, open, setOpen
             {(["qr", "social"] as const).map(value => <Pressable key={value} accessibilityRole="tab" accessibilityLabel={value === "qr" ? "My QR Card" : "Social"} accessibilityState={{ selected: tab === value }} disabled={busy} onPress={() => setTab(value)} style={[styles.tab, tab === value && styles.selectedTab]}><View>{value === "qr" ? <QrCode size={24} strokeWidth={1.25} color={tab === value ? colors.white.main : colors.black.main} /> : <Share2 size={24} strokeWidth={1.25} color={tab === value ? colors.white.main : colors.black.main} />}</View></Pressable>)}
           </View> : null}
           {open && card ? <View style={activeTab === "qr" ? styles.portrait : styles.hidden}>
-            <DigitalCardQrPreview card={card} exportRef={previewRef} onReadyChange={setPreviewReady} />
+            <DigitalCardQrPreview card={card} publicExport={publicQrExport} exportRef={previewRef} onReadyChange={setPreviewReady} />
           </View> : null}
           {needsPublish ? <Text style={styles.hint}>Your card is unpublished. Sharing will publish it first.</Text> : null}
           {busy ? <PxCircularProgress color={colors.secondary.main} /> : null}

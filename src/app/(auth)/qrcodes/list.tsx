@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useFocusEffect } from "expo-router";
+import { addDatabaseChangeListener } from "expo-sqlite";
 import { ChevronLeft, ChevronRight, CloudAlert, CloudCheck, ContactRound, Globe2, Phone, Plus, QrCode as QrCodeIcon, Search, Type, X, type LucideIcon } from "lucide-react-native";
 import { Animated, AppState, FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View, type ListRenderItemInfo, type NativeScrollEvent, type NativeSyntheticEvent } from "react-native";
 
@@ -14,6 +15,7 @@ import type { QrCode } from "@/helpers/qrcodes/db/initQrCodes";
 import type { QrContentType } from "@/helpers/qrcodes/create/QrContent";
 import { QR_HISTORY_SYNC_WINDOW_MS, restoreUserQrCodes } from "@/helpers/qrcodes/QrSync";
 import { colors, fontFamilies, fontSizes, radii, spacing } from "@/theme/tokens";
+import { retryPostLoginSync, usePostLoginSync } from "@/utils/auth/PostLoginSync";
 
 /* ------------------ BREAK ------------------ */
 
@@ -48,6 +50,7 @@ const qrTypeIcons: Record<QrContentType, LucideIcon> = {
 
 // Lists saved QR codes with search, refresh, and access to their existing form.
 export default function QrCodesListScreen() {
+  const postLoginSync = usePostLoginSync();
   const [search, setSearch] = useState("");
   const [selectedType, setSelectedType] = useState("all");
   const searchPinProgress = useRef(new Animated.Value(0)).current;
@@ -87,6 +90,15 @@ export default function QrCodesListScreen() {
 
   // Fetches saved account QRs through GET and shows progress while SQLite pages arrive.
   const loadCloudQrCodes = useCallback(async (force = false): Promise<void> => {
+    if (postLoginSync.checking || postLoginSync.qrcodes === "pending") {
+      setCloudState({ status: "loading", received: 0, total: null, error: null });
+      return;
+    };//if ends
+    if (postLoginSync.qrcodes === "failed") {
+      if (force) await retryPostLoginSync();
+      else setCloudState({ status: "error", received: 0, total: null, error: "Your QR codes could not finish syncing. Try again." });
+      return;
+    };//if ends
     if (cloudControllerRef.current) return;
     const controller = new AbortController();
     cloudControllerRef.current = controller;
@@ -110,13 +122,18 @@ export default function QrCodesListScreen() {
     } finally {
       if (cloudControllerRef.current === controller) cloudControllerRef.current = null;
     };//try-catch ends
-  }, [loadQrCodes]);
+  }, [loadQrCodes, postLoginSync.checking, postLoginSync.qrcodes]);
 
   useFocusEffect(useCallback(() => {
     void loadQrCodes();
     let syncTimer: ReturnType<typeof setInterval> | null = null;
     let checksStarted = false;
     let checkGeneration = 0;
+    let readTimer: ReturnType<typeof setTimeout> | null = null;
+    const databaseSubscription = addDatabaseChangeListener(({ tableName }) => {
+      if (tableName !== "static_qrcodes" || readTimer !== null) return;
+      readTimer = setTimeout(() => { readTimer = null; void loadQrCodes(false, true); }, 0);
+    });
 
     // Runs cloud checks only while this list is focused and the app is active.
     const startCloudChecks = (): void => {
@@ -147,6 +164,8 @@ export default function QrCodesListScreen() {
     return () => {
       stopCloudChecks();
       subscription.remove();
+      databaseSubscription.remove();
+      if (readTimer !== null) clearTimeout(readTimer);
     };
   }, [loadQrCodes, loadCloudQrCodes]));
 

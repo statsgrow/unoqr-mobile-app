@@ -22,18 +22,19 @@ import { createDigitalCard, type AppDigitalCardQr } from "@/helpers/digital_card
 import { validateDigitalCard } from "@/helpers/digital_cards/validations";
 import { QR_DEFAULTS } from "@/helpers/qrcodes/create/QrCreateScreen";
 import { colors, fontFamilies, fontSizes, radii, spacing } from "@/theme/tokens";
+import { getGroupCard } from "@/helpers/digital_cards/groups/api";
 import GetError from "@/utils/general/Error";
 
 /* ------------------ BREAK ------------------ */
 
-type DigitalCardViewProps = { embedded?: boolean; savedCard?: AppDigitalCardQr; onPublished?: (card: AppDigitalCardQr) => void; onCardRefreshed?: (card: AppDigitalCardQr) => void };
+type DigitalCardViewProps = { groupUid?: string; readOnly?: boolean; embedded?: boolean; savedCard?: AppDigitalCardQr; onPublished?: (card: AppDigitalCardQr) => void; onCardRefreshed?: (card: AppDigitalCardQr) => void };
 type PreviewSide = "profile" | "qr" | "analytics" | "contacts";
 type PreviewTab = { value: PreviewSide; label: string; Icon: LucideIcon };
 
 /* ------------------ BREAK ------------------ */
 
 // Renders the shared native business-card layout immediately from saved or cached values.
-export default function DigitalCardViewScreen({ embedded = false, savedCard, onPublished, onCardRefreshed }: DigitalCardViewProps = {}) {
+export default function DigitalCardViewScreen({ embedded = false, savedCard, groupUid, readOnly = false, onPublished, onCardRefreshed }: DigitalCardViewProps = {}) {
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ tab?: string }>();
   const [card, setCard] = useState<AppDigitalCardQr | null>(savedCard ?? null);
@@ -61,11 +62,13 @@ export default function DigitalCardViewScreen({ embedded = false, savedCard, onP
   useEffect(() => {
     if (!embedded) return;
     let active = true;
+    const controller = new AbortController();
     const loadCard = async (): Promise<void> => {
       setError(null);
+      if (groupUid) setCard(null);
       setRefreshing(true);
       try {
-        const remote = await getDigitalCard({ uid: savedCard?.uid });
+        const remote = groupUid && savedCard?.uid ? await getGroupCard(savedCard.uid, groupUid, controller.signal) : await getDigitalCard({ uid: savedCard?.uid });
         if (!remote) {
           if (active) setCard(null);
           throw new Error("Add your card details before previewing it.");
@@ -76,21 +79,21 @@ export default function DigitalCardViewScreen({ embedded = false, savedCard, onP
           onCardRefreshed?.(loaded);
         };//if ends
       } catch (cause: unknown) {
-        if (active) setError(GetError({ error: cause, message: "Your digital card could not be loaded." }).message);
+        if (active) { if (groupUid) setCard(null); setError(GetError({ error: cause, message: "Your digital card could not be loaded." }).message); }
       } finally {
         if (active) setRefreshing(false);
       };//try-catch ends
     };//func ends
     void loadCard();
-    return () => { active = false; };//return ends
-  }, [embedded, loadKey]);
+    return () => { active = false; controller.abort(); };//return ends
+  }, [embedded, loadKey, groupUid, savedCard?.uid]);
 
   // Reloads SQLite values while retaining the current preview during the read.
   const reloadCard = (): void => { setLoadKey((key) => key + 1); };//func ends
 
   // Publishes the reviewed card and updates SQLite before sharing its public link.
   const handlePublish = async (): Promise<AppDigitalCardQr | null> => {
-    if (!card || publishing || refreshing) return null;
+    if (!card || readOnly || publishing || refreshing) return null;
     setPublishing(true);
     setActionError(null);
     try {
@@ -146,15 +149,15 @@ export default function DigitalCardViewScreen({ embedded = false, savedCard, onP
   const previewContent = <>
     {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
     {card && Layout ? <>
-      {card.cardSettings.status !== "published" ? <Text style={styles.hint}>Your card is unpublished. Sharing will publish it first.</Text> : null}
-      {side === "profile" ? <Layout data={getDigitalCardLayoutData(card)} primaryColor={card.primaryColor} onOpenLink={(url) => void openLink(url)} /> : <DigitalCardQrPreview card={card} fit />}
+      {card.cardSettings.status !== "published" ? <Text style={styles.hint}>{readOnly ? "This card is unpublished. Ask its owner to publish it before sharing." : "Your card is unpublished. Sharing will publish it first."}</Text> : null}
+      {side === "profile" ? <View style={styles.profileFrame}><Layout data={getDigitalCardLayoutData(card)} primaryColor={card.primaryColor} onOpenLink={(url) => void openLink(url)} /></View> : <DigitalCardQrPreview card={card} fit />}
     </> : <View style={styles.message}>
       {error ? <Pressable accessibilityRole="button" onPress={reloadCard} style={styles.retry}><Text style={styles.retryText}>Try again</Text></Pressable> : <PxCircularProgress color={colors.secondary.main} size={40} />}
     </View>}
   </>;
 
   //Default Return
-  if (!embedded) return <Redirect href="/digital_cards/modify" />;//return ends
+  if (!embedded) return <Redirect href="/digital_cards/list" />;//return ends
   return <View style={[styles.root, { paddingBottom: insets.bottom }]}>
     {card ? <View style={styles.toolbar}>
       <View accessibilityRole="tablist" style={styles.tabs}>
@@ -162,17 +165,17 @@ export default function DigitalCardViewScreen({ embedded = false, savedCard, onP
           <Icon size={22} strokeWidth={1.25} color={side === value ? colors.white.main : colors.primary.main} />
         </Pressable>)}
       </View>
-      <Pressable accessibilityRole="button" accessibilityLabel="Share digital card" disabled={publishing || refreshing} onPress={() => setShareOpen(true)} style={styles.shareButton}><Share2 size={22} strokeWidth={1.25} color={colors.primary.main} /></Pressable>
+      <Pressable accessibilityRole="button" accessibilityLabel="Share digital card" disabled={publishing || refreshing || (readOnly && card.cardSettings.status !== "published")} onPress={() => setShareOpen(true)} style={styles.shareButton}><Share2 size={22} strokeWidth={1.25} color={colors.primary.main} /></Pressable>
     </View> : null}
-    {side === "contacts" && card ? <DigitalCardContacts key={card.uid} uid={card.uid} /> : side === "analytics" && card ? <DigitalCardAnalytics key={card.uid} uid={card.uid} /> : side === "qr" ? <View style={[styles.previewArea, styles.previewContent]}>{previewContent}</View> : <ScrollView style={styles.previewArea} contentContainerStyle={[styles.previewContent, !card && styles.emptyContent]} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={reloadCard} enabled={!publishing} tintColor={colors.secondary.main} colors={[colors.secondary.main]} />}>
+    {side === "contacts" && card ? <DigitalCardContacts key={card.uid} uid={card.uid} groupUid={readOnly ? groupUid : undefined} /> : side === "analytics" && card ? <DigitalCardAnalytics key={card.uid} uid={card.uid} groupUid={readOnly ? groupUid : undefined} /> : side === "qr" ? <View style={[styles.previewArea, styles.previewContent]}>{previewContent}</View> : <ScrollView style={styles.previewArea} contentContainerStyle={[styles.previewContent, !card && styles.emptyContent]} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={reloadCard} enabled={!publishing} tintColor={colors.secondary.main} colors={[colors.secondary.main]} />}>
       {previewContent}
     </ScrollView>}
     {actionError ? <Text accessibilityRole="alert" style={[styles.error, styles.feedback]}>{actionError}</Text> : null}
     {card ? <>
       {side === "profile" ? <CardFooter primaryColor={card.primaryColor} allowSaveContact={card.cardSettings.allowSaveContact} saving={savingContact} onSaveContact={() => void saveContact()} /> : side === "qr" ? <View style={styles.qrFooter}>
-        <PxButton mode="contained" color="primary" fullWidth disabled={refreshing || publishing} onPress={() => setShareOpen(true)}>Share QR Card</PxButton>
+        <PxButton mode="contained" color="primary" fullWidth disabled={refreshing || publishing || (readOnly && card.cardSettings.status !== "published")} onPress={() => setShareOpen(true)}>Share QR Card</PxButton>
       </View> : null}
-      <DigitalCardShareDialog card={card} open={shareOpen} setOpen={setShareOpen} onPublish={handlePublish} initialTab={side === "qr" ? "qr" : "social"} />
+      <DigitalCardShareDialog publicQrExport={readOnly} card={card} open={shareOpen} setOpen={setShareOpen} onPublish={handlePublish} initialTab={side === "qr" ? "qr" : "social"} />
     </> : null}
     <PxModal open={downloadLocation !== null} setOpen={(open) => { if (!open) setDownloadLocation(null); }} name="Contact saved" footerAction={<View><Pressable accessibilityRole="button" onPress={() => setDownloadLocation(null)} style={styles.retry}><Text style={styles.retryText}>Done</Text></Pressable></View>}>
       <View style={styles.success}><CheckCircle2 size={48} strokeWidth={1.25} color={colors.success.main} /><Text style={styles.hint}>{card?.details.fullname}'s contact was saved to {downloadLocation === "Downloads" ? "Downloads" : "your chosen Files folder"}.</Text></View>
@@ -189,6 +192,7 @@ const styles = StyleSheet.create({
   tab: { minHeight: 44, minWidth: 56, alignItems: "center", justifyContent: "center", borderRadius: radii.lg },
   selectedTab: { backgroundColor: colors.black.main },
   shareButton: { minWidth: 44, minHeight: 44, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.border.main, backgroundColor: colors.white.main, borderRadius: radii.xl },
+  profileFrame: { borderWidth: 1, borderColor: colors.border.main, borderRadius: radii.xl + spacing.sm + 1, overflow: "hidden" },
   previewArea: { flex: 1 },
   previewContent: { padding: spacing.md, gap: spacing.md },
   emptyContent: { flexGrow: 1, justifyContent: "center" },

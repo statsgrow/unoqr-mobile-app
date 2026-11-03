@@ -146,7 +146,7 @@ export default function DigitalCardLayout({ refreshing, onRefresh, layout, prima
         onRequestClose={() => setPreviewLayout(null)}
       >
         <View pointerEvents="none" style={styles.sampleCard}>
-          <PreviewLayout data={{ ...sampleLayoutData, photo: sampleLayoutPortraits[previewLayout], featurePhoto: featurePhotoUrl ? { uri: featurePhotoUrl } : null }} primaryColor={selectedColor} isPreview />
+          <View style={styles.profileFrame}><PreviewLayout data={{ ...sampleLayoutData, photo: sampleLayoutPortraits[previewLayout], featurePhoto: featurePhotoUrl ? { uri: featurePhotoUrl } : null }} primaryColor={selectedColor} isPreview /></View>
         </View>
       </PxModal> : null}
     </GeneralLayout>
@@ -160,9 +160,9 @@ function LayoutThumbnail({ layout, primaryColor, width, featurePhotoUrl }: Layou
   const Layout = getDigitalCardLayout(layout);
   const scale = width / PREVIEW_WIDTH;
   //Default Return
-  return <View pointerEvents="none" style={[styles.preview, { height: width }]}>
+  return <View pointerEvents="none" style={[styles.preview, { height: width * 1.15 }]}>
     <View style={[styles.previewCanvas, { transform: [{ scale }] }]}>
-      <View style={styles.sampleCard}><Layout data={{ ...sampleLayoutData, photo: sampleLayoutPortraits[layout], featurePhoto: featurePhotoUrl ? { uri: featurePhotoUrl } : null }} primaryColor={primaryColor} isPreview /></View>
+      <View style={styles.sampleCard}><View style={styles.profileFrame}><Layout data={{ ...sampleLayoutData, photo: sampleLayoutPortraits[layout], featurePhoto: featurePhotoUrl ? { uri: featurePhotoUrl } : null }} primaryColor={primaryColor} isPreview /></View></View>
     </View>
   </View>;//return ends
 };//func ends
@@ -178,6 +178,7 @@ const styles = StyleSheet.create({
   pressedOption: { opacity: 0.85 },
   preview: { overflow: "hidden" },
   previewCanvas: { position: "absolute", top: 0, left: 0, width: PREVIEW_WIDTH, backgroundColor: colors.cream.main, transformOrigin: "top left" },
+  profileFrame: { borderWidth: 1, borderColor: colors.border.main, borderRadius: radii.xl + spacing.sm + 1, overflow: "hidden" },
   sampleCard: { padding: spacing.md },
   optionFooter: { minHeight: 48, paddingVertical: spacing.sm, paddingLeft: spacing.sm, paddingRight: 44, justifyContent: "center", backgroundColor: colors.white.main },
   selectedOptionFooter: { backgroundColor: colors.secondary.main },

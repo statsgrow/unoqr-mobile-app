@@ -150,6 +150,22 @@ export default function MoreScreen() {
 
         <View style={styles.groupedLinks}>
           <GroupedLink
+            icon="wallet-outline"
+            label="My Subscription"
+            description="Your current plan and card allowance"
+            onPress={() => redirect("push", "/subscription")}
+            showDivider
+          />
+          <GroupedLink
+            icon="wallet-outline"
+            label="Billing"
+            description="Billing cycle and payment details"
+            onPress={() => redirect("push", "/subscription/billing")}
+          />
+        </View>
+
+        <View style={styles.groupedLinks}>
+          <GroupedLink
             icon="account-circle-outline"
             label="My Account"
             description="Profile and account details"

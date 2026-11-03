@@ -20,6 +20,7 @@ import { PxCircularProgress } from "@/components/elements/PxCircularProgress";
 import { colors, spacing } from "@/theme/tokens";
 import { insertAppInstall } from "@/utils/auth/AppInstall";
 import { getUser } from "@/utils/auth/AuthUser";
+import { subscribeAuthUser } from "@/utils/auth/AuthUserStorage";
 import type { UserType } from "@/utils/auth/UserTypes";
 import { Toast, ToastProvider } from "@/utils/general/Toast";
 
@@ -95,6 +96,9 @@ export function GeneralLayout({
 	//Auth state
 	const [isAuthResolved, setIsAuthResolved] = useState(!protectRoute);
 	const [authUser, setAuthUser] = useState<UserType | null>(null);
+
+	// Update callback children when account refresh changes the plan or card allowance.
+	useEffect(() => protectRoute ? subscribeAuthUser(setAuthUser) : undefined, [protectRoute]);
 
 	/* ------------------ BREAK ------------------ */
 
@@ -247,7 +251,8 @@ export function GeneralLayout({
 	const resolvedBottomNav = hasCustomBottomNav
 		? <BottomNav hideMenu footerAction={customBottomNav} />
 		: bottomNav === null || hideBottomMenu ? null : <BottomNav />;
-	const resolvedEdges = hasCustomBottomNav ? edges.filter((edge) => edge !== "bottom") : edges;
+	// The shared bottom slot owns its safe area regardless of a page’s edge settings.
+	const resolvedEdges = resolvedBottomNav ? edges.filter((edge) => edge !== "bottom") : edges;
 
 	//If auth is not resolved, show loader
 	if (!isAuthResolved) {

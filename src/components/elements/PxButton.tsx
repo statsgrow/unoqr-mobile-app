@@ -4,6 +4,7 @@ import { Button as PaperButton } from "react-native-paper";
 import { PxIcon, type PxIconName } from "@/components/elements/PxIcon";
 import { PxCircularProgress } from "@/components/elements/PxCircularProgress";
 import { colors, fontFamilies, fonts, sizes } from "@/theme/themeSettings";
+import { colors as tokenColors } from "@/theme/tokens";
 
 /* ------------------ TYPES ------------------ */
 
@@ -72,7 +73,7 @@ const paletteByColor: Record<PxButtonColor, Palette> = {
 	},
 	error: {
 		main: colors.danger.main,
-		light: colors.danger.light,
+		light: tokenColors.error.surface,
 		dark: colors.danger.dark,
 		onMain: colors.white
 	},

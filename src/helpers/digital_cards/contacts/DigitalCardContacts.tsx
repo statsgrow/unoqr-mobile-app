@@ -1,24 +1,24 @@
 import { useEffect, useState } from "react";
 import { router } from "expo-router";
-import { ChevronRight } from "lucide-react-native";
-import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
+import { FlatList, RefreshControl, StyleSheet, Text, View } from "react-native";
 
+import DigitalCardContactItem from "@/helpers/digital_cards/contacts/components/DigitalCardContactItem";
 import { PxButton } from "@/components/elements/PxButton";
 import { PxSkeleton } from "@/components/elements/PxSkeleton";
-import { colors, fontFamilies, fontSizes, radii, spacing } from "@/theme/tokens";
+import { colors, fontFamilies, fontSizes, spacing } from "@/theme/tokens";
+import { getGroupCardContacts } from "@/helpers/digital_cards/groups/api";
 import GetError from "@/utils/general/Error";
 
 import { getDigitalCardContacts, type DigitalCardContact } from "./api";
 
 /* ------------------ BREAK ------------------ */
 
-type DigitalCardContactsProps = { uid: string };
-type ContactRowProps = { uid: string; contact: DigitalCardContact };
+type DigitalCardContactsProps = { uid: string; groupUid?: string };
 
 /* ------------------ BREAK ------------------ */
 
 // Lists the current card's submitted contacts with owner authorization, refresh and pagination.
-export default function DigitalCardContacts({ uid }: DigitalCardContactsProps) {
+export default function DigitalCardContacts({ uid, groupUid }: DigitalCardContactsProps) {
   const [contacts, setContacts] = useState<DigitalCardContact[]>([]);
   const [count, setCount] = useState(0);
   const [from, setFrom] = useState(0);
@@ -31,7 +31,8 @@ export default function DigitalCardContacts({ uid }: DigitalCardContactsProps) {
     const controller = new AbortController();
     setLoading(true);
     setError(null);
-    void getDigitalCardContacts({ uid, from, signal: controller.signal }).then((response) => {
+    const request = groupUid ? getGroupCardContacts(uid, groupUid, from, controller.signal) : getDigitalCardContacts({ uid, from, signal: controller.signal });
+    void request.then((response) => {
       if (controller.signal.aborted) return;
       setContacts(current => from === 0 ? response.data : [...current, ...response.data]);
       setCount(response.count);
@@ -41,7 +42,7 @@ export default function DigitalCardContacts({ uid }: DigitalCardContactsProps) {
       if (!controller.signal.aborted) setLoading(false);
     });
     return () => controller.abort();//return ends
-  }, [uid, from, reloadKey]);
+  }, [uid, groupUid, from, reloadKey]);
 
   // Clears the previous contacts immediately so refresh displays only the loading skeletons.
   function refreshContacts(): void {
@@ -67,7 +68,7 @@ export default function DigitalCardContacts({ uid }: DigitalCardContactsProps) {
     contentContainerStyle={styles.content}
     data={contacts}
     keyExtractor={contact => contact.id}
-    renderItem={({ item }) => <ContactRow uid={uid} contact={item} />}
+    renderItem={({ item }) => <DigitalCardContactItem contact={item} showDetails={Boolean(groupUid)} onPress={groupUid ? undefined : () => router.push({ pathname: "/digital_cards/[card_uid]/contacts/view_single", params: { card_uid: uid, contact_id: item.id } })} />}
     refreshControl={<RefreshControl refreshing={loading && contacts.length > 0 && from === 0} onRefresh={refreshContacts} tintColor={colors.secondary.main} colors={[colors.secondary.main]} />}
     ListHeaderComponent={<View style={styles.heading}>
       <Text style={styles.title}>Submitted contacts</Text>
@@ -76,7 +77,7 @@ export default function DigitalCardContacts({ uid }: DigitalCardContactsProps) {
     ListEmptyComponent={!loading && !error ? <Text style={styles.message}>No contacts have been submitted for this card yet.</Text> : null}
     ListFooterComponent={<View style={styles.feedback}>
       {loading ? <View accessible accessibilityRole="progressbar" accessibilityLabel="Loading submitted contacts" accessibilityState={{ busy: true }} style={styles.loader}>
-        {[1, 0.8, 0.6].map(opacity => <PxSkeleton key={opacity} width="100%" height={styles.avatar.height + 2 * (styles.avatarFrame.padding + styles.contact.padding + styles.contact.borderWidth)} opacity={opacity} />)}
+        {[1, 0.8, 0.6].map(opacity => <PxSkeleton key={opacity} width="100%" height={44 + 2 * (spacing.xxs + spacing.md + 1)} opacity={opacity} />)}
       </View> : error ? <>
         <Text accessibilityRole="alert" style={styles.error}>{error}</Text>
         <PxButton onPress={retryContacts}>Try again</PxButton>
@@ -87,37 +88,12 @@ export default function DigitalCardContacts({ uid }: DigitalCardContactsProps) {
 
 /* ------------------ BREAK ------------------ */
 
-// Displays a contact's initial avatar, name and submission time with a centered navigation chevron.
-function ContactRow({ uid, contact }: ContactRowProps) {
-  const name = [contact.first_name, contact.last_name].filter(Boolean).join(" ");
-  const initial = Array.from(contact.first_name.trim())[0]?.toLocaleUpperCase() ?? "?";
-
-  //Default Return
-  return <Pressable accessibilityRole="button" accessibilityLabel={`View contact ${name || "Contact"}`} onPress={() => router.push({ pathname: "/digital_cards/[card_uid]/contacts/view_single", params: { card_uid: uid, contact_id: contact.id } })} style={styles.contact}>
-    <View style={styles.avatarFrame}><View style={styles.avatar}><Text style={styles.initial}>{initial}</Text></View></View>
-    <View style={styles.contactDetails}>
-      <Text style={styles.name}>{name || "Contact"}</Text>
-      <Text style={styles.date}>{new Date(contact.created_at).toLocaleString()}</Text>
-    </View>
-    <ChevronRight size={20} strokeWidth={1.25} color={colors.mute.main} />
-  </Pressable>;//return ends
-};//func ends
-
-/* ------------------ BREAK ------------------ */
-
 const styles = StyleSheet.create({
   root: { flex: 1 },
   content: { padding: spacing.md, gap: spacing.sm },
   heading: { flexDirection: "row", alignItems: "center", gap: spacing.xs, paddingBottom: spacing.xs },
   title: { flex: 1, color: colors.primary.main, fontFamily: fontFamilies.primarySemiBold, fontSize: fontSizes.h6 },
   count: { color: colors.mute.main, fontFamily: fontFamilies.primaryMedium, fontSize: fontSizes.body2 },
-  contact: { flexDirection: "row", alignItems: "center", padding: spacing.md, gap: spacing.sm, borderWidth: 1, borderColor: colors.border.main, borderRadius: radii.xl, backgroundColor: colors.white.main },
-  avatarFrame: { padding: spacing.xxs, borderRadius: radii.pill, backgroundColor: colors.neutral.light },
-  avatar: { width: 44, height: 44, alignItems: "center", justifyContent: "center", borderRadius: radii.pill, backgroundColor: colors.black.light },
-  initial: { color: colors.white.main, fontFamily: fontFamilies.primaryBold, fontSize: fontSizes.h6 },
-  contactDetails: { flex: 1, gap: spacing.xs },
-  name: { color: colors.primary.main, fontFamily: fontFamilies.primarySemiBold, fontSize: fontSizes.subtitle1 },
-  date: { color: colors.mute.main, fontFamily: fontFamilies.primaryRegular, fontSize: fontSizes.caption },
   message: { color: colors.mute.main, fontFamily: fontFamilies.primaryRegular, fontSize: fontSizes.body2 },
   feedback: { gap: spacing.md, alignItems: "center" },
   loader: { width: "100%", gap: spacing.sm },

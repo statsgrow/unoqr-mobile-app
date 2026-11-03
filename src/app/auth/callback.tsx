@@ -29,7 +29,7 @@ WebBrowser.maybeCompleteAuthSession();
 
 /* ------------------ BREAK ------------------ */
 
-// Completes app OAuth, awaits install registration, and starts account history synchronization.
+// Completes app OAuth and opens Home while account history downloads in the background.
 export default function LoginCallbackScreen() {
   const params = useLocalSearchParams<LoginCallbackParams>();
   const currentUrl = Linking.useURL();
@@ -75,7 +75,7 @@ export default function LoginCallbackScreen() {
           refreshToken: tokens.refreshToken as string
         });
         Toast.success({ message: "You are now logged in." });
-        redirect("replace", "/sync/myscans");
+        redirect("replace", "/");
       } catch (error: unknown) {
         const message = error instanceof Error
           ? error.message

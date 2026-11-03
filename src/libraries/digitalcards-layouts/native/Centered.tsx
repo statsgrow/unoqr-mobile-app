@@ -28,7 +28,7 @@ export default function Centered({ data, primaryColor, onOpenLink, isPreview = f
 /* ------------------ BREAK ------------------ */
 
 const styles = StyleSheet.create({
-  card: { borderRadius: radii.xl + spacing.sm, overflow: "hidden", borderWidth: 1, borderColor: colors.line.main, backgroundColor: colors.white.main },
+  card: { borderRadius: radii.xl + spacing.sm, overflow: "hidden", backgroundColor: colors.white.main },
   cover: { height: 112, width: "120%", marginLeft: "-10%" },
   featureCover: { height: undefined, width: "100%", marginLeft: 0, aspectRatio: 2.7 },
   featureImage: { width: "100%", height: "100%" },

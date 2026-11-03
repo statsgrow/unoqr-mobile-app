@@ -2,7 +2,7 @@ import axios, { type InternalAxiosRequestConfig } from "axios";
 
 import { apiSettings, userTokenSettings } from "@/settings";
 import { getInstallAccessToken } from "@/utils/auth/AppInstallTokens";
-import { getUserTokens } from "@/utils/auth/AuthTokens";
+import { getUserTokens, refreshTokensSilently } from "@/utils/auth/AuthTokens";
 
 /* ------------------ BREAK ------------------ */
 
@@ -18,14 +18,21 @@ export function isInstallVerificationPending(error: unknown): boolean {
 
 /* ------------------ BREAK ------------------ */
 
-// Attaches stored auth tokens only to requests targeting the configured UnoQR API.
+// Refreshes expiring account tokens before attaching them to requests targeting the configured UnoQR API.
 Axios.interceptors.request.use(async (config) => {
   const apiOrigin = apiSettings.getApiUrl({ path: "/" }).origin;
   const requestUrl = new URL(config.url || "/", config.baseURL || apiOrigin);
   const requestOrigin = requestUrl.origin;
   if (requestOrigin !== apiOrigin) return config;
 
-  const { accessToken, refreshToken } = await getUserTokens();
+  let { accessToken, refreshToken } = await getUserTokens();
+  if (refreshToken) {
+    const result = await refreshTokensSilently();
+    if (result === "failed" || result === "missing") {
+      throw new axios.AxiosError("Your session could not be refreshed. Try again or sign in again.", "USER_SESSION_REFRESH_FAILED", config);
+    };//if ends
+    ({ accessToken, refreshToken } = await getUserTokens());
+  };//if ends
   config.headers = config.headers ?? {};
 
   if (accessToken) {

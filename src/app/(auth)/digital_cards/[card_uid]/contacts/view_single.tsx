@@ -81,7 +81,7 @@ export default function DigitalCardContactScreen() {
   // Returns to the contacts tab or the card preview when opening from a direct link.
   function goBack(): void {
     if (router.canGoBack()) router.back();
-    else router.replace({ pathname: "/digital_cards/modify", params: { tab: "contacts" } });
+    else router.replace({ pathname: "/digital_cards/modify", params: { tab: "contacts", uid: cardUid } });
   };//func ends
 
   // Adds one trimmed tag without duplicating an existing label.

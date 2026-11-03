@@ -13,4 +13,5 @@ export type DigitalCardLayoutData<Photo = string> = {
   socialLinks: DigitalCardSocialLink[];
   photo: Photo | null;
   featurePhoto?: Photo | null;
+  companyLogo?: Photo | null;
 };//export ends

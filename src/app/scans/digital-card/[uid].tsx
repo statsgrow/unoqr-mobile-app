@@ -146,7 +146,7 @@ export default function ScannedDigitalCardScreen() {
         <Text accessibilityRole="alert" style={styles.messageText}>{error}</Text>
         <Pressable accessibilityRole="button" onPress={() => setRetryKey((key) => key + 1)} style={styles.retry}><Text style={styles.scanText}>Try again</Text></Pressable>
       </View> : null}
-      {card && Layout && data ? <Layout data={data} primaryColor={card.primary_color} onOpenLink={(url) => void openLink(url)} /> : null}
+      {card && Layout && data ? <View style={styles.profileFrame}><Layout data={data} primaryColor={card.primary_color} onOpenLink={(url) => void openLink(url)} /></View> : null}
     </GeneralLayout>
     {card ? <DigitalCardContactDialog key={card.uid} uid={card.uid} fullname={card.fullname} required={card.is_contact_required} open={collectContactOpen} setOpen={setCollectContactOpen} onCollected={requestContactDownload} onSkip={requestContactDownload} onDismiss={handleContactDialogDismiss} /> : null}
     {card ? <DigitalCardShareDialog publicLink={{ url: card.url, fullname: card.fullname }} open={shareOpen} setOpen={setShareOpen} /> : null}
@@ -175,6 +175,7 @@ async function saveDigitalCardScanTitle(card: PublicDigitalCard): Promise<void> 
 /* ------------------ BREAK ------------------ */
 
 const styles = StyleSheet.create({
+  profileFrame: { borderWidth: 1, borderColor: colors.border.main, borderRadius: radii.xl + spacing.sm + 1, overflow: "hidden" },
   content: { padding: spacing.md },
   header: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, backgroundColor: colors.white.main },
   title: { flex: 1, fontFamily: fontFamilies.primarySemiBold, fontSize: fontSizes.navigationTitle, color: colors.primary.main },

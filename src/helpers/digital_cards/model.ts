@@ -20,6 +20,7 @@ export type DigitalCardSettingsValues = {
 export type DigitalCardDetails = {
   profilePicture: FileInputValue | null;
   featurePhoto: FileInputValue | null;
+  companyLogo: FileInputValue | null;
   fullname: string;
   company: string;
   position: string;
@@ -36,6 +37,7 @@ export type AppDigitalCardQr = { id?: string; version?: number; updated_at?: str
 export const DIGITAL_CARD_DEFAULTS: DigitalCardDetails = {
   profilePicture: null,
   featurePhoto: null,
+  companyLogo: null,
   fullname: "",
   company: "",
   position: "",

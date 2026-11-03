@@ -14,13 +14,14 @@ import { Axios } from "@/utils/general/Axios";
 
 /* ------------------ BREAK ------------------ */
 
-type CardPayload = Omit<DigitalCardDetails, "profilePicture" | "featurePhoto" | "socialLinks"> & {
+type CardPayload = Omit<DigitalCardDetails, "profilePicture" | "featurePhoto" | "companyLogo" | "socialLinks"> & {
   uid: string;
   name: string;
   url: string;
   status: DigitalCardSettingsValues["status"];
   photo_url: string | null;
   feature_photo_url: string | null;
+  logo_url: string | null;
   social_links: DigitalCardDetails["socialLinks"];
   layout: AppDigitalCardQr["layout"];
   primary_color: string;
@@ -38,8 +39,9 @@ export type RemoteCard = CardPayload & {
   published_at: string | null;
   photo: FileInputValue | null;
   feature_photo?: FileInputValue | null;
+  logo?: FileInputValue | null;
 };//export ends
-export type DigitalCardFileField = "photo_url" | "feature_photo_url";
+export type DigitalCardFileField = "photo_url" | "feature_photo_url" | "logo_url";
 export type DigitalCardUpdate = Partial<Omit<CardPayload, "uid" | "url">>;
 type BackgroundPostUpdate = { uid: string; request: Promise<void> };
 type CardResponse = { data: RemoteCard | null };
@@ -100,12 +102,12 @@ export async function updateDigitalCardFile(uid: string, field: DigitalCardFileF
 
 // Creates or updates the account's card with the uploaded profile picture's URL.
 export async function saveDigitalCard(card: AppDigitalCardQr, exists: boolean): Promise<RemoteCard> {
-  const { profilePicture, featurePhoto, socialLinks, ...details } = card.details;
+  const { profilePicture, featurePhoto, companyLogo, socialLinks, ...details } = card.details;
   const { dot, eye, frame, styles } = card.settings;
   const payload: CardPayload = {
     ...details, phones: details.phones.filter((phone) => phone.value.trim()),
     emails: details.emails.filter((email) => email.value.trim()), uid: card.uid, url: `https://unoqr.com/dc/${card.uid}`,
-    name: card.cardSettings.name, status: card.cardSettings.status, photo_url: profilePicture?.url || null, feature_photo_url: featurePhoto?.url || null, social_links: socialLinks,
+    name: card.cardSettings.name, status: card.cardSettings.status, photo_url: profilePicture?.url || null, feature_photo_url: featurePhoto?.url || null, logo_url: companyLogo?.url || null, social_links: socialLinks,
     layout: card.layout, primary_color: card.primaryColor,
     qr_design: { dot, eye, frame, styles },
     seo: { title: card.cardSettings.seoTitle, description: card.cardSettings.seoDescription, allow_indexing: card.cardSettings.allowIndexing },
@@ -138,9 +140,9 @@ export async function saveDigitalCardQrDesign(uid: string, settings: AppDigitalC
 
 // Saves only the Details section and its uploaded photo without changing publication or appearance.
 export async function saveDigitalCardDetails(uid: string, details: DigitalCardDetails): Promise<RemoteCard> {
-  const { profilePicture, featurePhoto, socialLinks, ...values } = details;
+  const { profilePicture, featurePhoto, companyLogo, socialLinks, ...values } = details;
   const payload = {
-    ...values, uid, photo_url: profilePicture?.url || null, feature_photo_url: featurePhoto?.url || null, social_links: socialLinks,
+    ...values, uid, photo_url: profilePicture?.url || null, feature_photo_url: featurePhoto?.url || null, logo_url: companyLogo?.url || null, social_links: socialLinks,
     phones: values.phones.filter((phone) => phone.value.trim()),
     emails: values.emails.filter((email) => email.value.trim())
   };
@@ -199,6 +201,7 @@ export function restoreDigitalCard(remote: RemoteCard, local: AppDigitalCardQr):
     details: {
       profilePicture: remote.photo_url || remote.photo?.url ? { ...remote.photo, url: remote.photo?.url || remote.photo_url } : null,
       featurePhoto: remote.feature_photo_url ? { ...remote.feature_photo, url: remote.feature_photo_url } : null,
+      companyLogo: remote.logo_url ? { ...remote.logo, url: remote.logo_url } : null,
       fullname: remote.fullname || remote.name, company: remote.company,
       position: remote.position, phones: remote.phones.length ? remote.phones : [{ value: "" }],
       emails: remote.emails.length ? remote.emails : [{ value: "" }], socialLinks: remote.social_links,

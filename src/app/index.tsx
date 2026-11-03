@@ -10,9 +10,11 @@ import { Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } 
 import Svg, { Defs, RadialGradient, Rect, Stop } from "react-native-svg";
 
 import { PxCircularProgress } from "@/components/elements/PxCircularProgress";
+import { PxSkeleton } from "@/components/elements/PxSkeleton";
 import { GeneralLayout } from "@/components/layout/GeneralLayout";
 import { HeaderNav } from "@/components/layout/HeaderNav";
 import { getDigitalCard, restoreDigitalCard, saveDigitalCardSettings, type RemoteCard } from "@/helpers/digital_cards/api/cards";
+import { getCachedDigitalCards } from "@/helpers/digital_cards/db/getQueries";
 import DigitalCardShareDialog from "@/helpers/digital_cards/dialogs/DigitalCardShareDialog";
 import { createDigitalCard, type AppDigitalCardQr } from "@/helpers/digital_cards/model";
 import { validateDigitalCard } from "@/helpers/digital_cards/validations";
@@ -21,6 +23,7 @@ import { UpiPaymentIcon } from "@/helpers/scans/components/UpiPaymentIcon";
 import { getAllScans } from "@/helpers/scans/db/getQueries";
 import { getScanTypeInit, normalizeScanType } from "@/helpers/scans/identifiers";
 import { colors, fontFamilies, fontSizes, radii, spacing } from "@/theme/tokens";
+import { retryPostLoginSync, usePostLoginSync } from "@/utils/auth/PostLoginSync";
 import { redirect } from "@/utils/general/Redirect";
 
 /* ------------------ BREAK ------------------ */
@@ -35,8 +38,14 @@ type ShortcutProps = { title: string; description: string; Icon: LucideIcon; onP
 
 // Leads Home with the user's digital card, sharing actions, and top scan categories.
 export default function HomeScreen() {
+  const postLoginSync = usePostLoginSync();
   const [loadingCard, setLoadingCard] = useState(true);
-  const [card, setCard] = useState<RemoteCard | null>(null);
+  const [cards, setCards] = useState<RemoteCard[]>([]);
+  const [selectedUid, setSelectedUid] = useState<string | null>(null);
+  const [sliderWidth, setSliderWidth] = useState(0);
+  const sliderRef = useRef<ScrollView | null>(null);
+  const card = cards.find(item => item.uid === selectedUid) ?? cards[0] ?? null;
+  const selectedIndex = card ? cards.findIndex(item => item.uid === card.uid) : 0;
   const [cardError, setCardError] = useState(false);
   const [failedPhoto, setFailedPhoto] = useState<string | null>(null);
   const [records, setRecords] = useState<ScanRecord[]>([]);
@@ -60,7 +69,10 @@ export default function HomeScreen() {
     try {
       const saved = await getDigitalCard();
       if (!isActive() || read !== cardRead.current) return;
-      setCard(saved);
+      const savedCards = saved ? await getCachedDigitalCards(saved.user_id) : [];
+      if (!isActive() || read !== cardRead.current) return;
+      setCards(savedCards);
+      setSelectedUid(current => savedCards.some(item => item.uid === current) ? current : savedCards[0]?.uid ?? null);
       setCardError(false);
     } catch {
       if (isActive() && read === cardRead.current) setCardError(true);
@@ -68,6 +80,11 @@ export default function HomeScreen() {
       if (isActive() && read === cardRead.current) setLoadingCard(false);
     };//try-catch ends
   }, []);
+
+  // Keeps the visible page aligned after rotation, deletion or a reordered cache read.
+  useEffect(() => {
+    if (sliderWidth > 0) sliderRef.current?.scrollTo({ x: selectedIndex * sliderWidth, animated: false });
+  }, [sliderWidth, selectedIndex, cards]);
 
   // Displays local scans independently of the card and keeps categories visible during rereads.
   const loadScans = useCallback(async (isActive: () => boolean): Promise<void> => {
@@ -126,13 +143,27 @@ export default function HomeScreen() {
     setRefreshing(false);
   };//func ends
 
+  // Retries an incomplete card download before rereading the Home sections.
+  const retryCard = async (): Promise<void> => {
+    try {
+      if (postLoginSync.cards === "failed") {
+        await retryPostLoginSync();
+      };//if ends
+      await loadHome();
+    } catch (error: unknown) {
+      console.error("Unable to retry the Home card download:", error);
+      setCardError(true);
+    };//try-catch ends
+  };//func ends
+
   // Opens the existing card editor directly from Home's Edit or creation action.
-  const editCard = (): void => {
-    redirect("push", { pathname: "/digital_cards/modify", params: { mode: "edit" } });
+  const editCard = (target: RemoteCard | null = card): void => {
+    redirect("push", { pathname: "/digital_cards/modify", params: { mode: "edit", ...(target ? { uid: target.uid } : { new: "1" }) } });
   };//func ends
 
   // Shows the sharing sheet using the card already read from SQLite.
-  const openShare = (tab: ShareTab): void => {
+  const openShare = (tab: ShareTab, target: RemoteCard): void => {
+    setSelectedUid(target.uid);
     setShareTab(tab);
     setShareOpen(true);
   };//func ends
@@ -143,11 +174,13 @@ export default function HomeScreen() {
     const next = { ...shareCard, cardSettings: { ...shareCard.cardSettings, status: "published" as const } };
     await validateDigitalCard(next);
     const published = await saveDigitalCardSettings(next.uid, next.cardSettings);
-    setCard(published);
+    setCards(current => current.map(item => item.uid === published.uid ? published : item));
     return restoreDigitalCard(published, next);
   };//func ends
 
-  const cardDisabled = loadingCard || (cardError && !card);
+  const isCardLoading = loadingCard || postLoginSync.checking || postLoginSync.cards === "pending";
+  const hasCardError = cardError || postLoginSync.cards === "failed";
+  const cardDisabled = isCardLoading || (hasCardError && !card);
 
   //Default Return
   return (
@@ -158,7 +191,16 @@ export default function HomeScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void handleRefresh()} tintColor={colors.secondary.main} colors={[colors.secondary.main]} />}
       >
         <View style={styles.cardSection}>
-          <View style={styles.cardGroup}>
+          {isCardLoading ? <HomeCardSkeleton /> : <>
+          <View style={styles.sliderViewport} onLayout={event => setSliderWidth(event.nativeEvent.layout.width)}>
+            <ScrollView ref={sliderRef} horizontal pagingEnabled directionalLockEnabled showsHorizontalScrollIndicator={false} scrollEnabled={cards.length > 1} onMomentumScrollEnd={event => {
+              if (!sliderWidth || !cards.length) return;
+              const index = Math.max(0, Math.min(cards.length - 1, Math.round(event.nativeEvent.contentOffset.x / sliderWidth)));
+              setSelectedUid(cards[index].uid);
+            }}>
+              {(cards.length ? cards : [null]).map((card, index) => (
+          <View key={card?.uid ?? "empty"} accessibilityElementsHidden={index !== selectedIndex} importantForAccessibility={index === selectedIndex ? "auto" : "no-hide-descendants"} style={[styles.sliderPage, { width: sliderWidth || undefined }]}>
+            <View style={styles.cardGroup}>
             <View style={styles.digitalCard}>
               <View pointerEvents="none" style={styles.cardPattern} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
                 <Svg width="100%" height="100%" viewBox="0 0 400 120" preserveAspectRatio="none">
@@ -205,12 +247,10 @@ export default function HomeScreen() {
                 </Svg>
               </View>
 
-              {loadingCard && !card ? (
-                <View style={styles.cardMessage} />
-              ) : cardError && !card ? (
+              {hasCardError && !card ? (
                 <View style={styles.cardMessage}>
                   <Text style={styles.cardDescription}>Your card could not be loaded.</Text>
-                  <Pressable accessibilityRole="button" onPress={() => void loadHome()} style={styles.retryButton}>
+                  <Pressable accessibilityRole="button" onPress={() => void retryCard()} style={styles.retryButton}>
                     <Text style={styles.retryText}>Try again</Text>
                   </Pressable>
                 </View>
@@ -218,7 +258,7 @@ export default function HomeScreen() {
                 <Pressable
                   accessibilityLabel={card ? `View ${card.name}` : "Create your digital business card"}
                   accessibilityRole="button"
-                  onPress={() => card ? redirect("push", { pathname: "/digital_cards/modify", params: { mode: "preview" } }) : editCard()}
+                  onPress={() => card ? redirect("push", { pathname: "/digital_cards/modify", params: { mode: "preview", uid: card.uid } }) : editCard(card)}
                   style={({ pressed }) => [styles.cardPreview, pressed && styles.pressed]}
                 >
                   <View style={styles.cardIdentity}>
@@ -248,7 +288,7 @@ export default function HomeScreen() {
                 accessibilityRole="button"
                 disabled={cardDisabled}
                 accessibilityState={{ disabled: cardDisabled }}
-                onPress={() => card ? openShare("qr") : editCard()}
+                onPress={() => card ? openShare("qr", card) : editCard(card)}
                 style={({ pressed }) => [styles.cardAction, styles.primaryAction, pressed && styles.pressed, cardDisabled && styles.disabled]}
               >
                 <ScanLine size={20} strokeWidth={1.25} color={colors.secondary.dark} />
@@ -259,7 +299,7 @@ export default function HomeScreen() {
                 accessibilityLabel="Share card"
                 disabled={cardDisabled || !card}
                 accessibilityState={{ disabled: cardDisabled || !card }}
-                onPress={() => openShare("social")}
+                onPress={() => { if (card) openShare("social", card); }}
                 style={({ pressed }) => [styles.iconAction, pressed && styles.pressed, (cardDisabled || !card) && styles.disabled]}
               >
                 <Share2 size={20} strokeWidth={1.25} color={colors.primary.main} />
@@ -269,14 +309,25 @@ export default function HomeScreen() {
                 accessibilityLabel={card ? "Edit digital business card" : "Create digital business card"}
                 disabled={cardDisabled}
                 accessibilityState={{ disabled: cardDisabled }}
-                onPress={editCard}
+                onPress={() => editCard(card)}
                 style={({ pressed }) => [styles.iconAction, pressed && styles.pressed, cardDisabled && styles.disabled]}
               >
                 <Pencil size={20} strokeWidth={1.25} color={colors.primary.main} />
               </Pressable>
             </View>
+            </View>
           </View>
-          {cardError && card ? <Text accessibilityRole="alert" style={styles.stateText}>Could not refresh your card. Pull down to try again.</Text> : null}
+              ))}
+            </ScrollView>
+          </View>
+          {cards.length > 1 ? <View style={styles.sliderDots} accessibilityLabel={`Card ${selectedIndex + 1} of ${cards.length}`}>
+            {cards.map((item, index) => <Pressable key={item.uid} accessibilityRole="button" accessibilityLabel={`Show ${item.name}`} accessibilityState={{ selected: index === selectedIndex }} onPress={() => {
+              setSelectedUid(item.uid);
+              sliderRef.current?.scrollTo({ x: index * sliderWidth, animated: true });
+            }} style={styles.dotButton}><View style={[styles.dot, index === selectedIndex && styles.activeDot]} /></Pressable>)}
+          </View> : null}
+          {hasCardError && card ? <Pressable accessibilityRole="button" onPress={() => void retryCard()}><Text accessibilityRole="alert" style={styles.stateText}>Could not finish syncing your cards. Tap to try again.</Text></Pressable> : null}
+          </>}
         </View>
 
         <View style={styles.shortcuts}>
@@ -322,12 +373,25 @@ export default function HomeScreen() {
           )}
         </View>
       </ScrollView>
-      {shareCard ? <DigitalCardShareDialog card={shareCard} open={shareOpen} setOpen={setShareOpen} onPublish={publishCard} initialTab={shareTab} /> : null}
+      {shareCard ? <DigitalCardShareDialog key={shareCard.uid} card={shareCard} open={shareOpen} setOpen={setShareOpen} onPublish={publishCard} initialTab={shareTab} /> : null}
     </GeneralLayout>
   );//return ends
 };//export ends
 
 /* ------------------ BREAK ------------------ */
+
+// Matches the card preview and action heights while preserving their existing rounded outline.
+function HomeCardSkeleton() {
+  const height = Math.max(styles.digitalCard.minHeight,
+    styles.cardPreview.minHeight + styles.digitalCard.padding * 2 + styles.digitalCard.borderWidth * 2)
+    + styles.cardAction.minHeight + styles.cardActions.padding * 2;
+  //Default Return
+  return (
+    <View style={[styles.cardGroup, styles.cardSkeleton]} accessibilityLabel="Loading your digital cards" accessibilityState={{ busy: true }}>
+      <PxSkeleton width="100%" height={height} type="square" />
+    </View>
+  );//return ends
+};//func ends
 
 // Renders a compact shortcut underneath the digital card.
 function HomeShortcut({ title, description, Icon, onPress }: ShortcutProps) {
@@ -398,9 +462,16 @@ function summarizeScanTypes(records: ScanRecord[]): ScanTypeSummary[] {
 
 const styles = StyleSheet.create({
   content: { flexGrow: 1, gap: spacing.lg, paddingHorizontal: spacing.lg, paddingTop: spacing.lg, paddingBottom: spacing.lg, backgroundColor: colors.cream.main },
+  sliderViewport: { marginHorizontal: -spacing.xs },
+  sliderPage: { paddingHorizontal: spacing.xs },
+  sliderDots: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", justifyContent: "center" },
+  dotButton: { minHeight: 24, paddingHorizontal: spacing.xxs, justifyContent: "center", alignItems: "center" },
+  dot: { width: 6, height: 6, borderRadius: radii.pill, backgroundColor: colors.neutral.light },
+  activeDot: { width: 22, backgroundColor: colors.black.main },
   cardSection: { gap: spacing.xs },
   sectionHeader: { minHeight: 40, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.xs },
   cardGroup: { borderRadius: radii.xl + spacing.xs, backgroundColor: colors.white.main, shadowColor: colors.neutral.dark, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.05, shadowRadius: 16, elevation: 2 },
+  cardSkeleton: { overflow: "hidden" },
   digitalCard: { minHeight: 104, flexDirection: "row", alignItems: "center", gap: spacing.sm, padding: spacing.md, borderRadius: radii.xl + spacing.xs, borderWidth: 1, borderColor: colors.cream.dark, backgroundColor: colors.cream.cardLight, overflow: "hidden" },
   cardPattern: { position: "absolute", top: 0, right: 0, bottom: 0, left: 0 },
   cardPreview: { flex: 1, minHeight: 72, flexDirection: "row", alignItems: "center", gap: spacing.sm },

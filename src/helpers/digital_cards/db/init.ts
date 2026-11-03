@@ -33,6 +33,7 @@ export const digitalCardsTable = sqliteTable("digital_cards", {
   is_contact_required: integer("is_contact_required", { mode: "boolean" }).notNull().default(false),
   photo_url: text("photo_url"),
   feature_photo_url: text("feature_photo_url"),
+  logo_url: text("logo_url"),
   fullname: text("fullname").notNull()
 });//export ends
 
@@ -41,7 +42,8 @@ export const digitalCardPhotosTable = sqliteTable("digital_card_photos", {
   card_uid: text("card_uid").primaryKey().notNull(),
   user_id: text("user_id").notNull(),
   photo: text("photo", { mode: "json" }).$type<FileInputValue | null>(),
-  feature_photo: text("feature_photo", { mode: "json" }).$type<FileInputValue | null>()
+  feature_photo: text("feature_photo", { mode: "json" }).$type<FileInputValue | null>(),
+  logo: text("logo", { mode: "json" }).$type<FileInputValue | null>()
 });//export ends
 
 let initializationPromise: Promise<void> | null = null;
@@ -65,10 +67,10 @@ async function createDigitalCardsTable(): Promise<void> {
     bio TEXT NOT NULL DEFAULT '', address TEXT NOT NULL DEFAULT '', layout TEXT NOT NULL DEFAULT 'modern',
     primary_color TEXT NOT NULL DEFAULT '#FF5528', qr_design TEXT NOT NULL, seo TEXT NOT NULL,
     allow_save_contact INTEGER NOT NULL DEFAULT 1, is_contact_required INTEGER NOT NULL DEFAULT 0,
-    photo_url TEXT, feature_photo_url TEXT, fullname TEXT NOT NULL
+    photo_url TEXT, feature_photo_url TEXT, logo_url TEXT, fullname TEXT NOT NULL
   );`;
   const createPhotosSql = `CREATE TABLE IF NOT EXISTS digital_card_photos (
-    card_uid TEXT PRIMARY KEY NOT NULL, user_id TEXT NOT NULL, photo TEXT, feature_photo TEXT
+    card_uid TEXT PRIMARY KEY NOT NULL, user_id TEXT NOT NULL, photo TEXT, feature_photo TEXT, logo TEXT
   );`;
   const connection = sqliteDB;
   connection.withTransactionSync(() => {
@@ -81,9 +83,15 @@ async function createDigitalCardsTable(): Promise<void> {
     if (!columns.some((column) => column.name === "version")) {
       connection.execSync("ALTER TABLE digital_cards ADD COLUMN version INTEGER NOT NULL DEFAULT 0;");
     };//if ends
+    if (!columns.some((column) => column.name === "logo_url")) {
+      connection.execSync("ALTER TABLE digital_cards ADD COLUMN logo_url TEXT;");
+    };//if ends
     const photos = connection.getAllSync<{ name: string }>("PRAGMA table_info(digital_card_photos)");
     if (!photos.some((column) => column.name === "feature_photo")) {
       connection.execSync("ALTER TABLE digital_card_photos ADD COLUMN feature_photo TEXT;");
+    };//if ends
+    if (!photos.some((column) => column.name === "logo")) {
+      connection.execSync("ALTER TABLE digital_card_photos ADD COLUMN logo TEXT;");
     };//if ends
     if (!photos.some((column) => column.name === "card_uid")) {
       columns = connection.getAllSync<{ name: string }>("PRAGMA table_info(digital_cards)");

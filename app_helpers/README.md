@@ -45,7 +45,7 @@ The `expo-build-properties` plugin enables the UIKit scene lifecycle with `ios.e
 
 It also sets `ios.usePrecompiledModules: false` so Expo modules compile with the installed Xcode toolchain. The precompiled Expo modules built with Swift 6.3.1 fail to import under Xcode 27.1's Swift 6.4 compiler. Keep this setting when regenerating the native project and reinstall Pods after changing it.
 
-After an Xcode SDK update, ExpoModulesJSI may reuse a cached framework even when its SDK is incompatible. If an archive fails with `Cannot find type '__ObjC::expo' in scope`, remove the generated `node_modules/expo-modules-jsi/apple/Products/ExpoModulesJSI.xcframework/ios-arm64/.build-hash` stamp and archive again to rebuild the device slice with the current SDK. Restart Xcode if dependency regeneration leaves an `unable to initiate PIF transfer session` error.
+After an Xcode SDK update, ExpoModulesJSI may reuse a cached framework even when its SDK is incompatible. If an archive fails with `Cannot find type '__ObjC::expo' in scope`, remove only the affected generated slice’s `.build-hash` stamp under `node_modules/expo-modules-jsi/apple/Products/ExpoModulesJSI.xcframework/`: `ios-arm64/.build-hash` for an archive/device build, or `ios-arm64_x86_64-simulator/.build-hash` for `npm run ios`. Retry the same build to regenerate that slice with the current SDK. Do not delete source files or edit the generated Swift interface. Restart Xcode if dependency regeneration leaves an `unable to initiate PIF transfer session` error.
 
 After changing native configuration, run:
 
@@ -66,3 +66,5 @@ npm run ios:archive-symbols -- "/absolute/path/UnoQR.xcarchive" "/absolute/path/
 ```
 
 The helper also searches the local Pods, image manipulator prebuild folders, and ignored `.expo/archive-symbols` cache. Matching Release symbols for React Native 0.86.3 and Hermes 250829098.0.17 are cached locally for subsequent archives. When upgrading dependencies, download their corresponding symbols from the official React Native release artifacts. The installed `react-native/scripts/cocoapods/rncore.rb` defines the React Core dSYM URL; some release-page links point to the framework binary instead of its symbols. Rerun validation in Xcode after copying. This changes only the archive's symbols; it does not rebuild or upload the app.
+
+The iOS build also enables `ios.buildReactNativeFromSource` through `expo-build-properties`. The prebuilt React framework can omit `RCTPackagerConnection`, causing the development launcher to fail at link time. Reinstall Pods after changing this setting; the first source build takes longer.

@@ -6,19 +6,20 @@ import { PxButton } from "@/components/elements/PxButton";
 import { PxSkeleton } from "@/components/elements/PxSkeleton";
 import { PxSelect } from "@/components/form/PxSelect";
 import { colors, fontFamilies, fontSizes, radii, spacing } from "@/theme/tokens";
+import { getGroupCardAnalytics } from "@/helpers/digital_cards/groups/api";
 import GetError from "@/utils/general/Error";
 
 import { getDigitalCardAnalytics, type DigitalCardAnalyticsPeriod, type DigitalCardAnalyticsResponse, type DigitalCardAnalyticsSummary } from "./api";
 
 /* ------------------ BREAK ------------------ */
 
-type DigitalCardAnalyticsProps = { uid: string };
+type DigitalCardAnalyticsProps = { uid: string; groupUid?: string };
 type AnalyticsMetric = { key: keyof DigitalCardAnalyticsSummary; label: string; Icon: LucideIcon };
 
 /* ------------------ BREAK ------------------ */
 
 // Displays owner-only public card totals with local date presets and explicit refresh controls.
-export default function DigitalCardAnalytics({ uid }: DigitalCardAnalyticsProps) {
+export default function DigitalCardAnalytics({ uid, groupUid }: DigitalCardAnalyticsProps) {
   const [period, setPeriod] = useState<DigitalCardAnalyticsPeriod>("30");
   const [analytics, setAnalytics] = useState<DigitalCardAnalyticsResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -37,7 +38,8 @@ export default function DigitalCardAnalytics({ uid }: DigitalCardAnalyticsProps)
     setLoading(true);
     setError(null);
     setAnalytics(null);
-    void getDigitalCardAnalytics({ uid, period, signal: controller.signal }).then((data) => {
+    const request = groupUid ? getGroupCardAnalytics(uid, groupUid, period, controller.signal) : getDigitalCardAnalytics({ uid, period, signal: controller.signal });
+    void request.then((data) => {
       if (!controller.signal.aborted) setAnalytics(data);
     }).catch((cause: unknown) => {
       if (!controller.signal.aborted) setError(GetError({ error: cause, message: "Your card analytics could not be loaded." }).message);
@@ -45,7 +47,7 @@ export default function DigitalCardAnalytics({ uid }: DigitalCardAnalyticsProps)
       if (!controller.signal.aborted) setLoading(false);
     });
     return () => controller.abort();//return ends
-  }, [uid, period, refreshKey]);
+  }, [uid, groupUid, period, refreshKey]);
 
   // Reloads the selected range without changing the card or preview tab.
   function refreshAnalytics(): void { setRefreshKey(key => key + 1); };//func ends

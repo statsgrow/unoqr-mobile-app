@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-na
 import { SvgXml } from "react-native-svg";
 
 import { PxSkeleton } from "@/components/elements/PxSkeleton";
+import { loadPublishedGroupQrCard } from "@/helpers/digital_cards/groups/qrCard";
 import { loadQrCardImage } from "@/helpers/digital_cards/files/qrCardFiles";
 import type { AppDigitalCardQr } from "@/helpers/digital_cards/model";
 import { layoutSettings, type StandardQrCardData } from "@/libraries/qrcards-layouts/standard/dataJson";
@@ -12,13 +13,13 @@ import { colors, fontFamilies, fontSizes, radii, spacing } from "@/theme/tokens"
 /* ------------------ TYPES ------------------ */
 
 export type DigitalCardQrPreviewHandle = { exportPng: () => Promise<string> };//export ends
-type Props = { card: AppDigitalCardQr; draft?: boolean; fit?: boolean; exportRef?: Ref<DigitalCardQrPreviewHandle>; onReadyChange?: (ready: boolean) => void };
+type Props = { card: AppDigitalCardQr; publicExport?: boolean; draft?: boolean; fit?: boolean; exportRef?: Ref<DigitalCardQrPreviewHandle>; onReadyChange?: (ready: boolean) => void };
 type RenderedSvg = { xml: string; key: string; retry: number; requestId: number };
 
 /* ------------------ BREAK ------------------ */
 
 // Renders the Standard SVG locally from current card/form values, loading saved PNGs only for exports.
-export default function DigitalCardQrPreview({ card, draft = false, fit = false, exportRef, onReadyChange }: Props) {
+export default function DigitalCardQrPreview({ card, draft = false, fit = false, publicExport = false, exportRef, onReadyChange }: Props) {
   const [renderedSvg, setRenderedSvg] = useState<RenderedSvg | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [retry, setRetry] = useState(0);
@@ -60,10 +61,16 @@ export default function DigitalCardQrPreview({ card, draft = false, fit = false,
   useImperativeHandle(exportRef, () => ({
     exportPng: async (): Promise<string> => {
       if (!ready || draft) throw new Error("Save your QR card and wait for its preview before sharing.");//if ends
-      const file = await loadQrCardImage({ card, draft: false, signal: new AbortController().signal });
+      const signal = new AbortController().signal;
+      if (publicExport) {
+        if (!card.version) throw new Error("Refresh the card before exporting its QR image.");
+        const file = await loadPublishedGroupQrCard({ uid: card.uid, status: card.cardSettings.status, version: card.version }, signal);
+        try { return file.base64(); } finally { if (file.exists) file.delete(); };//try-catch ends
+      };//if ends
+      const file = await loadQrCardImage({ card, draft: false, signal });
       return file.base64();
     },
-  }), [ready, card, draft]);
+  }), [ready, card, draft, publicExport]);
 
   //Default Return
   return <View onLayout={(event) => { setPreviewWidth(Math.min(event.nativeEvent.layout.width, 400)); setAvailableHeight(event.nativeEvent.layout.height); }} style={fit ? styles.viewport : styles.container}>

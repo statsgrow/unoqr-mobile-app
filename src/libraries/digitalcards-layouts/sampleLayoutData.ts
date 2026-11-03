@@ -2,9 +2,15 @@ import type { ImageSourcePropType } from "react-native";
 
 import type { DigitalCardLayoutType } from "@/helpers/digital_cards/model";
 
+import { sampleLayoutData as sampleProfile } from "./core/sampleLayoutData";
+import type { DigitalCardLayoutData } from "./native/types";
+
 /* ------------------ BREAK ------------------ */
 
-export { sampleLayoutData } from "./core/sampleLayoutData";//export ends
+export const sampleLayoutData: DigitalCardLayoutData = {
+  ...sampleProfile,
+  companyLogo: require("@/assets/images/digital-cards/acme-studio-logo.png")
+};//export ends
 
 export const sampleLayoutPortraits: Record<DigitalCardLayoutType, ImageSourcePropType> = {
   modern: require("@/assets/images/digital-cards/indian-male.webp"),

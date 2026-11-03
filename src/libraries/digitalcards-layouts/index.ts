@@ -25,10 +25,11 @@ export function getDigitalCardLayout(layout: DigitalCardLayoutType): ComponentTy
 
 // Maps saved or draft form values into the shared layout's display data.
 export function getDigitalCardLayoutData(card: AppDigitalCardQr): DigitalCardLayoutData {
-  const { profilePicture, featurePhoto, ...details } = card.details;
+  const { profilePicture, featurePhoto, companyLogo, ...details } = card.details;
   const uri = profilePicture?.url || profilePicture?.uri;
   const coverUri = featurePhoto?.url || featurePhoto?.uri;
-  return { ...details, photo: uri ? { uri } : null, featurePhoto: coverUri ? { uri: coverUri } : null };
+  const logoUri = companyLogo?.url || companyLogo?.uri;
+  return { ...details, companyLogo: logoUri ? { uri: logoUri } : null, photo: uri ? { uri } : null, featurePhoto: coverUri ? { uri: coverUri } : null };
 };//export ends
 
 export type { DigitalCardLayoutType, DigitalCardSocialLink } from "./core/types";//export ends

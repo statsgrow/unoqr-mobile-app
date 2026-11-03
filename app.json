@@ -22,6 +22,9 @@
       "appleTeamId": "5XXAGD7YYF",
       "bundleIdentifier": "com.statsgrow.unoqr",
       "supportsTablet": true,
+      "infoPlist": {
+        "LSApplicationQueriesSchemes": ["tez", "phonepe", "paytmmp"]
+      },
       "entitlements": {
         "com.apple.developer.devicecheck.appattest-environment": "development"
       }
@@ -89,7 +92,8 @@
         {
           "ios": {
             "enableSceneSupport": true,
-            "usePrecompiledModules": false
+            "usePrecompiledModules": false,
+            "buildReactNativeFromSource": true
           },
           "android": {
             "enableMinifyInReleaseBuilds": true,

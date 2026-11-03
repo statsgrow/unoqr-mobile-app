@@ -19,6 +19,6 @@ export default function Minimal({ data, primaryColor, onOpenLink, isPreview = fa
 /* ------------------ BREAK ------------------ */
 
 const styles = StyleSheet.create({
-  card: { borderRadius: radii.xl + spacing.sm, overflow: "hidden", borderWidth: 1, borderColor: colors.line.main, backgroundColor: colors.white.main },
+  card: { borderRadius: radii.xl + spacing.sm, overflow: "hidden", backgroundColor: colors.white.main },
   
 });

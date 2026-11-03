@@ -36,6 +36,13 @@ export const scansSettings = {
   lastCheckedAtKey: "scans_last_checked_at"
 };//export ends
 
+// Tracks the initial account downloads separately from ordinary record synchronization.
+export const postLoginSyncSettings = {
+  cards: "postLoginCardSync",
+  scans: "postLoginScansSync",
+  qrcodes: "postLoginQrCodesSync"
+};//export ends
+
 /* ------------------ BREAK ------------------ */
 
 export const userTokenSettings = {

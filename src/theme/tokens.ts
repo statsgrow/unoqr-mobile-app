@@ -47,6 +47,7 @@ export const colors = {
   success: {
     main: "#2BBF5C",
     light: "#5BD183",
+    surface: "#EAF7EE",
     dark: "#1E9847",
     contrast: "#FFFFFF",
     text: "#FFFFFF"

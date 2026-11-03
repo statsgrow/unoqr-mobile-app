@@ -12,12 +12,12 @@ import { digitalCardPhotosTable, digitalCardsTable, initDigitalCardsTable } from
 export async function cacheDigitalCard(card: RemoteCard): Promise<RemoteCard> {
   if (!db) return card;
   await initDigitalCardsTable();
-  const { photo, feature_photo = null, ...values } = card;
+  const { photo, feature_photo = null, logo = null, ...values } = card;
   db.transaction((transaction) => {
     transaction.insert(digitalCardsTable).values(values)
       .onConflictDoUpdate({ target: digitalCardsTable.uid, set: values, setWhere: sql`${digitalCardsTable.version} <= ${card.version}` }).run();
-    transaction.insert(digitalCardPhotosTable).values({ card_uid: card.uid, user_id: card.user_id, photo, feature_photo })
-      .onConflictDoUpdate({ target: digitalCardPhotosTable.card_uid, set: { photo, feature_photo },
+    transaction.insert(digitalCardPhotosTable).values({ card_uid: card.uid, user_id: card.user_id, photo, feature_photo, logo })
+      .onConflictDoUpdate({ target: digitalCardPhotosTable.card_uid, set: { photo, feature_photo, logo },
         setWhere: sql`(SELECT version FROM digital_cards WHERE uid = ${card.uid}) = ${card.version}` }).run();
   });
   const cached = await getCachedDigitalCard(card.user_id, card.uid);

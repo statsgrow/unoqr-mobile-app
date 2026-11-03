@@ -1,7 +1,8 @@
 import { jwtDecode } from "jwt-decode";
 
-import { apiSettings, userTokenSettings } from "@/settings";
-import type { UserType } from "@/utils/auth/UserTypes";
+import { userTokenSettings } from "@/settings";
+import { clearAuthUser } from "@/utils/auth/AuthUserStorage";
+import { requestAppUser } from "@/utils/auth/requestAppUser";
 import { getData, removeData, setData } from "@/utils/general/Storage";
 
 /* ------------------ BREAK ------------------ */
@@ -17,15 +18,6 @@ export type SetUserTokensInput = {
 };
 
 type RefreshTokenResult = "missing" | "valid" | "refreshed" | "failed";
-
-type SupabaseJwtClaims = {
-  sub?: string;
-  email?: string;
-  phone?: string;
-  role?: string;
-  exp?: number;
-  user_metadata?: Record<string, unknown>;
-};
 
 /* ------------------ BREAK ------------------ */
 
@@ -91,58 +83,23 @@ export function resumeTokenRefresh(): void {
   isSessionResetting = false;
 };//export ends
 
-// Performs one guarded refresh through the UnoQR auth-user endpoint.
+// Refreshes expired credentials and caches the complete RPC-backed app user in one request.
 async function performTokenRefresh(): Promise<RefreshTokenResult> {
   const { accessToken, refreshToken } = await getUserTokens();
-  let refreshTimeout: ReturnType<typeof setTimeout> | null = null;
-
   if (!refreshToken) return "missing";
   if (accessToken && !isTokenExpired(accessToken)) return "valid";
-
+  const abortController = new AbortController();
+  const refreshTimeout = setTimeout(() => abortController.abort(), tokenRefreshTimeoutMilliseconds);
   try {
-    const authApiUrl = apiSettings.getApiUrl({ path: "/auth/user" });
-    const abortController = new AbortController();
-    refreshTimeout = setTimeout(() => abortController.abort(), tokenRefreshTimeoutMilliseconds);
-    const response = await fetch(authApiUrl.href, {
-      cache: "no-store",
-      signal: abortController.signal,
-      headers: {
-        ...(accessToken
-          ? { [userTokenSettings.headerTokens.accessToken.name]: accessToken }
-          : {}),
-        [userTokenSettings.headerTokens.refreshToken.name]: refreshToken
-      }
-    });
-
-    if (!response.ok) {
-      if (response.status === 401) await removeUserTokens();
-      return "failed";
-    };//if ends
-
-    const newAccessToken = response.headers.get(
-      userTokenSettings.headerTokens.newAccessToken.name
-    );
-    const newRefreshToken = response.headers.get(
-      userTokenSettings.headerTokens.newRefreshToken.name
-    );
-
-    if (newAccessToken) {
-      await persistAccessTokenAndUser(newAccessToken);
-    };//if ends
-
-    if (newRefreshToken) {
-      await setData({
-        key: userTokenSettings.storageTokens.refreshToken.name,
-        value: newRefreshToken
-      });
-    };//if ends
-
-    return newAccessToken || newRefreshToken ? "refreshed" : "valid";
+    const result = await requestAppUser({ accessToken, refreshToken, signal: abortController.signal });
+    //Default Return
+    return result.refreshed ? "refreshed" : "valid";
   } catch (error: unknown) {
+    if (error instanceof Error && "statusCode" in error && error.statusCode === 401) await removeUserTokens();
     console.warn("Unable to refresh the stored UnoQR session:", error);
     return "failed";
   } finally {
-    if (refreshTimeout) clearTimeout(refreshTimeout);
+    clearTimeout(refreshTimeout);
   };//try-catch ends
 };//func ends
 
@@ -174,7 +131,10 @@ export async function setUserTokens({
   if (!refresh_token) throw new Error("Refresh token is missing.");
 
   await Promise.all([
-    persistAccessTokenAndUser(access_token),
+    setData({
+      key: userTokenSettings.storageTokens.accessToken.name,
+      value: access_token
+    }),
     setData({
       key: userTokenSettings.storageTokens.refreshToken.name,
       value: refresh_token
@@ -184,68 +144,14 @@ export async function setUserTokens({
 
 /* ------------------ BREAK ------------------ */
 
-// Stores an access token together with user details decoded from its Supabase claims.
-async function persistAccessTokenAndUser(accessToken: string): Promise<void> {
-  const user = decodeSupabaseUser(accessToken);
-
-  await Promise.all([
-    setData({
-      key: userTokenSettings.storageTokens.accessToken.name,
-      value: accessToken
-    }),
-    setData({
-      key: userTokenSettings.storageTokens.userData.name,
-      value: user
-    })
-  ]);
-};//func ends
-
-// Converts Supabase access-token claims into the stored UnoQR user shape.
-function decodeSupabaseUser(accessToken: string): UserType {
-  const claims = jwtDecode<SupabaseJwtClaims>(accessToken);
-  const metadata = claims.user_metadata || {};
-  const metadataFullName = getMetadataString(metadata, "full_name")
-    || getMetadataString(metadata, "name");
-  const suppliedFirstName = getMetadataString(metadata, "first_name")
-    || getMetadataString(metadata, "given_name");
-  const suppliedLastName = getMetadataString(metadata, "last_name")
-    || getMetadataString(metadata, "family_name");
-  const nameParts = metadataFullName.trim().split(/\s+/).filter(Boolean);
-  const firstName = suppliedFirstName || nameParts[0] || "";
-  const lastName = suppliedLastName || nameParts.slice(1).join(" ");
-  const fullName = metadataFullName || [firstName, lastName].filter(Boolean).join(" ");
-
-  return {
-    id: claims.sub || "",
-    email: claims.email || getMetadataString(metadata, "email"),
-    first_name: firstName,
-    last_name: lastName,
-    full_name: fullName,
-    avatar_url: getMetadataString(metadata, "avatar_url")
-      || getMetadataString(metadata, "picture"),
-    phone: claims.phone || getMetadataString(metadata, "phone"),
-    role: "user",
-    is_authenticated: claims.role === "authenticated" || Boolean(claims.sub),
-    created_at: "",
-    updated_at: ""
-  };
-};//func ends
-
-// Reads a string value from Supabase user metadata.
-function getMetadataString(metadata: Record<string, unknown>, key: string): string {
-  const value = metadata[key];
-  return typeof value === "string" ? value.trim() : "";
-};//func ends
-
-/* ------------------ BREAK ------------------ */
-
 // Removes all UnoQR session tokens, including the earlier uq-prefixed keys.
 export async function removeUserTokens(): Promise<void> {
   await Promise.all([
     removeData({ key: userTokenSettings.storageTokens.accessToken.name }),
     removeData({ key: userTokenSettings.storageTokens.refreshToken.name }),
     removeData({ key: userTokenSettings.storageTokens.accessToken.legacyName }),
-    removeData({ key: userTokenSettings.storageTokens.refreshToken.legacyName })
+    removeData({ key: userTokenSettings.storageTokens.refreshToken.legacyName }),
+    clearAuthUser()
   ]);
 };//export ends
 
